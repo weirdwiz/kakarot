@@ -31,25 +31,58 @@ Electron three-process architecture:
 - **Renderer process** (`src/renderer/`): React UI running in Chromium
 - **Preload** (`src/preload/`): Secure IPC bridge exposing `window.kakarot` API
 
+### Main Process Structure
+
+```
+src/main/
+├── index.ts              # Entry point, app lifecycle
+├── core/                 # Infrastructure
+│   ├── logger.ts         # Structured logging (debug/info/warn/error)
+│   └── container.ts      # Dependency injection container
+├── handlers/             # IPC handlers by domain
+│   ├── index.ts          # Registers all handlers
+│   ├── recordingHandlers.ts
+│   ├── meetingHandlers.ts
+│   ├── settingsHandlers.ts
+│   └── calloutHandlers.ts
+├── data/                 # Data access layer
+│   ├── database.ts       # SQLite connection (sql.js)
+│   └── repositories/     # Repository pattern
+│       ├── MeetingRepository.ts
+│       ├── CalloutRepository.ts
+│       └── SettingsRepository.ts
+├── services/             # Business logic
+│   ├── CalloutService.ts
+│   ├── KnowledgeService.ts
+│   ├── TranscriptionService.ts
+│   ├── SystemAudioService.ts
+│   └── ExportService.ts
+├── providers/            # External API clients
+│   └── OpenAIProvider.ts # Centralized OpenAI client
+├── prompts/              # LLM prompt templates
+│   ├── calloutPrompts.ts
+│   └── summaryPrompts.ts
+├── config/               # Constants and configuration
+│   └── constants.ts      # All magic numbers, patterns, defaults
+└── windows/              # Electron window management
+    ├── mainWindow.ts
+    └── calloutWindow.ts
+```
+
+### Dependency Injection
+
+Services access dependencies via `getContainer()` from `src/main/core/container.ts`:
+- `aiProvider` - OpenAIProvider instance
+- `meetingRepo`, `calloutRepo`, `settingsRepo` - Data repositories
+- `knowledgeService`, `calloutService` - Business services
+
 ### IPC Communication Pattern
 
-All main<->renderer communication uses typed IPC channels defined in `src/shared/ipcChannels.ts`. The preload script (`src/preload/index.ts`) exposes the `window.kakarot` API with these domains:
-- `recording` - start/stop/pause/resume controls
-- `audio` - level monitoring, data streaming
-- `transcript` - real-time updates from AssemblyAI
-- `meetings` - CRUD, search, summarize, export
-- `callout` - question detection overlay
-- `settings` - API keys, preferences
-- `knowledge` - RAG indexing and search
-
-### Main Process Services
-
-Located in `src/main/services/`:
-- `AudioService` - Captures mic + system audio via electron-audio-loopback
-- `TranscriptionService` - AssemblyAI streaming WebSocket connection
-- `CalloutService` - Question detection + OpenAI response generation
-- `StorageService` - SQLite persistence (sql.js)
-- `KnowledgeService` - RAG search over local documents
+All main<->renderer communication uses typed IPC channels defined in `src/shared/ipcChannels.ts`. Handlers are organized by domain in `src/main/handlers/`:
+- `recordingHandlers` - start/stop/pause/resume, audio streaming
+- `meetingHandlers` - CRUD, search, summarize, export
+- `settingsHandlers` - API keys, preferences
+- `calloutHandlers` - dismiss callout
 
 ### Renderer Structure
 
@@ -58,7 +91,14 @@ React 18 + Zustand for state (`src/renderer/stores/appStore.ts`). Three main vie
 - `HistoryView` - Past meetings browser
 - `SettingsView` - API keys and preferences
 
-Floating `CalloutOverlay` component renders in separate Electron window.
+Icons use `lucide-react` (direct imports). Floating `CalloutOverlay` renders in separate Electron window.
+
+### Shared Utilities
+
+Located in `src/shared/utils/formatters.ts`:
+- `formatTimestamp(ms)` - Formats milliseconds as MM:SS
+- `formatDuration(ms)` - Formats duration with hours if needed
+- `getSpeakerLabel(source)` - Maps 'mic'/'system' to 'You'/'Other'
 
 ### Path Aliases
 
@@ -70,7 +110,9 @@ Configured in both `tsconfig.json` and `vite.config.ts`:
 
 ## Key Files
 
-- `src/main/ipc.ts` - Central IPC handler registration, orchestrates services
+- `src/main/core/container.ts` - DI container, service initialization
+- `src/main/handlers/index.ts` - Registers all IPC handlers
+- `src/main/data/database.ts` - SQLite schema and connection
 - `src/shared/types.ts` - Shared TypeScript interfaces (Meeting, Callout, Settings)
 - `src/shared/ipcChannels.ts` - Type-safe IPC channel constants
 - `src/preload/index.ts` - Renderer API surface + global type declarations
