@@ -1,0 +1,249 @@
+import React, { useState, useEffect } from 'react';
+import { useAppStore } from '../stores/appStore';
+import type { AppSettings } from '../../shared/types';
+
+export default function SettingsView() {
+  const { settings, setSettings } = useAppStore();
+  const [localSettings, setLocalSettings] = useState<AppSettings | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+
+  useEffect(() => {
+    if (settings) {
+      setLocalSettings({ ...settings });
+    }
+  }, [settings]);
+
+  const handleChange = (key: keyof AppSettings, value: string | boolean) => {
+    if (!localSettings) return;
+    setLocalSettings({ ...localSettings, [key]: value });
+  };
+
+  const handleSave = async () => {
+    if (!localSettings) return;
+
+    setIsSaving(true);
+    setSaveMessage('');
+
+    try {
+      await window.kakarot.settings.update(localSettings);
+      setSettings(localSettings);
+      setSaveMessage('Settings saved successfully');
+    } catch {
+      setSaveMessage('Failed to save settings');
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => setSaveMessage(''), 3000);
+    }
+  };
+
+  const handleSelectKnowledgePath = async () => {
+    // In a real implementation, this would open a file dialog
+    // For now, we'll use a prompt
+    const path = prompt('Enter the path to your knowledge base folder:');
+    if (path) {
+      handleChange('knowledgeBasePath', path);
+    }
+  };
+
+  if (!localSettings) {
+    return (
+      <div className="h-full flex items-center justify-center text-gray-500">
+        Loading settings...
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="max-w-2xl mx-auto p-6 space-y-8">
+        <div>
+          <h1 className="text-2xl font-semibold text-white">Settings</h1>
+          <p className="text-gray-400 text-sm mt-1">
+            Configure your API keys and preferences
+          </p>
+        </div>
+
+        {/* API Keys */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
+            API Keys
+          </h2>
+
+          <div>
+            <label className="block text-sm text-gray-300 mb-2">
+              AssemblyAI API Key
+            </label>
+            <input
+              type="password"
+              value={localSettings.assemblyAiApiKey}
+              onChange={(e) => handleChange('assemblyAiApiKey', e.target.value)}
+              placeholder="Enter your AssemblyAI API key"
+              className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Get your key from{' '}
+              <a
+                href="https://www.assemblyai.com/dashboard"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary-400 hover:underline"
+              >
+                assemblyai.com/dashboard
+              </a>
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-300 mb-2">
+              OpenAI API Key
+            </label>
+            <input
+              type="password"
+              value={localSettings.openAiApiKey}
+              onChange={(e) => handleChange('openAiApiKey', e.target.value)}
+              placeholder="Enter your OpenAI API key"
+              className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Get your key from{' '}
+              <a
+                href="https://platform.openai.com/api-keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary-400 hover:underline"
+              >
+                platform.openai.com/api-keys
+              </a>
+            </p>
+          </div>
+        </section>
+
+        {/* Knowledge Base */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
+            Knowledge Base
+          </h2>
+
+          <div>
+            <label className="block text-sm text-gray-300 mb-2">
+              Knowledge Base Path
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={localSettings.knowledgeBasePath}
+                onChange={(e) => handleChange('knowledgeBasePath', e.target.value)}
+                placeholder="/path/to/your/documents"
+                className="flex-1 bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+              <button
+                onClick={handleSelectKnowledgePath}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors"
+              >
+                Browse
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Folder containing your reference documents (PDFs, markdown, text files)
+            </p>
+          </div>
+        </section>
+
+        {/* Features */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
+            Features
+          </h2>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-300">Auto-detect Questions</p>
+              <p className="text-xs text-gray-500">
+                Automatically detect when someone asks you a question
+              </p>
+            </div>
+            <ToggleSwitch
+              enabled={localSettings.autoDetectQuestions}
+              onChange={(enabled) => handleChange('autoDetectQuestions', enabled)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-300">Show Floating Callout</p>
+              <p className="text-xs text-gray-500">
+                Display a floating overlay when questions are detected
+              </p>
+            </div>
+            <ToggleSwitch
+              enabled={localSettings.showFloatingCallout}
+              onChange={(enabled) => handleChange('showFloatingCallout', enabled)}
+            />
+          </div>
+        </section>
+
+        {/* Transcription */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
+            Transcription
+          </h2>
+
+          <div>
+            <label className="block text-sm text-gray-300 mb-2">Language</label>
+            <select
+              value={localSettings.transcriptionLanguage}
+              onChange={(e) => handleChange('transcriptionLanguage', e.target.value)}
+              className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="en">English</option>
+              <option value="es">Spanish</option>
+              <option value="fr">French</option>
+              <option value="de">German</option>
+              <option value="it">Italian</option>
+              <option value="pt">Portuguese</option>
+            </select>
+          </div>
+        </section>
+
+        {/* Save button */}
+        <div className="flex items-center justify-between pt-4 border-t border-gray-700">
+          {saveMessage && (
+            <p className={`text-sm ${saveMessage.includes('Failed') ? 'text-red-400' : 'text-green-400'}`}>
+              {saveMessage}
+            </p>
+          )}
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="ml-auto px-6 py-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors"
+          >
+            {isSaving ? 'Saving...' : 'Save Settings'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface ToggleSwitchProps {
+  enabled: boolean;
+  onChange: (enabled: boolean) => void;
+}
+
+function ToggleSwitch({ enabled, onChange }: ToggleSwitchProps) {
+  return (
+    <button
+      onClick={() => onChange(!enabled)}
+      className={`relative w-11 h-6 rounded-full transition-colors ${
+        enabled ? 'bg-primary-600' : 'bg-gray-600'
+      }`}
+    >
+      <div
+        className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+          enabled ? 'translate-x-6' : 'translate-x-1'
+        }`}
+      />
+    </button>
+  );
+}

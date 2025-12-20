@@ -1,0 +1,43 @@
+import { app, BrowserWindow, shell } from 'electron';
+import { join } from 'path';
+
+export function createMainWindow(): BrowserWindow {
+  const mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    minWidth: 800,
+    minHeight: 600,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false, // Required for sql.js WASM loading
+    },
+    titleBarStyle: 'hiddenInset',
+    show: false,
+  });
+
+  // Show window when ready to avoid flash
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+
+  // Open external links in browser
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  // Load the app - check if we're in development
+  const isDev = !app.isPackaged;
+
+  if (isDev) {
+    // In development, load from vite dev server
+    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
+  }
+
+  return mainWindow;
+}
