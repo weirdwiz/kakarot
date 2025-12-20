@@ -52,7 +52,7 @@ Kakarot is an Electron-based AI meeting assistant that captures audio from your 
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/kakarot.git
+git clone https://github.com/weirdwiz/kakarot.git
 cd kakarot
 ```
 
