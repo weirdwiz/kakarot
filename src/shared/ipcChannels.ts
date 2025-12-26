@@ -26,6 +26,8 @@ export const IPC_CHANNELS = {
 
   MEETING_SUMMARIZE: 'meeting:summarize',
   MEETING_EXPORT: 'meeting:export',
+  MEETING_NOTES_GENERATING: 'meeting:notes:generating',
+  MEETING_NOTES_COMPLETE: 'meeting:notes:complete',
 
   KNOWLEDGE_INDEX: 'knowledge:index',
   KNOWLEDGE_SEARCH: 'knowledge:search',

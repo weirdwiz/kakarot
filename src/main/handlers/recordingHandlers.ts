@@ -7,6 +7,7 @@ import { SystemAudioService } from '../services/SystemAudioService';
 import { CalloutService } from '../services/CalloutService';
 import { showCalloutWindow } from '../windows/calloutWindow';
 import { AUDIO_CONFIG } from '../config/constants';
+import { getDatabase, saveDatabase } from '../data/database';
 
 const logger = createLogger('RecordingHandlers');
 
@@ -101,31 +102,67 @@ export function registerRecordingHandlers(
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_STOP, async () => {
     logger.info('Recording stop requested');
-    const { meetingRepo } = getContainer();
+    const { meetingRepo, noteService } = getContainer();
+    const meetingId = meetingRepo.getCurrentMeetingId();
 
-    mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+    mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'processing');
 
-    // Stop system audio
+    // Stop system audio first
     if (systemAudioService) {
       const sas = systemAudioService;
       systemAudioService = null;
-      sas
-        .stop()
-        .then(() => logger.info('System audio capture stopped'))
-        .catch((error) => logger.error('System audio stop error', error));
+      await sas.stop().catch((error) => logger.error('System audio stop error', error));
+      logger.info('System audio capture stopped');
     }
 
-    // Disconnect transcription provider
+    // Disconnect transcription and wait for it to flush
     if (transcriptionProvider) {
       const tp = transcriptionProvider;
       transcriptionProvider = null;
-      tp.disconnect()
-        .then(() => logger.info('Transcription provider disconnected'))
-        .catch((error) => logger.error('Transcription disconnect error', error));
+      await tp.disconnect().catch((error) => logger.error('Transcription disconnect error', error));
+      logger.info('Transcription provider disconnected');
     }
 
+    // Wait for any remaining finals to arrive and be stored
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
     const meeting = await meetingRepo.endCurrentMeeting();
-    logger.info('Meeting ended', { id: meeting?.id });
+    logger.info('Meeting ended', { id: meeting?.id, transcriptCount: meeting?.transcript.length });
+
+    // Auto-generate notes in background
+    if (meeting && meetingId) {
+      mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_GENERATING, { meetingId: meeting.id });
+
+      // Re-fetch meeting to get all transcript segments
+      const fullMeeting = meetingRepo.findById(meeting.id);
+      if (fullMeeting && fullMeeting.transcript.length > 0) {
+        noteService.generateNotes(fullMeeting).then((notes) => {
+          if (notes) {
+            meetingRepo.updateNotes(meeting.id, null, notes.notesMarkdown, notes.notesMarkdown);
+            meetingRepo.updateOverview(meeting.id, notes.overview);
+            const db = getDatabase();
+            db.run('UPDATE meetings SET title = ? WHERE id = ?', [notes.title, meeting.id]);
+            saveDatabase();
+
+            mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
+              meetingId: meeting.id,
+              title: notes.title,
+              overview: notes.overview,
+            });
+            logger.info('Notes generated and saved', { meetingId: meeting.id, title: notes.title });
+          }
+          mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+        }).catch((error) => {
+          logger.error('Note generation failed', error);
+          mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+        });
+      } else {
+        logger.warn('No transcript segments to generate notes from');
+        mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+      }
+    } else {
+      mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+    }
 
     return meeting;
   });
