@@ -152,8 +152,26 @@ export default function HistoryView() {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Summary */}
-              {selectedMeeting.summary && (
+              {/* Overview */}
+              {selectedMeeting.overview && (
+                <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+                  <h2 className="text-sm font-medium text-blue-700 mb-2">Overview</h2>
+                  <p className="text-sm text-gray-900">{selectedMeeting.overview}</p>
+                </div>
+              )}
+
+              {/* Notes */}
+              {selectedMeeting.notesMarkdown && (
+                <div className="bg-gray-100 rounded-xl p-4 border border-gray-200">
+                  <h2 className="text-sm font-medium text-gray-600 mb-2">Notes</h2>
+                  <div className="text-sm text-gray-900 whitespace-pre-wrap prose prose-sm max-w-none">
+                    {selectedMeeting.notesMarkdown}
+                  </div>
+                </div>
+              )}
+
+              {/* Legacy Summary */}
+              {selectedMeeting.summary && !selectedMeeting.notesMarkdown && (
                 <div className="bg-gray-100 rounded-xl p-4 border border-gray-200">
                   <h2 className="text-sm font-medium text-gray-600 mb-2">Summary</h2>
                   <p className="text-sm text-gray-900 whitespace-pre-wrap">
