@@ -4,8 +4,8 @@ import { createLogger } from '../core/logger';
 import { matchesQuestionPattern, CALLOUT_CONFIG } from '../config/constants';
 import { buildCalloutMessages, parseCalloutResponse } from '../prompts/calloutPrompts';
 import { buildSummaryMessages } from '../prompts/summaryPrompts';
-import { getSpeakerLabel } from '../../shared/utils/formatters';
-import type { Meeting, Callout, CalloutSource, TranscriptSegment } from '../../shared/types';
+import { getSpeakerLabel } from '@shared/utils/formatters';
+import type { Meeting, Callout, CalloutSource, TranscriptSegment } from '@shared/types';
 import type { KnowledgeService } from './KnowledgeService';
 
 const logger = createLogger('CalloutService');
@@ -117,7 +117,8 @@ export class CalloutService {
       if (results.length === 0) return '';
 
       return 'From your knowledge base:\n' + results.map((r) => `- ${r.content}`).join('\n');
-    } catch {
+    } catch (error) {
+      logger.warn('Knowledge search failed', { error });
       return '';
     }
   }
@@ -143,7 +144,8 @@ export class CalloutService {
       }
 
       return excerpts.length > 0 ? 'From past meetings:\n' + excerpts.join('\n') : '';
-    } catch {
+    } catch (error) {
+      logger.warn('Past meeting search failed', { error });
       return '';
     }
   }
