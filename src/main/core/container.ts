@@ -1,7 +1,7 @@
 import { MeetingRepository, CalloutRepository, SettingsRepository } from '../data/repositories';
 import { OpenAIProvider } from '../providers/OpenAIProvider';
-import { NoteGenerationService } from '../services/NoteGenerationService';
 import { createLogger } from './logger';
+import { CalendarService } from '../services/CalendarService';
 
 const logger = createLogger('Container');
 
@@ -10,49 +10,48 @@ export interface AppContainer {
   calloutRepo: CalloutRepository;
   settingsRepo: SettingsRepository;
   aiProvider: OpenAIProvider | null;
-  noteService: NoteGenerationService;
+  calendarService: CalendarService;
 }
 
 let container: AppContainer | null = null;
 
+/**
+ * Initialize the dependency container
+ * Must be called after database is initialized
+ */
 export function initializeContainer(): AppContainer {
   const meetingRepo = new MeetingRepository();
   const calloutRepo = new CalloutRepository();
   const settingsRepo = new SettingsRepository();
-  const noteService = new NoteGenerationService();
+  const calendarService = new CalendarService();
 
   // Initialize default settings
   settingsRepo.initializeDefaults();
 
   // Create AI provider if API key is available
   const settings = settingsRepo.getSettings();
-  const aiProvider = settings.openAiApiKey
-    ? new OpenAIProvider({
-        apiKey: settings.openAiApiKey,
-        baseURL: settings.openAiBaseUrl || undefined,
-        defaultModel: settings.openAiModel || undefined,
-      })
-    : null;
+  const aiProvider = settings.openAiApiKey ? new OpenAIProvider(settings.openAiApiKey) : null;
 
   if (!aiProvider) {
     logger.warn('OpenAI API key not configured - AI features disabled');
   }
-
-  // Initialize note service with settings
-  noteService.initialize(settings);
 
   container = {
     meetingRepo,
     calloutRepo,
     settingsRepo,
     aiProvider,
-    noteService,
+    calendarService,
   };
 
   logger.info('Container initialized');
   return container;
 }
 
+/**
+ * Get the container instance
+ * Throws if container hasn't been initialized
+ */
 export function getContainer(): AppContainer {
   if (!container) {
     throw new Error('Container not initialized. Call initializeContainer() first.');
@@ -60,21 +59,15 @@ export function getContainer(): AppContainer {
   return container;
 }
 
-export function refreshAIProvider(settings: {
-  openAiApiKey: string;
-  openAiBaseUrl?: string;
-  openAiModel?: string;
-}): void {
+/**
+ * Reinitialize the AI provider with a new API key
+ * Called when settings are updated
+ */
+export function refreshAIProvider(apiKey: string): void {
   if (!container) {
     throw new Error('Container not initialized');
   }
 
-  container.aiProvider = settings.openAiApiKey
-    ? new OpenAIProvider({
-        apiKey: settings.openAiApiKey,
-        baseURL: settings.openAiBaseUrl || undefined,
-        defaultModel: settings.openAiModel || undefined,
-      })
-    : null;
-  logger.info('AI provider refreshed', { configured: !!settings.openAiApiKey });
+  container.aiProvider = apiKey ? new OpenAIProvider(apiKey) : null;
+  logger.info('AI provider refreshed', { configured: !!apiKey });
 }

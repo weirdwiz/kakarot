@@ -12,9 +12,9 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="w-16 bg-white border-r border-gray-200 flex flex-col items-center py-4 drag-region">
+    <aside className="w-16 bg-slate-50 dark:bg-[#050505] border-r border-slate-200 dark:border-purple-900/30 flex flex-col items-center pt-[48px] pb-4 drag-region">
       <div className="mb-8 no-drag">
-        <div className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center font-bold text-lg text-white">
+        <div className="w-10 h-10 rounded-full bg-emerald-mist dark:bg-[#7C3AED] flex items-center justify-center font-bold text-lg text-onyx dark:text-white">
           K
         </div>
       </div>
@@ -24,10 +24,10 @@ export default function Sidebar() {
           <button
             key={item.id}
             onClick={() => setView(item.id)}
-            className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
+            className={`w-12 h-12 rounded-xl flex items-center justify-center transition ${
               view === item.id
-                ? 'bg-gray-900 text-white'
-                : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                ? 'bg-emerald-mist text-onyx shadow-soft-card dark:bg-[#7C3AED] dark:text-white'
+                : 'text-slate-500 hover:text-slate-900 hover:bg-sky-glow/20 dark:text-slate-300 dark:hover:bg-white/10'
             }`}
             title={item.label}
           >

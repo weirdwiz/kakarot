@@ -3,25 +3,39 @@ import { useAppStore } from '../stores/appStore';
 import { useAudioCapture } from '../hooks/useAudioCapture';
 import AudioLevelMeter from './AudioLevelMeter';
 import LiveTranscript from './LiveTranscript';
-import { Circle, Square, Pause, Play } from 'lucide-react';
+import BentoDashboard from './bento/BentoDashboard';
+import { FileText, Square, Pause, Play, Search } from 'lucide-react';
 
 export default function RecordingView() {
   const { recordingState, audioLevels, liveTranscript, currentPartials, clearLiveTranscript } = useAppStore();
   const { startCapture, stopCapture, pause, resume } = useAudioCapture();
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    const userName = 'User'; // TODO: Get from user settings
+    if (hour < 12) return `Good Morning, ${userName}`;
+    if (hour < 18) return `Good Afternoon, ${userName}`;
+    return `Good Evening, ${userName}`;
+  };
+
   const handleStartRecording = async () => {
+    console.log('[RecordingView] Start button clicked');
     clearLiveTranscript();
     try {
+      console.log('[RecordingView] Calling recording.start()...');
       await window.kakarot.recording.start();
+      console.log('[RecordingView] recording.start() completed, calling startCapture()...');
       await startCapture();
+      console.log('[RecordingView] startCapture() completed');
     } catch (error) {
-      console.error('Error starting recording:', error);
+      console.error('[RecordingView] Error starting recording:', error);
     }
   };
 
   const handleStopRecording = async () => {
     await stopCapture();
-    await window.kakarot.recording.stop();
+    const meeting = await window.kakarot.recording.stop();
+    console.log('Meeting ended:', meeting);
   };
 
   const handlePauseRecording = async () => {
@@ -39,70 +53,103 @@ export default function RecordingView() {
   const isIdle = recordingState === 'idle';
 
   return (
-    <div className="h-full flex flex-col p-6 bg-white">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Recording</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            {isIdle && 'Ready to start recording'}
-            {isRecording && 'Recording in progress...'}
-            {isPaused && 'Recording paused'}
-          </p>
+    <div className="h-full bg-studio text-slate-ink dark:bg-onyx dark:text-gray-100">
+      <div className="mx-auto w-full px-4 sm:px-6 py-4 flex flex-col gap-4">
+        {/* Greeting + Unified Action Row */}
+        <div className="space-y-3">
+          {/* Greeting */}
+          <div>
+            {isIdle ? (
+              <h1 className="text-3xl font-medium text-slate-900 dark:text-white">
+                {getGreeting()}
+              </h1>
+            ) : (
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isRecording && 'Recording in progress... keep the conversation flowing'}
+                {isPaused && 'Recording paused — resume when ready'}
+              </p>
+            )}
+          </div>
+
+          {/* Unified Action Row (Search + Take Notes) */}
+          <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-white/30 dark:border-white/10 bg-transparent backdrop-blur-sm">
+            {/* Search Bar */}
+            {isIdle && (
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Search meetings or notes"
+                  className="w-full pl-10 pr-4 py-2 bg-white/70 dark:bg-graphite/80 border border-white/30 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/50 backdrop-blur-md transition"
+                />
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            {isIdle ? (
+              <button
+                onClick={handleStartRecording}
+                className="px-4 py-2 bg-[#8B5CF6] text-white font-semibold rounded-lg flex items-center gap-2 shadow-soft-card transition hover:opacity-95 flex-shrink-0"
+              >
+                <FileText className="w-4 h-4" />
+                + Take Notes
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {isPaused ? (
+                  <button
+                    onClick={handleResumeRecording}
+                    className="px-4 py-2 bg-[#8B5CF6] text-white font-semibold rounded-lg flex items-center gap-2 transition hover:opacity-95"
+                  >
+                    <Play className="w-4 h-4" />
+                    Resume
+                  </button>
+                ) : (
+                  <button
+                    onClick={handlePauseRecording}
+                    className="px-4 py-2 bg-slate-100 text-slate-ink font-semibold rounded-lg flex items-center gap-2 transition hover:bg-slate-200 dark:bg-slate-800/80 dark:text-gray-100 dark:hover:bg-slate-700"
+                  >
+                    <Pause className="w-4 h-4" />
+                    Pause
+                  </button>
+                )}
+                <button
+                  onClick={handleStopRecording}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg flex items-center gap-2 transition"
+                >
+                  <Square className="w-4 h-4" />
+                  Stop
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Recording controls */}
-        <div className="flex items-center gap-3">
-          {isIdle ? (
-            <button
-              onClick={handleStartRecording}
-              className="px-6 py-3 bg-gray-900 hover:bg-gray-800 text-white rounded-xl font-medium flex items-center gap-2 transition-colors"
-            >
-              <Circle className="w-5 h-5 text-red-500 fill-current" />
-              Start Recording
-            </button>
+        {(isRecording || isPaused) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-6xl mx-auto">
+            <AudioLevelMeter label="Microphone (You)" level={audioLevels.mic} />
+            <AudioLevelMeter label="System Audio (Others)" level={audioLevels.system} />
+          </div>
+        )}
+
+        {/* Dashboard or live transcript - full height, no scroll */}
+        <div className="flex-1 rounded-2xl bg-white/70 dark:bg-graphite/80 border border-white/30 dark:border-white/10 shadow-soft-card backdrop-blur-md overflow-hidden flex flex-col">
+          {isRecording || isPaused ? (
+            <div className="h-full flex flex-col p-4 sm:p-6">
+              <div className="mb-4 flex items-center justify-between flex-shrink-0">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Live Transcript</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Local audio is highlighted in Emerald Mist.</p>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <LiveTranscript segments={liveTranscript} currentPartials={currentPartials} />
+              </div>
+            </div>
           ) : (
-            <>
-              {isPaused ? (
-                <button
-                  onClick={handleResumeRecording}
-                  className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
-                >
-                  <Play className="w-4 h-4" />
-                  Resume
-                </button>
-              ) : (
-                <button
-                  onClick={handlePauseRecording}
-                  className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-900 rounded-lg font-medium flex items-center gap-2 transition-colors"
-                >
-                  <Pause className="w-4 h-4" />
-                  Pause
-                </button>
-              )}
-              <button
-                onClick={handleStopRecording}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
-              >
-                <Square className="w-4 h-4" />
-                Stop
-              </button>
-            </>
+            <BentoDashboard isRecording={isRecording || isPaused} onStartNotes={handleStartRecording} />
           )}
         </div>
-      </div>
-
-      {/* Audio levels */}
-      {(isRecording || isPaused) && (
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <AudioLevelMeter label="Microphone (You)" level={audioLevels.mic} />
-          <AudioLevelMeter label="System Audio (Others)" level={audioLevels.system} />
-        </div>
-      )}
-
-      {/* Live transcript */}
-      <div className="flex-1 overflow-hidden">
-        <LiveTranscript segments={liveTranscript} currentPartials={currentPartials} />
       </div>
     </div>
   );

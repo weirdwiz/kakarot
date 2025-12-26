@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC_CHANNELS } from '@shared/ipcChannels';
+import { IPC_CHANNELS } from '../shared/ipcChannels';
 import type {
   Meeting,
   AppSettings,
@@ -7,7 +7,8 @@ import type {
   AudioLevels,
   TranscriptUpdate,
   Callout,
-} from '@shared/types';
+  CalendarEvent,
+} from '../shared/types';
 
 // Expose protected methods to the renderer process
 contextBridge.exposeInMainWorld('kakarot', {
@@ -93,6 +94,12 @@ contextBridge.exposeInMainWorld('kakarot', {
     search: (query: string): Promise<unknown[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.KNOWLEDGE_SEARCH, query),
   },
+
+  // Calendar
+  calendar: {
+    listToday: (): Promise<CalendarEvent[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_LIST_TODAY),
+  },
 });
 
 // TypeScript declaration for window.kakarot
@@ -134,6 +141,9 @@ declare global {
       knowledge: {
         index: (path: string) => Promise<void>;
         search: (query: string) => Promise<unknown[]>;
+      };
+      calendar: {
+        listToday: () => Promise<CalendarEvent[]>;
       };
     };
   }

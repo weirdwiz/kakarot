@@ -1,16 +1,4 @@
-export interface MeetingChapter {
-  id: string;
-  title: string;
-  startTime: number; // ms from meeting start
-  endTime: number;
-}
-
-export interface MeetingPerson {
-  email: string;
-  displayName?: string;
-  avatar?: string;
-  source: 'mic' | 'system';
-}
+// Meeting and transcript types
 
 export interface Meeting {
   id: string;
@@ -19,13 +7,7 @@ export interface Meeting {
   endedAt: Date | null;
   duration: number; // in seconds
   transcript: TranscriptSegment[];
-  notes: unknown | null;
-  notesPlain: string | null;
-  notesMarkdown: string | null;
-  overview: string | null;
   summary: string | null;
-  chapters: MeetingChapter[];
-  people: MeetingPerson[];
   actionItems: string[];
   participants: string[];
 }
@@ -68,6 +50,7 @@ export interface CalloutSource {
   filePath?: string;
 }
 
+// Recording state
 export type RecordingState = 'idle' | 'recording' | 'paused' | 'processing';
 
 export interface AudioLevels {
@@ -75,21 +58,17 @@ export interface AudioLevels {
   system: number; // 0-1
 }
 
-export type TranscriptionProvider = 'assemblyai' | 'deepgram';
-
+// Settings
 export interface AppSettings {
   assemblyAiApiKey: string;
-  deepgramApiKey: string;
   openAiApiKey: string;
-  openAiBaseUrl: string;
-  openAiModel: string;
   knowledgeBasePath: string;
   autoDetectQuestions: boolean;
   showFloatingCallout: boolean;
   transcriptionLanguage: string;
-  transcriptionProvider: TranscriptionProvider;
 }
 
+// IPC payloads
 export interface TranscriptUpdate {
   segment: TranscriptSegment;
   meetingId: string;
@@ -97,4 +76,16 @@ export interface TranscriptUpdate {
 
 export interface CalloutTrigger {
   callout: Callout;
+}
+
+// Calendar
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  start: Date;
+  end: Date;
+  provider: 'google' | 'apple' | 'outlook' | 'unknown';
+  location?: string;
+  attendees?: string[];
+  description?: string;
 }
