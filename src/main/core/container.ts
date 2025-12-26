@@ -15,10 +15,7 @@ export interface AppContainer {
 
 let container: AppContainer | null = null;
 
-/**
- * Initialize the dependency container
- * Must be called after database is initialized
- */
+
 export function initializeContainer(): AppContainer {
   const meetingRepo = new MeetingRepository();
   const calloutRepo = new CalloutRepository();
