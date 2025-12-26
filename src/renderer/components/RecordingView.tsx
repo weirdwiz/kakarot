@@ -10,23 +10,18 @@ export default function RecordingView() {
   const { startCapture, stopCapture, pause, resume } = useAudioCapture();
 
   const handleStartRecording = async () => {
-    console.log('[RecordingView] Start button clicked');
     clearLiveTranscript();
     try {
-      console.log('[RecordingView] Calling recording.start()...');
       await window.kakarot.recording.start();
-      console.log('[RecordingView] recording.start() completed, calling startCapture()...');
       await startCapture();
-      console.log('[RecordingView] startCapture() completed');
     } catch (error) {
-      console.error('[RecordingView] Error starting recording:', error);
+      console.error('Error starting recording:', error);
     }
   };
 
   const handleStopRecording = async () => {
     await stopCapture();
-    const meeting = await window.kakarot.recording.stop();
-    console.log('Meeting ended:', meeting);
+    await window.kakarot.recording.stop();
   };
 
   const handlePauseRecording = async () => {

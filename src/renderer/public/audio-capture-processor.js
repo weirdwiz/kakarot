@@ -1,21 +1,15 @@
-/**
- * AudioWorklet processor for capturing and processing audio data.
- * Buffers samples at native 48kHz, calculates RMS levels, and converts to 16-bit PCM.
- */
+/* global AudioWorkletProcessor, registerProcessor */
+
+// AudioWorklet processor for microphone capture
 class AudioCaptureProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    // Buffer size for ~256ms chunks at 48kHz = 12288 samples
-    this._outputBufferSize = 12288;
+    this._outputBufferSize = 12288; // ~256ms at 48kHz
     this._outputBuffer = new Float32Array(this._outputBufferSize);
     this._outputIndex = 0;
-
-    console.log(
-      '[AudioCaptureProcessor] Initialized: sampleRate=' + sampleRate + 'Hz, bufferSize=' + this._outputBufferSize
-    );
   }
 
-  process(inputs, outputs, parameters) {
+  process(inputs) {
     const input = inputs[0];
     if (!input || !input[0]) return true;
 
