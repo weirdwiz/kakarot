@@ -13,10 +13,6 @@ export interface AppContainer {
 
 let container: AppContainer | null = null;
 
-/**
- * Initialize the dependency container
- * Must be called after database is initialized
- */
 export function initializeContainer(): AppContainer {
   const meetingRepo = new MeetingRepository();
   const calloutRepo = new CalloutRepository();
@@ -44,10 +40,6 @@ export function initializeContainer(): AppContainer {
   return container;
 }
 
-/**
- * Get the container instance
- * Throws if container hasn't been initialized
- */
 export function getContainer(): AppContainer {
   if (!container) {
     throw new Error('Container not initialized. Call initializeContainer() first.');
@@ -55,10 +47,6 @@ export function getContainer(): AppContainer {
   return container;
 }
 
-/**
- * Reinitialize the AI provider with a new API key
- * Called when settings are updated
- */
 export function refreshAIProvider(apiKey: string): void {
   if (!container) {
     throw new Error('Container not initialized');

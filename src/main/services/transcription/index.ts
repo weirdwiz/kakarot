@@ -7,10 +7,6 @@ import type { ITranscriptionProvider } from './TranscriptionProvider';
 import { AssemblyAIProvider } from './AssemblyAIProvider';
 import { DeepgramProvider } from './DeepgramProvider';
 
-/**
- * Factory function to create the appropriate transcription provider
- * based on user settings.
- */
 export function createTranscriptionProvider(
   provider: TranscriptionProvider,
   assemblyAiKey: string,

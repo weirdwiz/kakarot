@@ -56,9 +56,6 @@ export const EXPORT_CONFIG = {
   DATA_DIR: 'data',
 } as const;
 
-/**
- * Check if text matches any question pattern
- */
 export function matchesQuestionPattern(text: string): boolean {
   return QUESTION_PATTERNS.some((pattern) => pattern.test(text.trim()));
 }

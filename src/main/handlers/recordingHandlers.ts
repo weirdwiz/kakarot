@@ -5,7 +5,7 @@ import { createLogger } from '../core/logger';
 import { createTranscriptionProvider, ITranscriptionProvider } from '../services/transcription';
 import { SystemAudioService } from '../services/SystemAudioService';
 import { CalloutService } from '../services/CalloutService';
-import { showCalloutWindow, hideCalloutWindow } from '../windows/calloutWindow';
+import { showCalloutWindow } from '../windows/calloutWindow';
 import { AUDIO_CONFIG } from '../config/constants';
 
 const logger = createLogger('RecordingHandlers');

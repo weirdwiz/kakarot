@@ -1,5 +1,3 @@
-// Meeting and transcript types
-
 export interface Meeting {
   id: string;
   title: string;
@@ -50,7 +48,6 @@ export interface CalloutSource {
   filePath?: string;
 }
 
-// Recording state
 export type RecordingState = 'idle' | 'recording' | 'paused' | 'processing';
 
 export interface AudioLevels {
@@ -58,10 +55,8 @@ export interface AudioLevels {
   system: number; // 0-1
 }
 
-// Transcription provider options
 export type TranscriptionProvider = 'assemblyai' | 'deepgram';
 
-// Settings
 export interface AppSettings {
   assemblyAiApiKey: string;
   deepgramApiKey: string;
@@ -73,7 +68,6 @@ export interface AppSettings {
   transcriptionProvider: TranscriptionProvider;
 }
 
-// IPC payloads
 export interface TranscriptUpdate {
   segment: TranscriptSegment;
   meetingId: string;

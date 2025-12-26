@@ -10,10 +10,6 @@ const logger = createLogger('Database');
 let db: SqlJsDatabase | null = null;
 let dbPath: string = '';
 
-/**
- * Initialize the SQLite database
- * Creates the database file if it doesn't exist and sets up tables
- */
 export async function initializeDatabase(): Promise<void> {
   const userDataPath = app.getPath('userData');
   const dataDir = join(userDataPath, EXPORT_CONFIG.DATA_DIR);
@@ -40,10 +36,6 @@ export async function initializeDatabase(): Promise<void> {
   saveDatabase();
 }
 
-/**
- * Get the database instance
- * Throws if database hasn't been initialized
- */
 export function getDatabase(): SqlJsDatabase {
   if (!db) {
     throw new Error('Database not initialized. Call initializeDatabase() first.');
@@ -51,9 +43,6 @@ export function getDatabase(): SqlJsDatabase {
   return db;
 }
 
-/**
- * Persist the database to disk
- */
 export function saveDatabase(): void {
   if (!db) return;
   const data = db.export();
@@ -61,9 +50,6 @@ export function saveDatabase(): void {
   writeFileSync(dbPath, buffer);
 }
 
-/**
- * Close the database connection
- */
 export function closeDatabase(): void {
   if (db) {
     saveDatabase();
@@ -130,9 +116,6 @@ function createTables(): void {
   logger.debug('Database tables created/verified');
 }
 
-/**
- * Helper to convert SQL result row to object
- */
 export function resultToObject(result: { columns: string[]; values: unknown[][] }): Record<string, unknown> {
   if (result.values.length === 0) return {};
   const obj: Record<string, unknown> = {};
@@ -142,9 +125,6 @@ export function resultToObject(result: { columns: string[]; values: unknown[][] 
   return obj;
 }
 
-/**
- * Helper to convert SQL result row at index to object
- */
 export function resultToObjectByIndex(
   result: { columns: string[]; values: unknown[][] },
   rowIndex: number
