@@ -1,12 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { AppSettings } from '@shared/types';
+import { Calendar, Check } from 'lucide-react';
 
 export default function SettingsView() {
   const { settings, setSettings } = useAppStore();
   const [localSettings, setLocalSettings] = useState<AppSettings | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [connectedCalendars, setConnectedCalendars] = useState<{
+    google: boolean;
+    outlook: boolean;
+    icloud: boolean;
+  }>({
+    google: false,
+    outlook: false,
+    icloud: false,
+  });
 
   useEffect(() => {
     if (settings) {
@@ -44,6 +54,19 @@ export default function SettingsView() {
     if (path) {
       handleChange('knowledgeBasePath', path);
     }
+  };
+
+  const handleConnectCalendar = async (provider: 'google' | 'outlook' | 'icloud') => {
+    // TODO: Implement OAuth flow for each provider
+    // For now, just toggle the connected state
+    setConnectedCalendars((prev) => ({
+      ...prev,
+      [provider]: !prev[provider],
+    }));
+    
+    // Placeholder for actual implementation
+    console.log(`Connecting to ${provider} calendar...`);
+    // This will later trigger OAuth flow and store tokens
   };
 
   if (!localSettings) {
@@ -242,6 +265,99 @@ export default function SettingsView() {
               <option value="it">Italian</option>
               <option value="pt">Portuguese</option>
             </select>
+          </div>
+        </section>
+
+        {/* Calendar Integrations */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
+            Calendar Integrations
+          </h2>
+          <p className="text-sm text-gray-400">
+            Connect your calendars to automatically prepare for upcoming meetings
+          </p>
+
+          <div className="space-y-3">
+            {/* Google Calendar */}
+            <button
+              onClick={() => handleConnectCalendar('google')}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
+                connectedCalendars.google
+                  ? 'border-green-500/50 bg-green-500/10'
+                  : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Calendar className="w-5 h-5 text-gray-400" />
+                <div className="text-left">
+                  <p className="text-sm font-medium text-white">
+                    {connectedCalendars.google ? 'Google Calendar Connected' : 'Connect Your Google Calendar'}
+                  </p>
+                  {connectedCalendars.google && (
+                    <p className="text-xs text-gray-500">Syncing your Google events</p>
+                  )}
+                </div>
+              </div>
+              {connectedCalendars.google ? (
+                <Check className="w-5 h-5 text-green-500" />
+              ) : (
+                <span className="text-sm text-primary-400">+ Connect</span>
+              )}
+            </button>
+
+            {/* Outlook Calendar */}
+            <button
+              onClick={() => handleConnectCalendar('outlook')}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
+                connectedCalendars.outlook
+                  ? 'border-green-500/50 bg-green-500/10'
+                  : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Calendar className="w-5 h-5 text-gray-400" />
+                <div className="text-left">
+                  <p className="text-sm font-medium text-white">
+                    {connectedCalendars.outlook ? 'Outlook Calendar Connected' : 'Connect Your Outlook Calendar'}
+                  </p>
+                  {connectedCalendars.outlook && (
+                    <p className="text-xs text-gray-500">Syncing your Outlook events</p>
+                  )}
+                </div>
+              </div>
+              {connectedCalendars.outlook ? (
+                <Check className="w-5 h-5 text-green-500" />
+              ) : (
+                <span className="text-sm text-primary-400">+ Connect</span>
+              )}
+            </button>
+
+            {/* iCloud Calendar */}
+            <button
+              onClick={() => handleConnectCalendar('icloud')}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
+                connectedCalendars.icloud
+                  ? 'border-green-500/50 bg-green-500/10'
+                  : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Calendar className="w-5 h-5 text-gray-400" />
+                <div className="text-left">
+                  <p className="text-sm font-medium text-white">
+                    {connectedCalendars.icloud ? 'iCloud Calendar Connected' : 'Connect Your iCloud Calendar'}
+                  </p>
+                  {connectedCalendars.icloud && (
+                    <p className="text-xs text-gray-500">Syncing your iCloud events</p>
+                  )}
+                </div>
+              </div>
+              {connectedCalendars.icloud ? (
+                <Check className="w-5 h-5 text-green-500" />
+              ) : (
+                <span className="text-sm text-primary-400">+ Connect</span>
+              )}
+            </button>
           </div>
         </section>
 
