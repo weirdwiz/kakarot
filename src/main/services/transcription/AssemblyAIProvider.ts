@@ -1,4 +1,5 @@
-import { AssemblyAI, RealtimeTranscriber } from 'assemblyai';
+import { AssemblyAI } from 'assemblyai';
+import type { StreamingTranscriber } from 'assemblyai';
 import { v4 as uuidv4 } from 'uuid';
 import type { TranscriptSegment } from '@shared/types';
 import type { ITranscriptionProvider, TranscriptCallback } from './TranscriptionProvider';
@@ -10,8 +11,8 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
   readonly name = 'AssemblyAI';
 
   private client: AssemblyAI;
-  private micTranscriber: RealtimeTranscriber | null = null;
-  private systemTranscriber: RealtimeTranscriber | null = null;
+  private micTranscriber: StreamingTranscriber | null = null;
+  private systemTranscriber: StreamingTranscriber | null = null;
   private transcriptCallback: TranscriptCallback | null = null;
   private startTime: number = 0;
   private micConnected: boolean = false;
@@ -30,14 +31,13 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
     logger.info('Connecting');
     this.startTime = Date.now();
 
-    this.micTranscriber = this.client.realtime.transcriber({
+    // Match audio capture sample rate
+    this.micTranscriber = this.client.streaming.transcriber({
       sampleRate: 48000,
-      encoding: 'pcm_s16le',
     });
 
-    this.systemTranscriber = this.client.realtime.transcriber({
+    this.systemTranscriber = this.client.streaming.transcriber({
       sampleRate: 48000,
-      encoding: 'pcm_s16le',
     });
 
     this.setupTranscriberHandlers(this.micTranscriber, 'mic');
@@ -56,7 +56,7 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
   }
 
   private setupTranscriberHandlers(
-    transcriber: RealtimeTranscriber,
+    transcriber: StreamingTranscriber,
     source: 'mic' | 'system'
   ): void {
     transcriber.on('open', () => {
@@ -68,21 +68,17 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
       }
     });
 
-    transcriber.on('transcript.partial', (transcript) => {
+    transcriber.on('turn', (turn) => {
       if (!this.transcriptCallback) return;
-      if (!transcript.text || transcript.text.trim() === '') return;
+      if (!turn.transcript || turn.transcript.trim() === '') return;
 
-      const segment = this.createSegment(transcript.text, source, false, transcript.words);
-      this.transcriptCallback(segment, false);
-    });
+      const isFinal = turn.end_of_turn;
+      if (isFinal) {
+        logger.debug('Final transcript', { source, text: turn.transcript.slice(0, 30) });
+      }
 
-    transcriber.on('transcript.final', (transcript) => {
-      if (!this.transcriptCallback) return;
-      if (!transcript.text || transcript.text.trim() === '') return;
-
-      logger.debug('Final transcript', { source, text: transcript.text.slice(0, 30) });
-      const segment = this.createSegment(transcript.text, source, true, transcript.words);
-      this.transcriptCallback(segment, true);
+      const segment = this.createSegment(turn.transcript, source, isFinal, turn.words);
+      this.transcriptCallback(segment, isFinal);
     });
 
     transcriber.on('error', (error) => {
@@ -103,12 +99,12 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
     text: string,
     source: 'mic' | 'system',
     isFinal: boolean,
-    words?: Array<{ text: string; confidence: number; start: number; end: number }>
+    words?: Array<{ text: string; confidence: number; start: number; end: number; word_is_final: boolean }>
   ): TranscriptSegment {
     const mappedWords = (words || []).map((w) => ({
       text: w.text,
       confidence: w.confidence,
-      isFinal,
+      isFinal: w.word_is_final,
       start: w.start,
       end: w.end,
     }));
