@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { Meeting } from '../../shared/types';
 import { Search, Trash2, Folder } from 'lucide-react';
@@ -9,11 +9,7 @@ export default function HistoryView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    loadMeetings();
-  }, []);
-
-  const loadMeetings = async () => {
+  const loadMeetings = useCallback(async () => {
     setIsLoading(true);
     try {
       const meetingsList = await window.kakarot.meetings.list();
@@ -21,7 +17,11 @@ export default function HistoryView() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [setMeetings]);
+
+  useEffect(() => {
+    loadMeetings();
+  }, [loadMeetings]);
 
   const handleSearch = async () => {
     if (searchQuery.trim()) {
