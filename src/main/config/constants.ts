@@ -3,6 +3,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   assemblyAiApiKey: process.env.ASSEMBLYAI_API_KEY || '',
   deepgramApiKey: process.env.DEEPGRAM_API_KEY || '',
   openAiApiKey: process.env.OPENAI_API_KEY || '',
+  openAiBaseUrl: process.env.OPENAI_BASE_URL || 'https://routellm.abacus.ai/v1',
+  openAiModel: process.env.OPENAI_MODEL || 'gpt-5',
   knowledgeBasePath: '',
   autoDetectQuestions: true,
   showFloatingCallout: true,

@@ -37,15 +37,21 @@ export class SettingsRepository {
 
     const merged = { ...DEFAULT_SETTINGS, ...settings } as AppSettings;
 
-    // Fall back to env vars if stored values are empty
-    if (!merged.assemblyAiApiKey) {
-      merged.assemblyAiApiKey = process.env.ASSEMBLYAI_API_KEY || '';
+    // API keys: env vars always win (more secure, easier to rotate)
+    if (process.env.ASSEMBLYAI_API_KEY) {
+      merged.assemblyAiApiKey = process.env.ASSEMBLYAI_API_KEY;
     }
-    if (!merged.deepgramApiKey) {
-      merged.deepgramApiKey = process.env.DEEPGRAM_API_KEY || '';
+    if (process.env.DEEPGRAM_API_KEY) {
+      merged.deepgramApiKey = process.env.DEEPGRAM_API_KEY;
     }
-    if (!merged.openAiApiKey) {
-      merged.openAiApiKey = process.env.OPENAI_API_KEY || '';
+    if (process.env.OPENAI_API_KEY) {
+      merged.openAiApiKey = process.env.OPENAI_API_KEY;
+    }
+    if (process.env.OPENAI_BASE_URL) {
+      merged.openAiBaseUrl = process.env.OPENAI_BASE_URL;
+    }
+    if (process.env.OPENAI_MODEL) {
+      merged.openAiModel = process.env.OPENAI_MODEL;
     }
 
     return merged;
