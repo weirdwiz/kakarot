@@ -1,3 +1,17 @@
+export interface MeetingChapter {
+  id: string;
+  title: string;
+  startTime: number; // ms from meeting start
+  endTime: number;
+}
+
+export interface MeetingPerson {
+  email: string;
+  displayName?: string;
+  avatar?: string;
+  source: 'mic' | 'system';
+}
+
 export interface Meeting {
   id: string;
   title: string;
@@ -5,7 +19,13 @@ export interface Meeting {
   endedAt: Date | null;
   duration: number; // in seconds
   transcript: TranscriptSegment[];
+  notes: unknown | null;
+  notesPlain: string | null;
+  notesMarkdown: string | null;
+  overview: string | null;
   summary: string | null;
+  chapters: MeetingChapter[];
+  people: MeetingPerson[];
   actionItems: string[];
   participants: string[];
 }
@@ -61,6 +81,8 @@ export interface AppSettings {
   assemblyAiApiKey: string;
   deepgramApiKey: string;
   openAiApiKey: string;
+  openAiBaseUrl: string;
+  openAiModel: string;
   knowledgeBasePath: string;
   autoDetectQuestions: boolean;
   showFloatingCallout: boolean;
