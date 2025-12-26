@@ -72,8 +72,10 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
       if (!this.transcriptCallback) return;
       if (!turn.transcript || turn.transcript.trim() === '') return;
 
-      const isFinal = turn.end_of_turn;
-      // Deterministic ID from source + turn_order - same turn always gets same ID
+      const turnData = turn as typeof turn & { turn_is_formatted?: boolean };
+      if (turn.end_of_turn && turnData.turn_is_formatted === false) return;
+
+      const isFinal = turn.end_of_turn && turnData.turn_is_formatted === true;
       const segmentId = `${source}-${turn.turn_order}`;
 
       if (isFinal) {
