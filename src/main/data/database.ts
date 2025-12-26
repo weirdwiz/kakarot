@@ -69,11 +69,37 @@ function createTables(): void {
       created_at INTEGER NOT NULL,
       ended_at INTEGER,
       duration INTEGER DEFAULT 0,
+      notes TEXT,
+      notes_plain TEXT,
+      notes_markdown TEXT,
+      overview TEXT,
       summary TEXT,
+      chapters TEXT DEFAULT '[]',
+      people TEXT DEFAULT '[]',
       action_items TEXT DEFAULT '[]',
       participants TEXT DEFAULT '[]'
     )
   `);
+
+  // Migration: add new columns if they don't exist
+  const columns = db.exec("PRAGMA table_info(meetings)");
+  const existingCols = columns.length > 0
+    ? columns[0].values.map((row) => row[1] as string)
+    : [];
+  const newCols = [
+    { name: 'notes', def: 'TEXT' },
+    { name: 'notes_plain', def: 'TEXT' },
+    { name: 'notes_markdown', def: 'TEXT' },
+    { name: 'overview', def: 'TEXT' },
+    { name: 'chapters', def: "TEXT DEFAULT '[]'" },
+    { name: 'people', def: "TEXT DEFAULT '[]'" },
+  ];
+  for (const col of newCols) {
+    if (!existingCols.includes(col.name)) {
+      db.run(`ALTER TABLE meetings ADD COLUMN ${col.name} ${col.def}`);
+      logger.info('Added column to meetings table', { column: col.name });
+    }
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS transcript_segments (

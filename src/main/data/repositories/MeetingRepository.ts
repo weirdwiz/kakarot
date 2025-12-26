@@ -149,6 +149,33 @@ export class MeetingRepository {
     saveDatabase();
   }
 
+  updateNotes(id: string, notes: unknown, notesPlain: string, notesMarkdown: string): void {
+    const db = getDatabase();
+    db.run(
+      'UPDATE meetings SET notes = ?, notes_plain = ?, notes_markdown = ? WHERE id = ?',
+      [JSON.stringify(notes), notesPlain, notesMarkdown, id]
+    );
+    saveDatabase();
+  }
+
+  updateOverview(id: string, overview: string): void {
+    const db = getDatabase();
+    db.run('UPDATE meetings SET overview = ? WHERE id = ?', [overview, id]);
+    saveDatabase();
+  }
+
+  updateChapters(id: string, chapters: Meeting['chapters']): void {
+    const db = getDatabase();
+    db.run('UPDATE meetings SET chapters = ? WHERE id = ?', [JSON.stringify(chapters), id]);
+    saveDatabase();
+  }
+
+  updatePeople(id: string, people: Meeting['people']): void {
+    const db = getDatabase();
+    db.run('UPDATE meetings SET people = ? WHERE id = ?', [JSON.stringify(people), id]);
+    saveDatabase();
+  }
+
   private rowToMeeting(row: Record<string, unknown>, segments: Record<string, unknown>[]): Meeting {
     return {
       id: row.id as string,
@@ -166,7 +193,13 @@ export class MeetingRepository {
         words: [],
         speakerId: s.speaker_id as string | undefined,
       })),
+      notes: row.notes ? JSON.parse(row.notes as string) : null,
+      notesPlain: (row.notes_plain as string) || null,
+      notesMarkdown: (row.notes_markdown as string) || null,
+      overview: (row.overview as string) || null,
       summary: (row.summary as string) || null,
+      chapters: JSON.parse((row.chapters as string) || '[]'),
+      people: JSON.parse((row.people as string) || '[]'),
       actionItems: JSON.parse((row.action_items as string) || '[]'),
       participants: JSON.parse((row.participants as string) || '[]'),
     };
