@@ -17,6 +17,7 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
   private startTime: number = 0;
   private micConnected: boolean = false;
   private systemConnected: boolean = false;
+  private currentTurnIds: { mic: string | null; system: string | null } = { mic: null, system: null };
 
   constructor(apiKey: string) {
     logger.debug('Initializing', { keyPresent: !!apiKey });
@@ -74,11 +75,20 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
       if (!turn.transcript || turn.transcript.trim() === '') return;
 
       const isFinal = turn.end_of_turn;
-      if (isFinal) {
-        logger.debug('Final transcript', { source, text: turn.transcript.slice(0, 30) });
+
+      // Reuse segment ID for partials within the same turn
+      let segmentId = this.currentTurnIds[source];
+      if (!segmentId) {
+        segmentId = uuidv4();
+        this.currentTurnIds[source] = segmentId;
       }
 
-      const segment = this.createSegment(turn.transcript, source, isFinal, turn.words);
+      if (isFinal) {
+        logger.debug('Final transcript', { source, text: turn.transcript.slice(0, 30) });
+        this.currentTurnIds[source] = null;
+      }
+
+      const segment = this.createSegment(segmentId, turn.transcript, source, isFinal, turn.words);
       this.transcriptCallback(segment, isFinal);
     });
 
@@ -97,6 +107,7 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
   }
 
   private createSegment(
+    id: string,
     text: string,
     source: 'mic' | 'system',
     isFinal: boolean,
@@ -111,7 +122,7 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
     }));
 
     return {
-      id: uuidv4(),
+      id,
       text,
       timestamp: Date.now() - this.startTime,
       source,
@@ -136,6 +147,7 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
 
     this.micConnected = false;
     this.systemConnected = false;
+    this.currentTurnIds = { mic: null, system: null };
 
     if (this.micTranscriber) {
       closePromises.push(this.micTranscriber.close());
