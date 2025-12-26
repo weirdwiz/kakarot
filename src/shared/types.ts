@@ -66,6 +66,13 @@ export interface AppSettings {
   autoDetectQuestions: boolean;
   showFloatingCallout: boolean;
   transcriptionLanguage: string;
+  // Calendar OAuth credentials
+  googleCalendarClientId?: string;
+  googleCalendarClientSecret?: string;
+  outlookCalendarClientId?: string;
+  outlookCalendarClientSecret?: string;
+  icloudCalendarUsername?: string;
+  icloudCalendarPassword?: string; // App-specific password
 }
 
 // IPC payloads
@@ -88,4 +95,19 @@ export interface CalendarEvent {
   location?: string;
   attendees?: string[];
   description?: string;
+}
+
+export interface CalendarTokens {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number;
+  scope?: string;
+}
+
+export type CalendarProvider = 'google' | 'outlook' | 'icloud';
+
+export interface CalendarConnectionStatus {
+  google: boolean;
+  outlook: boolean;
+  icloud: boolean;
 }

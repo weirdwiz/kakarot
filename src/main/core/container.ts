@@ -2,6 +2,8 @@ import { MeetingRepository, CalloutRepository, SettingsRepository } from '../dat
 import { OpenAIProvider } from '../providers/OpenAIProvider';
 import { createLogger } from './logger';
 import { CalendarService } from '../services/CalendarService';
+import { CalendarAuthService } from '../services/CalendarAuthService';
+import { TokenStorageService } from '../services/TokenStorageService';
 
 const logger = createLogger('Container');
 
@@ -11,6 +13,8 @@ export interface AppContainer {
   settingsRepo: SettingsRepository;
   aiProvider: OpenAIProvider | null;
   calendarService: CalendarService;
+  calendarAuthService: CalendarAuthService;
+  tokenStorageService: TokenStorageService;
 }
 
 let container: AppContainer | null = null;
@@ -21,6 +25,11 @@ export function initializeContainer(): AppContainer {
   const calloutRepo = new CalloutRepository();
   const settingsRepo = new SettingsRepository();
   const calendarService = new CalendarService();
+  const calendarAuthService = new CalendarAuthService();
+  const tokenStorageService = new TokenStorageService(settingsRepo);
+
+  // Wire up calendar service dependencies
+  calendarService.setDependencies(tokenStorageService, calendarAuthService);
 
   // Initialize default settings
   settingsRepo.initializeDefaults();
@@ -39,6 +48,8 @@ export function initializeContainer(): AppContainer {
     settingsRepo,
     aiProvider,
     calendarService,
+    calendarAuthService,
+    tokenStorageService,
   };
 
   logger.info('Container initialized');
