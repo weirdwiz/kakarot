@@ -7,6 +7,13 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+const sharedAlias = {
+  '@': resolve(__dirname, 'src'),
+  '@main': resolve(__dirname, 'src/main'),
+  '@renderer': resolve(__dirname, 'src/renderer'),
+  '@shared': resolve(__dirname, 'src/shared'),
+};
+
 export default defineConfig({
   plugins: [
     react(),
@@ -14,6 +21,7 @@ export default defineConfig({
       {
         entry: resolve(__dirname, 'src/main/index.ts'),
         vite: {
+          resolve: { alias: sharedAlias },
           build: {
             outDir: resolve(__dirname, 'dist/main'),
             rollupOptions: {
@@ -29,19 +37,18 @@ export default defineConfig({
           },
         },
         onstart(options) {
-          // Start electron when main process is built
           options.startup();
         },
       },
       {
         entry: resolve(__dirname, 'src/preload/index.ts'),
         vite: {
+          resolve: { alias: sharedAlias },
           build: {
             outDir: resolve(__dirname, 'dist/preload'),
           },
         },
         onstart(options) {
-          // Reload renderer when preload changes
           options.reload();
         },
       },
@@ -49,12 +56,7 @@ export default defineConfig({
     renderer(),
   ],
   resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src'),
-      '@main': resolve(__dirname, 'src/main'),
-      '@renderer': resolve(__dirname, 'src/renderer'),
-      '@shared': resolve(__dirname, 'src/shared'),
-    },
+    alias: sharedAlias,
   },
   root: resolve(__dirname, 'src/renderer'),
   build: {
