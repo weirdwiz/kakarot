@@ -4,7 +4,7 @@ import RecordingView from './components/RecordingView';
 import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
 import Sidebar from './components/Sidebar';
-import type { AudioLevels } from '../shared/types';
+import type { AudioLevels } from '@shared/types';
 
 export default function App() {
   const { view, setRecordingState, setAudioLevels, setPartialSegment, addTranscriptSegment, setSettings } =

@@ -1,6 +1,6 @@
 import { AssemblyAI, RealtimeTranscriber } from 'assemblyai';
 import { v4 as uuidv4 } from 'uuid';
-import type { TranscriptSegment } from '../../../shared/types';
+import type { TranscriptSegment } from '@shared/types';
 import type { ITranscriptionProvider, TranscriptCallback } from './TranscriptionProvider';
 import { createLogger } from '../../core/logger';
 

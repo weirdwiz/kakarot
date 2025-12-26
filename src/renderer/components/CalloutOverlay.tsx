@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import type { Callout } from '../../shared/types';
+import type { Callout } from '@shared/types';
 import { Lightbulb, X } from 'lucide-react';
 
 export default function CalloutOverlay() {

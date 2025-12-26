@@ -1,4 +1,4 @@
-import type { TranscriptSegment } from '../../../shared/types';
+import type { TranscriptSegment } from '@shared/types';
 
 export type TranscriptCallback = (segment: TranscriptSegment, isFinal: boolean) => void;
 

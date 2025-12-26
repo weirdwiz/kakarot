@@ -1,5 +1,5 @@
 import { ipcMain, BrowserWindow } from 'electron';
-import { IPC_CHANNELS } from '../../shared/ipcChannels';
+import { IPC_CHANNELS } from '@shared/ipcChannels';
 import { getContainer } from '../core/container';
 import { createLogger } from '../core/logger';
 import { createTranscriptionProvider, ITranscriptionProvider } from '../services/transcription';

@@ -3,7 +3,7 @@ import { join, extname } from 'path';
 import { getContainer } from '../core/container';
 import { createLogger } from '../core/logger';
 import { KNOWLEDGE_CONFIG } from '../config/constants';
-import { getSpeakerLabel } from '../../shared/utils/formatters';
+import { getSpeakerLabel } from '@shared/utils/formatters';
 
 const logger = createLogger('KnowledgeService');
 

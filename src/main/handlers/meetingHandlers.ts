@@ -1,5 +1,5 @@
 import { ipcMain, desktopCapturer } from 'electron';
-import { IPC_CHANNELS } from '../../shared/ipcChannels';
+import { IPC_CHANNELS } from '@shared/ipcChannels';
 import { getContainer } from '../core/container';
 import { CalloutService } from '../services/CalloutService';
 import { ExportService } from '../services/ExportService';

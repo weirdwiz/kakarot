@@ -1,5 +1,5 @@
 import { getDatabase, saveDatabase } from '../database';
-import type { Callout } from '../../../shared/types';
+import type { Callout } from '@shared/types';
 import { createLogger } from '../../core/logger';
 
 const logger = createLogger('CalloutRepository');

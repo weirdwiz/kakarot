@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabase, saveDatabase, resultToObject, resultToObjectByIndex } from '../database';
-import type { Meeting, TranscriptSegment } from '../../../shared/types';
+import type { Meeting, TranscriptSegment } from '@shared/types';
 import { createLogger } from '../../core/logger';
 
 const logger = createLogger('MeetingRepository');

@@ -5,7 +5,7 @@ import type {
   RecordingState,
   AudioLevels,
   AppSettings,
-} from '../../shared/types';
+} from '@shared/types';
 
 interface AppState {
   // Recording state

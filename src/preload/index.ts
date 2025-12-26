@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC_CHANNELS } from '../shared/ipcChannels';
+import { IPC_CHANNELS } from '@shared/ipcChannels';
 import type {
   Meeting,
   AppSettings,
@@ -7,7 +7,7 @@ import type {
   AudioLevels,
   TranscriptUpdate,
   Callout,
-} from '../shared/types';
+} from '@shared/types';
 
 // Expose protected methods to the renderer process
 contextBridge.exposeInMainWorld('kakarot', {

@@ -1,6 +1,4 @@
-import type { AppSettings } from '../../shared/types';
-
-// Default application settings
+import type { AppSettings } from '@shared/types';
 export const DEFAULT_SETTINGS: AppSettings = {
   assemblyAiApiKey: process.env.ASSEMBLYAI_API_KEY || '',
   deepgramApiKey: process.env.DEEPGRAM_API_KEY || '',

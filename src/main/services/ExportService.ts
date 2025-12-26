@@ -3,8 +3,8 @@ import { join } from 'path';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { createLogger } from '../core/logger';
 import { EXPORT_CONFIG } from '../config/constants';
-import { getSpeakerLabel, formatTime } from '../../shared/utils/formatters';
-import type { Meeting } from '../../shared/types';
+import { getSpeakerLabel, formatTime } from '@shared/utils/formatters';
+import type { Meeting } from '@shared/types';
 
 const logger = createLogger('ExportService');
 

@@ -1,5 +1,5 @@
 import { getDatabase, saveDatabase } from '../database';
-import type { AppSettings } from '../../../shared/types';
+import type { AppSettings } from '@shared/types';
 import { DEFAULT_SETTINGS } from '../../config/constants';
 import { createLogger } from '../../core/logger';
 

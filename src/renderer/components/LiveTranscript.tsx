@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import type { TranscriptSegment } from '../../shared/types';
+import type { TranscriptSegment } from '@shared/types';
 import { MicOff } from 'lucide-react';
 import { formatTimestamp, getSpeakerLabel } from '../lib/formatters';
 

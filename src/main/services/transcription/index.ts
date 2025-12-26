@@ -2,7 +2,7 @@ export type { ITranscriptionProvider, TranscriptCallback } from './Transcription
 export { AssemblyAIProvider } from './AssemblyAIProvider';
 export { DeepgramProvider } from './DeepgramProvider';
 
-import type { TranscriptionProvider } from '../../../shared/types';
+import type { TranscriptionProvider } from '@shared/types';
 import type { ITranscriptionProvider } from './TranscriptionProvider';
 import { AssemblyAIProvider } from './AssemblyAIProvider';
 import { DeepgramProvider } from './DeepgramProvider';

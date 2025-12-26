@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
-import type { AppSettings } from '../../shared/types';
+import type { AppSettings } from '@shared/types';
 
 export default function SettingsView() {
   const { settings, setSettings } = useAppStore();

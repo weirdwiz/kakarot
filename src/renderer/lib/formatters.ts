@@ -5,4 +5,4 @@ export {
   formatTime,
   formatDateTime,
   getSpeakerLabel,
-} from '../../shared/utils/formatters';
+} from '@shared/utils/formatters';

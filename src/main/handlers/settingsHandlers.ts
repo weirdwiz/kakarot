@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
-import { IPC_CHANNELS } from '../../shared/ipcChannels';
+import { IPC_CHANNELS } from '@shared/ipcChannels';
 import { getContainer, refreshAIProvider } from '../core/container';
-import type { AppSettings } from '../../shared/types';
+import type { AppSettings } from '@shared/types';
 
 export function registerSettingsHandlers(): void {
   const { settingsRepo } = getContainer();

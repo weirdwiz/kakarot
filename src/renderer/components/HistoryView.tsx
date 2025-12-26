@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
-import type { Meeting } from '../../shared/types';
+import type { Meeting } from '@shared/types';
 import { Search, Trash2, Folder } from 'lucide-react';
 import { formatDuration, formatTimestamp, getSpeakerLabel } from '../lib/formatters';
 
