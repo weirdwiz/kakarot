@@ -30,7 +30,7 @@ export function initializeContainer(): AppContainer {
 
   // Create AI provider if API key is available
   const settings = settingsRepo.getSettings();
-  const aiProvider = settings.openAiApiKey ? new OpenAIProvider(settings.openAiApiKey) : null;
+  const aiProvider = settings.openAiApiKey ? new OpenAIProvider({ apiKey: settings.openAiApiKey }) : null;
 
   if (!aiProvider) {
     logger.warn('OpenAI API key not configured - AI features disabled');
@@ -60,14 +60,14 @@ export function getContainer(): AppContainer {
 }
 
 /**
- * Reinitialize the AI provider with a new API key
+ * Reinitialize the AI provider with new settings
  * Called when settings are updated
  */
-export function refreshAIProvider(apiKey: string): void {
+export function refreshAIProvider(config: { apiKey: string; baseURL?: string; defaultModel?: string }): void {
   if (!container) {
     throw new Error('Container not initialized');
   }
 
-  container.aiProvider = apiKey ? new OpenAIProvider(apiKey) : null;
-  logger.info('AI provider refreshed', { configured: !!apiKey });
+  container.aiProvider = config.apiKey ? new OpenAIProvider(config) : null;
+  logger.info('AI provider refreshed', { configured: !!config.apiKey });
 }
