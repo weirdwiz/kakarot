@@ -1,6 +1,5 @@
 import { AssemblyAI } from 'assemblyai';
 import type { StreamingTranscriber } from 'assemblyai';
-import { v4 as uuidv4 } from 'uuid';
 import type { TranscriptSegment } from '@shared/types';
 import type { ITranscriptionProvider, TranscriptCallback } from './TranscriptionProvider';
 import { createLogger } from '../../core/logger';
@@ -17,7 +16,6 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
   private startTime: number = 0;
   private micConnected: boolean = false;
   private systemConnected: boolean = false;
-  private currentTurnIds: { mic: string | null; system: string | null } = { mic: null, system: null };
 
   constructor(apiKey: string) {
     logger.debug('Initializing', { keyPresent: !!apiKey });
@@ -75,17 +73,11 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
       if (!turn.transcript || turn.transcript.trim() === '') return;
 
       const isFinal = turn.end_of_turn;
-
-      // Reuse segment ID for partials within the same turn
-      let segmentId = this.currentTurnIds[source];
-      if (!segmentId) {
-        segmentId = uuidv4();
-        this.currentTurnIds[source] = segmentId;
-      }
+      // Deterministic ID from source + turn_order - same turn always gets same ID
+      const segmentId = `${source}-${turn.turn_order}`;
 
       if (isFinal) {
         logger.debug('Final transcript', { source, text: turn.transcript.slice(0, 30) });
-        this.currentTurnIds[source] = null;
       }
 
       const segment = this.createSegment(segmentId, turn.transcript, source, isFinal, turn.words);
@@ -147,7 +139,6 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
 
     this.micConnected = false;
     this.systemConnected = false;
-    this.currentTurnIds = { mic: null, system: null };
 
     if (this.micTranscriber) {
       closePromises.push(this.micTranscriber.close());

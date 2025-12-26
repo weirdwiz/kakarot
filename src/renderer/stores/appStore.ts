@@ -68,13 +68,19 @@ export const useAppStore = create<AppState>((set) => ({
     })),
 
   addTranscriptSegment: (segment) =>
-    set((state) => ({
-      liveTranscript: [...state.liveTranscript, segment],
-      currentPartials: {
-        ...state.currentPartials,
-        [segment.source]: null,
-      },
-    })),
+    set((state) => {
+      const existingIndex = state.liveTranscript.findIndex((s) => s.id === segment.id);
+      const liveTranscript = existingIndex >= 0
+        ? state.liveTranscript.map((s, i) => (i === existingIndex ? segment : s))
+        : [...state.liveTranscript, segment];
+      return {
+        liveTranscript,
+        currentPartials: {
+          ...state.currentPartials,
+          [segment.source]: null,
+        },
+      };
+    }),
 
   updateTranscriptSegment: (segment) =>
     set((state) => ({

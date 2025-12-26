@@ -63,7 +63,7 @@ export class MeetingRepository {
     if (!currentMeetingId) return;
 
     db.run(
-      `INSERT INTO transcript_segments
+      `INSERT OR REPLACE INTO transcript_segments
        (id, meeting_id, text, timestamp, source, confidence, is_final, speaker_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
