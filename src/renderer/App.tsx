@@ -3,6 +3,7 @@ import { useAppStore } from './stores/appStore';
 import RecordingView from './components/RecordingView';
 import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
+import PrepView from './components/PrepView';
 import Sidebar from './components/Sidebar';
 import type { AudioLevels } from '../shared/types';
 import ThemeToggle from './components/ThemeToggle';
@@ -69,7 +70,7 @@ export default function App() {
                         : 'text-slate-700 dark:text-slate-300 hover:bg-white/60 hover:dark:bg-white/5'
                     }`}
                   >
-                    {tab === 'notes' ? 'Notes' : tab === 'prep' ? 'Prep' : 'Interact'}
+                    {tab === 'notes' ? 'Home' : tab === 'prep' ? 'Prep' : 'Interact'}
                   </button>
                 ))}
               </div>
@@ -88,11 +89,13 @@ export default function App() {
                 {view === 'recording' && (
                   pillarTab === 'notes' ? (
                     <RecordingView onSelectTab={setPillarTab} />
+                  ) : pillarTab === 'prep' ? (
+                    <PrepView />
                   ) : (
                     <div className="h-[60vh] flex items-center justify-center text-center text-slate-500 dark:text-slate-400">
                       <div>
-                        <p className="text-lg font-medium mb-2">{pillarTab === 'prep' ? 'Prep Space' : 'Interact Space'}</p>
-                        <p className="text-sm">This area is reserved for future features. Notes are currently active.</p>
+                        <p className="text-lg font-medium mb-2">Interact Space</p>
+                        <p className="text-sm">This area is reserved for future features.</p>
                       </div>
                     </div>
                   )
