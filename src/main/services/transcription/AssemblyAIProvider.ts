@@ -31,13 +31,14 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
     logger.info('Connecting');
     this.startTime = Date.now();
 
-    // Match audio capture sample rate
     this.micTranscriber = this.client.streaming.transcriber({
       sampleRate: 48000,
+      formatTurns: true,
     });
 
     this.systemTranscriber = this.client.streaming.transcriber({
       sampleRate: 48000,
+      formatTurns: true,
     });
 
     this.setupTranscriberHandlers(this.micTranscriber, 'mic');
