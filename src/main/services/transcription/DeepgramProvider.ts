@@ -33,15 +33,15 @@ export class DeepgramProvider implements ITranscriptionProvider {
     const client = createClient(this.apiKey);
 
     const liveOptions = {
-      model: 'nova-2',
+      model: 'nova-3',
       language: 'en',
       smart_format: true,
       interim_results: true,
-      punctuate: true,
       encoding: 'linear16',
       sample_rate: 48000,
       channels: 1,
       diarize: false,
+      endpointing: 100,
     };
 
     this.micConnection = client.listen.live(liveOptions);

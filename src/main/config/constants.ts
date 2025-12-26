@@ -12,7 +12,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 // AI model identifiers
 export const AI_MODELS = {
-  GPT4_TURBO: 'gpt-4-turbo-preview',
+  GPT4_TURBO: 'gpt-4-turbo',
   GPT4O: 'gpt-4o',
   EMBEDDING_SMALL: 'text-embedding-3-small',
   EMBEDDING_LARGE: 'text-embedding-3-large',
