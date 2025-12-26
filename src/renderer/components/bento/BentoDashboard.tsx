@@ -7,9 +7,10 @@ import PreviousMeetingsList from './PreviousMeetingsList';
 interface BentoDashboardProps {
   isRecording: boolean;
   onStartNotes: () => void;
+  onSelectTab?: (tab: 'notes' | 'prep' | 'interact') => void;
 }
 
-export default function BentoDashboard({ isRecording, onStartNotes }: BentoDashboardProps) {
+export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab }: BentoDashboardProps) {
   const [upcomingEvent, setUpcomingEvent] = useState<CalendarEvent | null>(null);
 
   // Mock upcoming meetings (placeholder)
@@ -78,7 +79,7 @@ export default function BentoDashboard({ isRecording, onStartNotes }: BentoDashb
           event={upcomingEvent}
           isRecording={isRecording}
           onStartNotes={onStartNotes}
-          onPrep={() => console.log('Open prep')}
+          onPrep={() => onSelectTab?.('prep')}
         />
       </div>
 

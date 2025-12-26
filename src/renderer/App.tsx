@@ -55,14 +55,7 @@ export default function App() {
       <div className="flex-1 flex flex-col">
         {/* Fixed Header */}
         <header className="sticky top-0 z-30 backdrop-blur-md bg-white/70 dark:bg-[#0C0C0C]/80 border-b border-slate-200 dark:border-[#1A1A1A] drag-region">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-[48px] flex items-center justify-between">
-            {/* Logo Placeholder (Left) */}
-            <div className="flex-shrink-0 no-drag">
-              <div className="w-8 h-8 rounded-lg bg-slate-300 dark:bg-slate-700 flex items-center justify-center">
-                <span className="text-xs font-bold text-slate-600 dark:text-slate-400">L</span>
-              </div>
-            </div>
-
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-[48px] flex items-center justify-center">
             {/* Navigation Pills (Center) */}
             <div className="flex-1 flex justify-center no-drag">
               <div className="flex items-center gap-2 px-2 py-2 rounded-full border border-white/30 dark:border-white/10 bg-white/70 dark:bg-[#0C0C0C]/70">
@@ -94,7 +87,7 @@ export default function App() {
               <div className="p-4 sm:p-6">
                 {view === 'recording' && (
                   pillarTab === 'notes' ? (
-                    <RecordingView />
+                    <RecordingView onSelectTab={setPillarTab} />
                   ) : (
                     <div className="h-[60vh] flex items-center justify-center text-center text-slate-500 dark:text-slate-400">
                       <div>

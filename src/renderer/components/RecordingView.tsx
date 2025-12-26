@@ -6,9 +6,20 @@ import LiveTranscript from './LiveTranscript';
 import BentoDashboard from './bento/BentoDashboard';
 import { FileText, Square, Pause, Play, Search } from 'lucide-react';
 
-export default function RecordingView() {
+interface RecordingViewProps {
+  onSelectTab?: (tab: 'notes' | 'prep' | 'interact') => void;
+}
+
+export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const { recordingState, audioLevels, liveTranscript, currentPartials, clearLiveTranscript } = useAppStore();
   const { startCapture, stopCapture, pause, resume } = useAudioCapture();
+  const [pillarTab, setPillarTab] = React.useState<'notes' | 'prep' | 'interact'>('notes');
+
+  // Forward tab changes to parent if handler provided
+  const handleSelectTab = (tab: 'notes' | 'prep' | 'interact') => {
+    setPillarTab(tab);
+    onSelectTab?.(tab);
+  };
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -147,7 +158,7 @@ export default function RecordingView() {
               </div>
             </div>
           ) : (
-            <BentoDashboard isRecording={isRecording || isPaused} onStartNotes={handleStartRecording} />
+            <BentoDashboard isRecording={isRecording || isPaused} onStartNotes={handleStartRecording} onSelectTab={handleSelectTab} />
           )}
         </div>
       </div>
