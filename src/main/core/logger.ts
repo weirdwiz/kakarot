@@ -34,12 +34,14 @@ export class Logger {
 
   debug(message: string, data?: LogContext): void {
     if (shouldLog('debug')) {
+      // eslint-disable-next-line no-console
       console.log(formatMessage(this.context, 'debug', message, data));
     }
   }
 
   info(message: string, data?: LogContext): void {
     if (shouldLog('info')) {
+      // eslint-disable-next-line no-console
       console.log(formatMessage(this.context, 'info', message, data));
     }
   }

@@ -2,8 +2,10 @@ import { AudioTee } from 'audiotee';
 import { app } from 'electron';
 import { join } from 'path';
 import type { ITranscriptionProvider } from './transcription';
+import { createLogger } from '../core/logger';
 
-// Audio level callback for UI visualization
+const logger = createLogger('SystemAudio');
+
 type AudioLevelCallback = (level: number) => void;
 
 // Get the correct path to the audiotee binary
@@ -31,15 +33,15 @@ export class SystemAudioService {
 
   async start(transcriptionProvider: ITranscriptionProvider): Promise<void> {
     if (this.capturing) {
-      console.warn('[SystemAudioService] Already capturing');
+      logger.warn('Already capturing');
       return;
     }
 
-    console.log('[SystemAudioService] Starting system audio capture...');
+    logger.info('Starting system audio capture');
     this.transcriptionProvider = transcriptionProvider;
 
     const binaryPath = getAudioTeeBinaryPath();
-    console.log('[SystemAudioService] AudioTee binary path:', binaryPath);
+    logger.debug('AudioTee binary path', { path: binaryPath });
 
     this.audiotee = new AudioTee({
       sampleRate: 48000, // Match AssemblyAI requirement (also switches to 16-bit signed int)
@@ -50,13 +52,11 @@ export class SystemAudioService {
     let chunkCount = 0;
     this.audiotee.on('data', (chunk: { data: Buffer }) => {
       chunkCount++;
-      // Log first few chunks and then every 10th
-      if (chunkCount <= 3 || chunkCount % 10 === 0) {
-        console.log(`[SystemAudioService] Received chunk ${chunkCount}, size: ${chunk.data.length} bytes`);
+      if (chunkCount <= 3 || chunkCount % 50 === 0) {
+        logger.debug('Audio chunk received', { chunk: chunkCount, bytes: chunk.data.length });
       }
 
       if (!this.capturing || !this.transcriptionProvider) {
-        console.warn('[SystemAudioService] Dropping chunk - not capturing or no transcription provider');
         return;
       }
 
@@ -80,54 +80,49 @@ export class SystemAudioService {
     });
 
     this.audiotee.on('start', () => {
-      console.log('[SystemAudioService] AudioTee started');
+      logger.info('AudioTee started');
       this.capturing = true;
     });
 
     this.audiotee.on('stop', () => {
-      console.log('[SystemAudioService] AudioTee stopped');
+      logger.info('AudioTee stopped');
       this.capturing = false;
     });
 
     this.audiotee.on('error', (error: Error) => {
-      console.error('[SystemAudioService] AudioTee error:', error.message);
-      // Don't throw - gracefully degrade without system audio
+      logger.error('AudioTee error', error);
     });
 
     this.audiotee.on('log', (level: string, message: { message: string }) => {
-      console.log(`[SystemAudioService] AudioTee ${level}:`, message.message);
+      logger.debug('AudioTee log', { level, message: message.message });
     });
 
     try {
       await this.audiotee.start();
     } catch (error) {
-      console.error('[SystemAudioService] Failed to start AudioTee:', error);
-      // Clean up on failure
+      logger.error('Failed to start AudioTee', error as Error);
       this.audiotee = null;
       this.transcriptionProvider = null;
-      // Don't rethrow - allow recording to continue without system audio
     }
   }
 
   async stop(): Promise<void> {
     if (!this.audiotee) {
-      console.log('[SystemAudioService] Not running, nothing to stop');
       return;
     }
 
-    console.log('[SystemAudioService] Stopping system audio capture...');
+    logger.info('Stopping system audio capture');
     this.capturing = false;
 
     try {
       await this.audiotee.stop();
     } catch (error) {
-      console.error('[SystemAudioService] Error stopping AudioTee:', error);
+      logger.error('Error stopping AudioTee', error as Error);
     }
 
     this.audiotee = null;
     this.transcriptionProvider = null;
     this.audioLevelCallback = null;
-    console.log('[SystemAudioService] Stopped');
   }
 
   isCapturing(): boolean {

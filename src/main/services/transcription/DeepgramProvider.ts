@@ -2,11 +2,10 @@ import { createClient, LiveTranscriptionEvents, LiveClient } from '@deepgram/sdk
 import { v4 as uuidv4 } from 'uuid';
 import type { TranscriptSegment } from '../../../shared/types';
 import type { ITranscriptionProvider, TranscriptCallback } from './TranscriptionProvider';
+import { createLogger } from '../../core/logger';
 
-/**
- * Deepgram transcription provider implementation.
- * Uses two separate live connections for mic and system audio.
- */
+const logger = createLogger('Deepgram');
+
 export class DeepgramProvider implements ITranscriptionProvider {
   readonly name = 'Deepgram';
 
@@ -19,7 +18,7 @@ export class DeepgramProvider implements ITranscriptionProvider {
   private systemConnected: boolean = false;
 
   constructor(apiKey: string) {
-    console.log(`[${this.name}] Initializing with API key:`, apiKey ? `${apiKey.slice(0, 8)}...` : 'MISSING');
+    logger.debug('Initializing', { keyPresent: !!apiKey });
     this.apiKey = apiKey;
   }
 
@@ -28,7 +27,7 @@ export class DeepgramProvider implements ITranscriptionProvider {
   }
 
   async connect(): Promise<void> {
-    console.log(`[${this.name}] Connecting...`);
+    logger.info('Connecting');
     this.startTime = Date.now();
 
     const client = createClient(this.apiKey);
@@ -48,15 +47,14 @@ export class DeepgramProvider implements ITranscriptionProvider {
     this.micConnection = client.listen.live(liveOptions);
     this.systemConnection = client.listen.live(liveOptions);
 
-    // Set up handlers and wait for connections
     const micPromise = this.setupConnectionHandlers(this.micConnection, 'mic');
     const systemPromise = this.setupConnectionHandlers(this.systemConnection, 'system');
 
     try {
       await Promise.all([micPromise, systemPromise]);
-      console.log(`[${this.name}] Connected successfully to both connections`);
+      logger.info('Connected to both connections');
     } catch (error) {
-      console.error(`[${this.name}] Failed to connect:`, error);
+      logger.error('Failed to connect', error as Error);
       throw error;
     }
   }
@@ -67,7 +65,7 @@ export class DeepgramProvider implements ITranscriptionProvider {
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       connection.on(LiveTranscriptionEvents.Open, () => {
-        console.log(`[${this.name}] ${source} connection opened`);
+        logger.debug('Connection opened', { source });
         if (source === 'mic') {
           this.micConnected = true;
         } else {
@@ -84,7 +82,7 @@ export class DeepgramProvider implements ITranscriptionProvider {
 
         const isFinal = data.is_final === true;
         if (isFinal) {
-          console.log(`[${this.name}] FINAL (${source}):`, transcript.transcript.slice(0, 50));
+          logger.debug('Final transcript', { source, text: transcript.transcript.slice(0, 30) });
         }
 
         const segment = this.createSegment(
@@ -97,12 +95,12 @@ export class DeepgramProvider implements ITranscriptionProvider {
       });
 
       connection.on(LiveTranscriptionEvents.Error, (error) => {
-        console.error(`[${this.name}] Connection error (${source}):`, error);
+        logger.error('Connection error', error as Error, { source });
         reject(error);
       });
 
       connection.on(LiveTranscriptionEvents.Close, () => {
-        console.warn(`[${this.name}] Connection closed (${source})`);
+        logger.warn('Connection closed', { source });
         if (source === 'mic') {
           this.micConnected = false;
         } else {
@@ -147,7 +145,7 @@ export class DeepgramProvider implements ITranscriptionProvider {
   }
 
   async disconnect(): Promise<void> {
-    console.log(`[${this.name}] Disconnecting...`);
+    logger.info('Disconnecting');
 
     this.micConnected = false;
     this.systemConnected = false;
@@ -163,6 +161,6 @@ export class DeepgramProvider implements ITranscriptionProvider {
     }
 
     this.transcriptCallback = null;
-    console.log(`[${this.name}] Disconnected`);
+    logger.info('Disconnected');
   }
 }

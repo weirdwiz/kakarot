@@ -2,11 +2,10 @@ import { AssemblyAI, RealtimeTranscriber } from 'assemblyai';
 import { v4 as uuidv4 } from 'uuid';
 import type { TranscriptSegment } from '../../../shared/types';
 import type { ITranscriptionProvider, TranscriptCallback } from './TranscriptionProvider';
+import { createLogger } from '../../core/logger';
 
-/**
- * AssemblyAI transcription provider implementation.
- * Uses two separate real-time transcribers for mic and system audio.
- */
+const logger = createLogger('AssemblyAI');
+
 export class AssemblyAIProvider implements ITranscriptionProvider {
   readonly name = 'AssemblyAI';
 
@@ -19,7 +18,7 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
   private systemConnected: boolean = false;
 
   constructor(apiKey: string) {
-    console.log(`[${this.name}] Initializing with API key:`, apiKey ? `${apiKey.slice(0, 8)}...` : 'MISSING');
+    logger.debug('Initializing', { keyPresent: !!apiKey });
     this.client = new AssemblyAI({ apiKey });
   }
 
@@ -28,10 +27,9 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
   }
 
   async connect(): Promise<void> {
-    console.log(`[${this.name}] Connecting...`);
+    logger.info('Connecting');
     this.startTime = Date.now();
 
-    // Create two separate transcribers for mic and system audio
     this.micTranscriber = this.client.realtime.transcriber({
       sampleRate: 48000,
       encoding: 'pcm_s16le',
@@ -42,19 +40,17 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
       encoding: 'pcm_s16le',
     });
 
-    // Set up handlers
     this.setupTranscriberHandlers(this.micTranscriber, 'mic');
     this.setupTranscriberHandlers(this.systemTranscriber, 'system');
 
-    // Connect both transcribers
     try {
       await Promise.all([
         this.micTranscriber.connect(),
         this.systemTranscriber.connect(),
       ]);
-      console.log(`[${this.name}] Connected successfully to both transcribers`);
+      logger.info('Connected to both transcribers');
     } catch (error) {
-      console.error(`[${this.name}] Failed to connect:`, error);
+      logger.error('Failed to connect', error as Error);
       throw error;
     }
   }
@@ -64,7 +60,7 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
     source: 'mic' | 'system'
   ): void {
     transcriber.on('open', () => {
-      console.log(`[${this.name}] ${source} transcriber opened`);
+      logger.debug('Transcriber opened', { source });
       if (source === 'mic') {
         this.micConnected = true;
       } else {
@@ -72,7 +68,6 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
       }
     });
 
-    // Handle partial transcripts
     transcriber.on('transcript.partial', (transcript) => {
       if (!this.transcriptCallback) return;
       if (!transcript.text || transcript.text.trim() === '') return;
@@ -81,22 +76,21 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
       this.transcriptCallback(segment, false);
     });
 
-    // Handle final transcripts
     transcriber.on('transcript.final', (transcript) => {
       if (!this.transcriptCallback) return;
       if (!transcript.text || transcript.text.trim() === '') return;
 
-      console.log(`[${this.name}] FINAL (${source}):`, transcript.text.slice(0, 50));
+      logger.debug('Final transcript', { source, text: transcript.text.slice(0, 30) });
       const segment = this.createSegment(transcript.text, source, true, transcript.words);
       this.transcriptCallback(segment, true);
     });
 
     transcriber.on('error', (error) => {
-      console.error(`[${this.name}] Transcriber error (${source}):`, error);
+      logger.error('Transcriber error', error, { source });
     });
 
     transcriber.on('close', (code, reason) => {
-      console.warn(`[${this.name}] Transcriber closed (${source}): ${code} - ${reason}`);
+      logger.warn('Transcriber closed', { source, code, reason });
       if (source === 'mic') {
         this.micConnected = false;
       } else {
@@ -140,7 +134,7 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
   }
 
   async disconnect(): Promise<void> {
-    console.log(`[${this.name}] Disconnecting...`);
+    logger.info('Disconnecting');
     const closePromises: Promise<void>[] = [];
 
     this.micConnected = false;
@@ -158,6 +152,6 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
 
     await Promise.all(closePromises);
     this.transcriptCallback = null;
-    console.log(`[${this.name}] Disconnected`);
+    logger.info('Disconnected');
   }
 }
