@@ -82,10 +82,7 @@ export function useAudioCapture() {
       console.log('[AudioCapture] Requesting microphone access...');
       micStreamRef.current = await navigator.mediaDevices.getUserMedia({
         audio: {
-          channelCount: 1,
-          sampleRate: { ideal: 16000 },
-          echoCancellation: true,
-          noiseSuppression: true,
+          sampleRate: 48000,
         },
         video: false,
       });

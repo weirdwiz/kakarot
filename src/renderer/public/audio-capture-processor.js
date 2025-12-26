@@ -1,29 +1,17 @@
 /**
  * AudioWorklet processor for capturing and processing audio data.
- * Buffers samples, resamples to 16kHz, calculates RMS levels, and converts to 16-bit PCM.
+ * Buffers samples at native 48kHz, calculates RMS levels, and converts to 16-bit PCM.
  */
 class AudioCaptureProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this._targetSampleRate = 16000;
-    this._inputSampleRate = sampleRate; // AudioWorklet global
-    this._resampleRatio = this._inputSampleRate / this._targetSampleRate;
-
-    // Buffer size after resampling (target ~256ms chunks at 16kHz = 4096 samples)
-    this._outputBufferSize = 4096;
+    // Buffer size for ~256ms chunks at 48kHz = 12288 samples
+    this._outputBufferSize = 12288;
     this._outputBuffer = new Float32Array(this._outputBufferSize);
     this._outputIndex = 0;
 
-    // Accumulator for fractional sample positions during resampling
-    this._resampleAccumulator = 0;
-
     console.log(
-      '[AudioCaptureProcessor] Initialized: input=' +
-        this._inputSampleRate +
-        'Hz, target=' +
-        this._targetSampleRate +
-        'Hz, ratio=' +
-        this._resampleRatio.toFixed(3)
+      '[AudioCaptureProcessor] Initialized: sampleRate=' + sampleRate + 'Hz, bufferSize=' + this._outputBufferSize
     );
   }
 
@@ -33,18 +21,12 @@ class AudioCaptureProcessor extends AudioWorkletProcessor {
 
     const samples = input[0];
 
-    // Simple linear resampling from input rate to 16kHz
+    // Pass through at native sample rate (no resampling)
     for (let i = 0; i < samples.length; i++) {
-      this._resampleAccumulator += 1;
+      this._outputBuffer[this._outputIndex++] = samples[i];
 
-      // Output a sample when we've accumulated enough input samples
-      if (this._resampleAccumulator >= this._resampleRatio) {
-        this._resampleAccumulator -= this._resampleRatio;
-        this._outputBuffer[this._outputIndex++] = samples[i];
-
-        if (this._outputIndex >= this._outputBufferSize) {
-          this._sendBuffer();
-        }
+      if (this._outputIndex >= this._outputBufferSize) {
+        this._sendBuffer();
       }
     }
 

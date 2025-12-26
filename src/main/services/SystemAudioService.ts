@@ -1,7 +1,7 @@
 import { AudioTee } from 'audiotee';
 import { app, dialog, shell } from 'electron';
 import { join } from 'path';
-import type { TranscriptionService } from './TranscriptionService';
+import type { ITranscriptionProvider } from './transcription';
 
 // Audio level callback for UI visualization
 type AudioLevelCallback = (level: number) => void;
@@ -21,7 +21,7 @@ function getAudioTeeBinaryPath(): string {
 
 export class SystemAudioService {
   private audiotee: AudioTee | null = null;
-  private transcriptionService: TranscriptionService | null = null;
+  private transcriptionProvider: ITranscriptionProvider | null = null;
   private audioLevelCallback: AudioLevelCallback | null = null;
   private capturing: boolean = false;
   private permissionDialogShown: boolean = false;
@@ -32,21 +32,21 @@ export class SystemAudioService {
     this.audioLevelCallback = callback;
   }
 
-  async start(transcriptionService: TranscriptionService): Promise<void> {
+  async start(transcriptionProvider: ITranscriptionProvider): Promise<void> {
     if (this.capturing) {
       console.warn('[SystemAudioService] Already capturing');
       return;
     }
 
     console.log('[SystemAudioService] Starting system audio capture...');
-    this.transcriptionService = transcriptionService;
+    this.transcriptionProvider = transcriptionProvider;
 
     const binaryPath = getAudioTeeBinaryPath();
     console.log('[SystemAudioService] AudioTee binary path:', binaryPath);
 
     this.audiotee = new AudioTee({
-      sampleRate: 16000, // Match AssemblyAI requirement (also switches to 16-bit signed int)
-      chunkDurationMs: 256, // ~4096 samples at 16kHz, matches current worklet chunk size
+      sampleRate: 48000, // Match AssemblyAI requirement (also switches to 16-bit signed int)
+      chunkDurationMs: 256, // ~12288 samples at 48kHz
       binaryPath,
     });
 
@@ -58,12 +58,12 @@ export class SystemAudioService {
         console.log(`[SystemAudioService] Received chunk ${chunkCount}, size: ${chunk.data.length} bytes`);
       }
 
-      if (!this.capturing || !this.transcriptionService) {
-        console.warn('[SystemAudioService] Dropping chunk - not capturing or no transcription service');
+      if (!this.capturing || !this.transcriptionProvider) {
+        console.warn('[SystemAudioService] Dropping chunk - not capturing or no transcription provider');
         return;
       }
 
-      // Convert Node.js Buffer to ArrayBuffer for TranscriptionService
+      // Convert Node.js Buffer to ArrayBuffer for transcription provider
       // Use Uint8Array.from to create a proper ArrayBuffer copy
       const uint8Array = new Uint8Array(chunk.data);
       const arrayBuffer = uint8Array.buffer.slice(
@@ -88,8 +88,8 @@ export class SystemAudioService {
         this.audioLevelCallback(level);
       }
 
-      // Send to transcription service
-      this.transcriptionService.sendAudio(arrayBuffer, 'system');
+      // Send to transcription provider
+      this.transcriptionProvider.sendAudio(arrayBuffer, 'system');
     });
 
     this.audiotee.on('start', () => {
@@ -117,7 +117,7 @@ export class SystemAudioService {
       console.error('[SystemAudioService] Failed to start AudioTee:', error);
       // Clean up on failure
       this.audiotee = null;
-      this.transcriptionService = null;
+      this.transcriptionProvider = null;
       // Don't rethrow - allow recording to continue without system audio
     }
   }
@@ -138,7 +138,7 @@ export class SystemAudioService {
     }
 
     this.audiotee = null;
-    this.transcriptionService = null;
+    this.transcriptionProvider = null;
     this.audioLevelCallback = null;
     this.silentChunkCount = 0;
     this.permissionDialogShown = false;

@@ -58,14 +58,19 @@ export interface AudioLevels {
   system: number; // 0-1
 }
 
+// Transcription provider options
+export type TranscriptionProvider = 'assemblyai' | 'deepgram';
+
 // Settings
 export interface AppSettings {
   assemblyAiApiKey: string;
+  deepgramApiKey: string;
   openAiApiKey: string;
   knowledgeBasePath: string;
   autoDetectQuestions: boolean;
   showFloatingCallout: boolean;
   transcriptionLanguage: string;
+  transcriptionProvider: TranscriptionProvider;
 }
 
 // IPC payloads

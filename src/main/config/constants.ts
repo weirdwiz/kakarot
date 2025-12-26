@@ -3,11 +3,13 @@ import type { AppSettings } from '../../shared/types';
 // Default application settings
 export const DEFAULT_SETTINGS: AppSettings = {
   assemblyAiApiKey: process.env.ASSEMBLYAI_API_KEY || '',
+  deepgramApiKey: process.env.DEEPGRAM_API_KEY || '',
   openAiApiKey: process.env.OPENAI_API_KEY || '',
   knowledgeBasePath: '',
   autoDetectQuestions: true,
   showFloatingCallout: true,
   transcriptionLanguage: 'en',
+  transcriptionProvider: 'assemblyai',
 };
 
 // AI model identifiers
@@ -43,7 +45,7 @@ export const CALLOUT_CONFIG = {
 
 // Audio configuration
 export const AUDIO_CONFIG = {
-  SAMPLE_RATE: 16000,
+  SAMPLE_RATE: 48000,
   SILENCE_THRESHOLD: 10,
   PACKET_LOG_INTERVAL: 10,
 } as const;

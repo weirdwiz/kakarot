@@ -96,6 +96,30 @@ export default function SettingsView() {
 
           <div>
             <label className="block text-sm text-gray-300 mb-2">
+              Deepgram API Key
+            </label>
+            <input
+              type="password"
+              value={localSettings.deepgramApiKey}
+              onChange={(e) => handleChange('deepgramApiKey', e.target.value)}
+              placeholder="Enter your Deepgram API key"
+              className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Get your key from{' '}
+              <a
+                href="https://console.deepgram.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary-400 hover:underline"
+              >
+                console.deepgram.com
+              </a>
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-300 mb-2">
               OpenAI API Key
             </label>
             <input
@@ -188,6 +212,21 @@ export default function SettingsView() {
           <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
             Transcription
           </h2>
+
+          <div>
+            <label className="block text-sm text-gray-300 mb-2">Provider</label>
+            <select
+              value={localSettings.transcriptionProvider}
+              onChange={(e) => handleChange('transcriptionProvider', e.target.value)}
+              className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="assemblyai">AssemblyAI</option>
+              <option value="deepgram">Deepgram</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Select which transcription service to use
+            </p>
+          </div>
 
           <div>
             <label className="block text-sm text-gray-300 mb-2">Language</label>

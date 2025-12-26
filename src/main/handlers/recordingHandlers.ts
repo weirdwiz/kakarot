@@ -2,7 +2,7 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipcChannels';
 import { getContainer } from '../core/container';
 import { createLogger } from '../core/logger';
-import { TranscriptionService } from '../services/TranscriptionService';
+import { createTranscriptionProvider, ITranscriptionProvider } from '../services/transcription';
 import { SystemAudioService } from '../services/SystemAudioService';
 import { CalloutService } from '../services/CalloutService';
 import { showCalloutWindow, hideCalloutWindow } from '../windows/calloutWindow';
@@ -10,7 +10,7 @@ import { AUDIO_CONFIG } from '../config/constants';
 
 const logger = createLogger('RecordingHandlers');
 
-let transcriptionService: TranscriptionService | null = null;
+let transcriptionProvider: ITranscriptionProvider | null = null;
 let systemAudioService: SystemAudioService | null = null;
 
 export function registerRecordingHandlers(
@@ -23,7 +23,7 @@ export function registerRecordingHandlers(
     logger.info('Recording start requested');
     const { meetingRepo, settingsRepo } = getContainer();
     const settings = settingsRepo.getSettings();
-    logger.debug('API key configured', { hasKey: !!settings.assemblyAiApiKey });
+    logger.debug('Transcription provider', { provider: settings.transcriptionProvider });
 
     // Start meeting
     await meetingRepo.startNewMeeting();
@@ -32,11 +32,16 @@ export function registerRecordingHandlers(
     // Update UI immediately
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'recording');
 
-    // Initialize transcription service
-    transcriptionService = new TranscriptionService(settings.assemblyAiApiKey);
+    // Initialize transcription provider based on settings
+    transcriptionProvider = createTranscriptionProvider(
+      settings.transcriptionProvider,
+      settings.assemblyAiApiKey,
+      settings.deepgramApiKey
+    );
+    logger.info('Using transcription provider', { name: transcriptionProvider.name });
 
     // Set up transcript forwarding
-    transcriptionService.onTranscript((segment, isFinal) => {
+    transcriptionProvider.onTranscript((segment, isFinal) => {
       logger.debug('Transcript received', {
         source: segment.source,
         isFinal,
@@ -66,13 +71,13 @@ export function registerRecordingHandlers(
       }
     });
 
-    // Connect transcription service
-    transcriptionService
+    // Connect transcription provider
+    transcriptionProvider
       .connect()
       .then(() => {
-        logger.info('Transcription service connected');
+        logger.info('Transcription provider connected');
 
-        if (transcriptionService) {
+        if (transcriptionProvider) {
           systemAudioService = new SystemAudioService();
 
           systemAudioService.onAudioLevel((level) => {
@@ -80,7 +85,7 @@ export function registerRecordingHandlers(
           });
 
           systemAudioService
-            .start(transcriptionService)
+            .start(transcriptionProvider)
             .then(() => {
               logger.info('System audio capture started');
             })
@@ -90,7 +95,7 @@ export function registerRecordingHandlers(
         }
       })
       .catch((error) => {
-        logger.error('Transcription service connection failed', error);
+        logger.error('Transcription provider connection failed', error);
       });
   });
 
@@ -110,12 +115,12 @@ export function registerRecordingHandlers(
         .catch((error) => logger.error('System audio stop error', error));
     }
 
-    // Disconnect transcription
-    if (transcriptionService) {
-      const ts = transcriptionService;
-      transcriptionService = null;
-      ts.disconnect()
-        .then(() => logger.info('Transcription service disconnected'))
+    // Disconnect transcription provider
+    if (transcriptionProvider) {
+      const tp = transcriptionProvider;
+      transcriptionProvider = null;
+      tp.disconnect()
+        .then(() => logger.info('Transcription provider disconnected'))
         .catch((error) => logger.error('Transcription disconnect error', error));
     }
 
@@ -146,10 +151,10 @@ export function registerRecordingHandlers(
       });
     }
 
-    if (transcriptionService) {
-      transcriptionService.sendAudio(audioData, 'mic');
+    if (transcriptionProvider) {
+      transcriptionProvider.sendAudio(audioData, 'mic');
     } else if (micAudioDataCount === 1) {
-      logger.warn('Mic audio data received but no transcription service active');
+      logger.warn('Mic audio data received but no transcription provider active');
     }
   });
 }

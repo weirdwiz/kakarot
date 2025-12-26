@@ -41,6 +41,9 @@ export class SettingsRepository {
     if (!merged.assemblyAiApiKey) {
       merged.assemblyAiApiKey = process.env.ASSEMBLYAI_API_KEY || '';
     }
+    if (!merged.deepgramApiKey) {
+      merged.deepgramApiKey = process.env.DEEPGRAM_API_KEY || '';
+    }
     if (!merged.openAiApiKey) {
       merged.openAiApiKey = process.env.OPENAI_API_KEY || '';
     }
