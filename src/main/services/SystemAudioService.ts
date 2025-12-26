@@ -1,5 +1,5 @@
 import { AudioTee } from 'audiotee';
-import { app, dialog, shell } from 'electron';
+import { app } from 'electron';
 import { join } from 'path';
 import type { ITranscriptionProvider } from './transcription';
 
@@ -24,9 +24,6 @@ export class SystemAudioService {
   private transcriptionProvider: ITranscriptionProvider | null = null;
   private audioLevelCallback: AudioLevelCallback | null = null;
   private capturing: boolean = false;
-  private permissionDialogShown: boolean = false;
-  private silentChunkCount: number = 0;
-  private static SILENCE_THRESHOLD = 10; // Show dialog after this many silent chunks
 
   onAudioLevel(callback: AudioLevelCallback): void {
     this.audioLevelCallback = callback;
@@ -73,16 +70,6 @@ export class SystemAudioService {
 
       // Calculate RMS level for UI visualization (same algorithm as AudioWorklet)
       const level = this.calculateRmsLevel(chunk.data);
-
-      // Detect silence (permission issue)
-      if (level < 0.0001) {
-        this.silentChunkCount++;
-        if (this.silentChunkCount === SystemAudioService.SILENCE_THRESHOLD && !this.permissionDialogShown) {
-          this.showPermissionDialog();
-        }
-      } else {
-        this.silentChunkCount = 0; // Reset on non-silent audio
-      }
 
       if (this.audioLevelCallback) {
         this.audioLevelCallback(level);
@@ -140,38 +127,11 @@ export class SystemAudioService {
     this.audiotee = null;
     this.transcriptionProvider = null;
     this.audioLevelCallback = null;
-    this.silentChunkCount = 0;
-    this.permissionDialogShown = false;
     console.log('[SystemAudioService] Stopped');
   }
 
   isCapturing(): boolean {
     return this.capturing;
-  }
-
-  private async showPermissionDialog(): Promise<void> {
-    this.permissionDialogShown = true;
-    console.warn('[SystemAudioService] Detected silence - likely missing system audio permission');
-
-    const result = await dialog.showMessageBox({
-      type: 'warning',
-      title: 'System Audio Permission Required',
-      message: 'System audio capture requires permission',
-      detail: 'To capture system audio, you need to grant "System Audio Recording" permission.\n\n' +
-        '1. Open System Settings > Privacy & Security\n' +
-        '2. Scroll to "Screen & System Audio Recording"\n' +
-        '3. Scroll down to "System Audio Recording Only"\n' +
-        '4. Enable permission for Electron (or your terminal app in dev mode)\n\n' +
-        'Would you like to open System Settings now?',
-      buttons: ['Open System Settings', 'Later'],
-      defaultId: 0,
-    });
-
-    if (result.response === 0) {
-      // Open System Settings to the Privacy pane
-      // macOS 14+ uses this URL scheme
-      shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent');
-    }
   }
 
   // Calculate RMS level from 16-bit signed integer PCM data
