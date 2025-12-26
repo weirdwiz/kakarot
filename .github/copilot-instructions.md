@@ -24,29 +24,29 @@ Kakarot is an Electron-based AI meeting assistant that captures dual audio strea
 ## Core Patterns & Conventions
 
 ### Dependency Injection via Container
-All services access dependencies through `getContainer()` from [src/main/core/container.ts](src/main/core/container.ts):
+All services access dependencies through `getContainer()` from `src/main/core/container.ts`:
 ```typescript
 const { aiProvider, meetingRepo, calloutService } = getContainer();
 ```
 Container is initialized in main process after database setup. If you need a new service, add it to `AppContainer` interface and initialize in `initializeContainer()`.
 
 ### IPC Communication
-- **Type-safe channels**: Define in [src/shared/ipcChannels.ts](src/shared/ipcChannels.ts) with `IPC_CHANNELS` constant
-- **Handler pattern**: Each domain has a `register*Handlers` function in [src/main/handlers/](src/main/handlers/)
+- **Type-safe channels**: Define in `src/shared/ipcChannels.ts` with `IPC_CHANNELS` constant
+- **Handler pattern**: Each domain has a `register*Handlers` function in `src/main/handlers/`
 - **No long-running requests**: Audio streaming uses one-way events; other calls should resolve quickly or emit progress events
 
 ### Repository Pattern
-Data access via repositories in [src/main/data/repositories/](src/main/data/repositories/). Each model (Meeting, Callout, Settings) has its own repo. All schema changes go through database migrations in [src/main/data/database.ts](src/main/data/database.ts).
+Data access via repositories in `src/main/data/repositories/`. Each model (Meeting, Callout, Settings) has its own repo. All schema changes go through database migrations in `src/main/data/database.ts`.
 
 ### Logging
-Use `createLogger()` from [src/main/core/logger.ts](src/main/core/logger.ts):
+Use `createLogger()` from `src/main/core/logger.ts`:
 ```typescript
 const logger = createLogger('ComponentName');
 logger.info('message', { context: 'data' });
 ```
 
 ### Prompt Engineering
-LLM prompts isolated in [src/main/prompts/](src/main/prompts/). Import and use in services. Keep prompts parametrized for testing.
+LLM prompts isolated in `src/main/prompts/`. Import and use in services. Keep prompts parametrized for testing.
 
 ### Path Aliases
 - `@/*` → `src/*`
@@ -58,13 +58,13 @@ LLM prompts isolated in [src/main/prompts/](src/main/prompts/). Import and use i
 
 | File | Purpose |
 |------|---------|
-| [src/shared/types.ts](src/shared/types.ts) | Core TypeScript interfaces: Meeting, Callout, TranscriptSegment |
-| [src/main/core/container.ts](src/main/core/container.ts) | DI container initialization and getContainer() |
-| [src/shared/ipcChannels.ts](src/shared/ipcChannels.ts) | Typed IPC channel constants |
-| [src/main/data/database.ts](src/main/data/database.ts) | SQLite schema and initialization |
-| [src/main/handlers/index.ts](src/main/handlers/index.ts) | Registers all IPC handler modules |
-| [src/renderer/stores/appStore.ts](src/renderer/stores/appStore.ts) | Zustand state management |
-| [src/main/config/constants.ts](src/main/config/constants.ts) | Magic numbers, patterns, defaults |
+| `src/shared/types.ts` | Core TypeScript interfaces: Meeting, Callout, TranscriptSegment |
+| `src/main/core/container.ts` | DI container initialization and getContainer() |
+| `src/shared/ipcChannels.ts` | Typed IPC channel constants |
+| `src/main/data/database.ts` | SQLite schema and initialization |
+| `src/main/handlers/index.ts` | Registers all IPC handler modules |
+| `src/renderer/stores/appStore.ts` | Zustand state management |
+| `src/main/config/constants.ts` | Magic numbers, patterns, defaults |
 
 ## Development Commands
 
@@ -102,7 +102,7 @@ Note: `npm run dev` runs Vite only; use `dev:electron` to run the full Electron 
 3. Expose via IPC handler if needed by renderer
 
 ## Shared Utilities
-Location: [src/shared/utils/formatters.ts](src/shared/utils/formatters.ts)
+Location: `src/shared/utils/formatters.ts`
 - `formatTimestamp(ms)` - Converts milliseconds to MM:SS
 - `formatDuration(ms)` - Formats with hours if duration > 1 hour
 - `getSpeakerLabel(source)` - Maps 'mic'/'system' to 'You'/'Other'
