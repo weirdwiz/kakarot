@@ -2,8 +2,6 @@ import { MeetingRepository, CalloutRepository, SettingsRepository } from '../dat
 import { OpenAIProvider } from '../providers/OpenAIProvider';
 import { createLogger } from './logger';
 import { CalendarService } from '../services/CalendarService';
-import { CalendarAuthService } from '../services/CalendarAuthService';
-import { TokenStorageService } from '../services/TokenStorageService';
 
 const logger = createLogger('Container');
 
@@ -13,8 +11,6 @@ export interface AppContainer {
   settingsRepo: SettingsRepository;
   aiProvider: OpenAIProvider | null;
   calendarService: CalendarService;
-  calendarAuthService: CalendarAuthService;
-  tokenStorageService: TokenStorageService;
 }
 
 let container: AppContainer | null = null;
@@ -24,25 +20,14 @@ export function initializeContainer(): AppContainer {
   const meetingRepo = new MeetingRepository();
   const calloutRepo = new CalloutRepository();
   const settingsRepo = new SettingsRepository();
-  const calendarService = new CalendarService();
-  const calendarAuthService = new CalendarAuthService();
-  const tokenStorageService = new TokenStorageService(settingsRepo);
-
-  // Wire up calendar service dependencies
-  calendarService.setDependencies(tokenStorageService, calendarAuthService);
+  const calendarService = new CalendarService(settingsRepo);
 
   // Initialize default settings
   settingsRepo.initializeDefaults();
 
   // Create AI provider if API key is available
   const settings = settingsRepo.getSettings();
-  const aiProvider = settings.openAiApiKey
-    ? new OpenAIProvider({
-        apiKey: settings.openAiApiKey,
-        baseURL: settings.openAiBaseUrl,
-        defaultModel: settings.openAiModel,
-      })
-    : null;
+  const aiProvider = settings.openAiApiKey ? new OpenAIProvider({ apiKey: settings.openAiApiKey }) : null;
 
   if (!aiProvider) {
     logger.warn('OpenAI API key not configured - AI features disabled');
@@ -54,8 +39,6 @@ export function initializeContainer(): AppContainer {
     settingsRepo,
     aiProvider,
     calendarService,
-    calendarAuthService,
-    tokenStorageService,
   };
 
   logger.info('Container initialized');

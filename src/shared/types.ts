@@ -59,6 +59,30 @@ export interface AudioLevels {
 }
 
 // Settings
+export interface OAuthTokens {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number; // epoch ms
+  scope?: string;
+  tokenType?: string;
+  idToken?: string;
+  email?: string;
+}
+
+export interface ICloudCredentials {
+  appleId: string;
+  appPassword: string;
+  calendarHomeUrl?: string;
+}
+
+export interface CalendarConnections {
+  google?: OAuthTokens;
+  outlook?: OAuthTokens;
+  icloud?: ICloudCredentials;
+}
+
+export type TranscriptionProvider = 'assemblyai' | 'deepgram';
+
 export interface AppSettings {
   assemblyAiApiKey: string;
   deepgramApiKey: string;
@@ -70,13 +94,10 @@ export interface AppSettings {
   showFloatingCallout: boolean;
   transcriptionLanguage: string;
   transcriptionProvider: 'assemblyai' | 'deepgram';
-  // Calendar OAuth credentials
-  googleCalendarClientId?: string;
-  googleCalendarClientSecret?: string;
-  outlookCalendarClientId?: string;
-  outlookCalendarClientSecret?: string;
-  icloudCalendarUsername?: string;
-  icloudCalendarPassword?: string; // App-specific password
+  useHostedTokens: boolean;
+  authApiBaseUrl: string;
+  hostedAuthToken: string;
+  calendarConnections: CalendarConnections;
 }
 
 // IPC payloads
@@ -95,23 +116,8 @@ export interface CalendarEvent {
   title: string;
   start: Date;
   end: Date;
-  provider: 'google' | 'apple' | 'outlook' | 'unknown';
+  provider: 'google' | 'outlook' | 'icloud' | 'unknown';
   location?: string;
   attendees?: string[];
   description?: string;
-}
-
-export interface CalendarTokens {
-  accessToken: string;
-  refreshToken?: string;
-  expiresAt: number;
-  scope?: string;
-}
-
-export type CalendarProvider = 'google' | 'outlook' | 'icloud';
-
-export interface CalendarConnectionStatus {
-  google: boolean;
-  outlook: boolean;
-  icloud: boolean;
 }

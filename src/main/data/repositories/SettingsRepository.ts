@@ -68,36 +68,4 @@ export class SettingsRepository {
     saveDatabase();
     logger.info('Updated settings', { keys: Object.keys(updates) });
   }
-
-  /**
-   * Get a single setting value by key
-   */
-  async get(key: string): Promise<string | null> {
-    const db = getDatabase();
-    const result = db.exec('SELECT value FROM settings WHERE key = ?', [key]);
-    if (result.length === 0 || result[0].values.length === 0) {
-      return null;
-    }
-    return result[0].values[0][0] as string;
-  }
-
-  /**
-   * Set a single setting value by key
-   */
-  async set(key: string, value: string): Promise<void> {
-    const db = getDatabase();
-    db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
-    saveDatabase();
-    logger.debug('Set setting', { key });
-  }
-
-  /**
-   * Delete a setting by key
-   */
-  async delete(key: string): Promise<void> {
-    const db = getDatabase();
-    db.run('DELETE FROM settings WHERE key = ?', [key]);
-    saveDatabase();
-    logger.debug('Deleted setting', { key });
-  }
 }

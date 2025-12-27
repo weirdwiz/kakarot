@@ -10,6 +10,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showFloatingCallout: true,
   transcriptionLanguage: 'en',
   transcriptionProvider: 'assemblyai',
+  useHostedTokens: false,
+  authApiBaseUrl: process.env.AUTH_API_BASE_URL || '',
+  hostedAuthToken: process.env.AUTH_API_TOKEN || '',
+  calendarConnections: {},
 };
 
 // AI model identifiers

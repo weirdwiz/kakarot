@@ -41,14 +41,9 @@ export const IPC_CHANNELS = {
   KNOWLEDGE_SEARCH: 'knowledge:search',
 
   // Calendar
+  CALENDAR_CONNECT: 'calendar:connect',
+  CALENDAR_DISCONNECT: 'calendar:disconnect',
   CALENDAR_LIST_TODAY: 'calendar:listToday',
-  
-  // Calendar OAuth
-  CALENDAR_OAUTH_START: 'calendar:oauth:start',
-  CALENDAR_OAUTH_DISCONNECT: 'calendar:oauth:disconnect',
-  CALENDAR_OAUTH_STATUS: 'calendar:oauth:status',
-  CALENDAR_CREDENTIALS_SAVE: 'calendar:credentials:save',
-  CALENDAR_CREDENTIALS_GET: 'calendar:credentials:get',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

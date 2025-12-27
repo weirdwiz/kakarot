@@ -14,16 +14,10 @@ export function registerSettingsHandlers(): void {
     settingsRepo.updateSettings(settings);
 
     // Refresh AI provider if API key changed
-    if (
-      settings.openAiApiKey !== undefined ||
-      settings.openAiBaseUrl !== undefined ||
-      settings.openAiModel !== undefined
-    ) {
+    if (settings.openAiApiKey !== undefined) {
       const currentSettings = settingsRepo.getSettings();
       refreshAIProvider({
         apiKey: currentSettings.openAiApiKey,
-        baseURL: currentSettings.openAiBaseUrl,
-        defaultModel: currentSettings.openAiModel,
       });
     }
   });

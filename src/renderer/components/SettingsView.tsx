@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { AppSettings } from '@shared/types';
-import { Calendar, Check, X } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 
 export default function SettingsView() {
   const { settings, setSettings } = useAppStore();
   const [localSettings, setLocalSettings] = useState<AppSettings | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [connectingProvider, setConnectingProvider] = useState<'google' | 'outlook' | 'icloud' | null>(null);
   const [connectedCalendars, setConnectedCalendars] = useState<{
     google: boolean;
     outlook: boolean;
@@ -17,32 +18,88 @@ export default function SettingsView() {
     outlook: false,
     icloud: false,
   });
-  const [isConnecting, setIsConnecting] = useState<string | null>(null);
-  const [showCredentialsModal, setShowCredentialsModal] = useState<{
-    provider: 'google' | 'outlook' | 'icloud' | null;
-  }>({ provider: null });
 
   useEffect(() => {
     if (settings) {
       setLocalSettings({ ...settings });
+      setConnectedCalendars({
+        google: !!settings.calendarConnections?.google,
+        outlook: !!settings.calendarConnections?.outlook,
+        icloud: !!settings.calendarConnections?.icloud,
+      });
     }
-    
-    // Load calendar connection status
-    loadCalendarStatus();
   }, [settings]);
-
-  const loadCalendarStatus = async () => {
-    try {
-      const status = await window.kakarot.calendar.oauth.getStatus();
-      setConnectedCalendars(status);
-    } catch (error) {
-      console.error('Failed to load calendar status:', error);
-    }
-  };
 
   const handleChange = (key: keyof AppSettings, value: string | boolean) => {
     if (!localSettings) return;
     setLocalSettings({ ...localSettings, [key]: value });
+  };
+
+  const providerLabels: Record<'google' | 'outlook' | 'icloud', string> = {
+    google: 'Google Calendar',
+    outlook: 'Outlook Calendar',
+    icloud: 'iCloud Calendar',
+  };
+
+  const handleConnectCalendar = async (provider: 'google' | 'outlook' | 'icloud') => {
+    if (!localSettings) return;
+
+    setConnectingProvider(provider);
+    setSaveMessage('');
+
+    try {
+      let payload: { appleId: string; appPassword: string } | undefined;
+      if (provider === 'icloud') {
+        const appleId = prompt('Enter your Apple ID email for iCloud Calendar:');
+        const appPassword = prompt('Enter your iCloud app-specific password:');
+        if (!appleId || !appPassword) {
+          throw new Error('Apple ID and app-specific password are required');
+        }
+        payload = { appleId, appPassword };
+      }
+
+      const connections = await window.kakarot.calendar.connect(provider, payload);
+      const nextSettings = { ...localSettings, calendarConnections: connections };
+      setLocalSettings(nextSettings);
+      setSettings(nextSettings);
+      setConnectedCalendars({
+        google: !!connections.google,
+        outlook: !!connections.outlook,
+        icloud: !!connections.icloud,
+      });
+      setSaveMessage(`${providerLabels[provider]} connected`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setSaveMessage(`Failed to connect ${providerLabels[provider]}: ${message}`);
+    } finally {
+      setConnectingProvider(null);
+      setTimeout(() => setSaveMessage(''), 5000);
+    }
+  };
+
+  const handleDisconnectCalendar = async (provider: 'google' | 'outlook' | 'icloud') => {
+    if (!localSettings) return;
+    setConnectingProvider(provider);
+    setSaveMessage('');
+
+    try {
+      const connections = await window.kakarot.calendar.disconnect(provider);
+      const nextSettings = { ...localSettings, calendarConnections: connections };
+      setLocalSettings(nextSettings);
+      setSettings(nextSettings);
+      setConnectedCalendars({
+        google: !!connections.google,
+        outlook: !!connections.outlook,
+        icloud: !!connections.icloud,
+      });
+      setSaveMessage(`${providerLabels[provider]} disconnected`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setSaveMessage(`Failed to disconnect ${providerLabels[provider]}: ${message}`);
+    } finally {
+      setConnectingProvider(null);
+      setTimeout(() => setSaveMessage(''), 5000);
+    }
   };
 
   const handleSave = async () => {
@@ -69,55 +126,6 @@ export default function SettingsView() {
     const path = prompt('Enter the path to your knowledge base folder:');
     if (path) {
       handleChange('knowledgeBasePath', path);
-    }
-  };
-
-  const handleConnectCalendar = async (provider: 'google' | 'outlook' | 'icloud') => {
-    // If already connected, disconnect
-    if (connectedCalendars[provider]) {
-      setIsConnecting(provider);
-      try {
-        const result = await window.kakarot.calendar.oauth.disconnect(provider);
-        if (result.success) {
-          setConnectedCalendars((prev) => ({ ...prev, [provider]: false }));
-          setSaveMessage(`${provider} calendar disconnected`);
-        } else {
-          setSaveMessage(`Failed to disconnect: ${result.error}`);
-        }
-      } catch (error) {
-        setSaveMessage('Failed to disconnect calendar');
-        console.error('Disconnect error:', error);
-      } finally {
-        setIsConnecting(null);
-        setTimeout(() => setSaveMessage(''), 3000);
-      }
-      return;
-    }
-
-    // Check if credentials are configured
-    const credentials = await window.kakarot.calendar.credentials.get(provider);
-    if (!credentials) {
-      // Show modal to input credentials
-      setShowCredentialsModal({ provider });
-      return;
-    }
-
-    // Start OAuth flow
-    setIsConnecting(provider);
-    try {
-      const result = await window.kakarot.calendar.oauth.start(provider);
-      if (result.success) {
-        setConnectedCalendars((prev) => ({ ...prev, [provider]: true }));
-        setSaveMessage(`${provider} calendar connected successfully!`);
-      } else {
-        setSaveMessage(`Failed to connect: ${result.error}`);
-      }
-    } catch (error) {
-      setSaveMessage('Failed to connect calendar');
-      console.error('OAuth error:', error);
-    } finally {
-      setIsConnecting(null);
-      setTimeout(() => setSaveMessage(''), 3000);
     }
   };
 
@@ -215,36 +223,6 @@ export default function SettingsView() {
                 platform.openai.com/api-keys
               </a>
             </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-300 mb-2">OpenAI Base URL</label>
-              <input
-                type="text"
-                value={localSettings.openAiBaseUrl}
-                onChange={(e) => handleChange('openAiBaseUrl', e.target.value)}
-                placeholder="https://api.openai.com/v1"
-                className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Set a custom gateway if you are routing requests through a proxy
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-300 mb-2">OpenAI Model</label>
-              <input
-                type="text"
-                value={localSettings.openAiModel}
-                onChange={(e) => handleChange('openAiModel', e.target.value)}
-                placeholder="gpt-4o"
-                className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Default model used for summaries and callouts
-              </p>
-            </div>
           </div>
         </section>
 
@@ -362,9 +340,13 @@ export default function SettingsView() {
           <div className="space-y-3">
             {/* Google Calendar */}
             <button
-              onClick={() => handleConnectCalendar('google')}
-              disabled={isConnecting !== null}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all disabled:opacity-50 ${
+              onClick={() =>
+                connectedCalendars.google
+                  ? handleDisconnectCalendar('google')
+                  : handleConnectCalendar('google')
+              }
+              disabled={connectingProvider === 'google'}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
                 connectedCalendars.google
                   ? 'border-green-500/50 bg-green-500/10'
                   : 'border-gray-700 bg-gray-800 hover:border-gray-600'
@@ -374,33 +356,33 @@ export default function SettingsView() {
                 <Calendar className="w-5 h-5 text-gray-400" />
                 <div className="text-left">
                   <p className="text-sm font-medium text-white">
-                    {isConnecting === 'google' 
-                      ? 'Connecting...' 
-                      : connectedCalendars.google 
-                        ? 'Google Calendar Connected' 
-                        : 'Connect Your Google Calendar'}
+                    {connectedCalendars.google ? 'Google Calendar Connected' : 'Connect Your Google Calendar'}
                   </p>
-                  {connectedCalendars.google && isConnecting !== 'google' && (
+                  {connectedCalendars.google && (
                     <p className="text-xs text-gray-500">Syncing your Google events</p>
                   )}
                 </div>
               </div>
               {connectedCalendars.google ? (
-                isConnecting === 'google' ? (
-                  <span className="text-sm text-gray-400">...</span>
-                ) : (
-                  <Check className="w-5 h-5 text-green-500" />
-                )
+                <span className="text-sm text-green-400">
+                  {connectingProvider === 'google' ? 'Disconnecting...' : 'Disconnect'}
+                </span>
               ) : (
-                <span className="text-sm text-primary-400">+ Connect</span>
+                <span className="text-sm text-primary-400">
+                  {connectingProvider === 'google' ? 'Connecting...' : '+ Connect'}
+                </span>
               )}
             </button>
 
             {/* Outlook Calendar */}
             <button
-              onClick={() => handleConnectCalendar('outlook')}
-              disabled={isConnecting !== null}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all disabled:opacity-50 ${
+              onClick={() =>
+                connectedCalendars.outlook
+                  ? handleDisconnectCalendar('outlook')
+                  : handleConnectCalendar('outlook')
+              }
+              disabled={connectingProvider === 'outlook'}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
                 connectedCalendars.outlook
                   ? 'border-green-500/50 bg-green-500/10'
                   : 'border-gray-700 bg-gray-800 hover:border-gray-600'
@@ -410,33 +392,33 @@ export default function SettingsView() {
                 <Calendar className="w-5 h-5 text-gray-400" />
                 <div className="text-left">
                   <p className="text-sm font-medium text-white">
-                    {isConnecting === 'outlook' 
-                      ? 'Connecting...' 
-                      : connectedCalendars.outlook 
-                        ? 'Outlook Calendar Connected' 
-                        : 'Connect Your Outlook Calendar'}
+                    {connectedCalendars.outlook ? 'Outlook Calendar Connected' : 'Connect Your Outlook Calendar'}
                   </p>
-                  {connectedCalendars.outlook && isConnecting !== 'outlook' && (
+                  {connectedCalendars.outlook && (
                     <p className="text-xs text-gray-500">Syncing your Outlook events</p>
                   )}
                 </div>
               </div>
               {connectedCalendars.outlook ? (
-                isConnecting === 'outlook' ? (
-                  <span className="text-sm text-gray-400">...</span>
-                ) : (
-                  <Check className="w-5 h-5 text-green-500" />
-                )
+                <span className="text-sm text-green-400">
+                  {connectingProvider === 'outlook' ? 'Disconnecting...' : 'Disconnect'}
+                </span>
               ) : (
-                <span className="text-sm text-primary-400">+ Connect</span>
+                <span className="text-sm text-primary-400">
+                  {connectingProvider === 'outlook' ? 'Connecting...' : '+ Connect'}
+                </span>
               )}
             </button>
 
             {/* iCloud Calendar */}
             <button
-              onClick={() => handleConnectCalendar('icloud')}
-              disabled={isConnecting !== null}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all disabled:opacity-50 ${
+              onClick={() =>
+                connectedCalendars.icloud
+                  ? handleDisconnectCalendar('icloud')
+                  : handleConnectCalendar('icloud')
+              }
+              disabled={connectingProvider === 'icloud'}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
                 connectedCalendars.icloud
                   ? 'border-green-500/50 bg-green-500/10'
                   : 'border-gray-700 bg-gray-800 hover:border-gray-600'
@@ -446,25 +428,21 @@ export default function SettingsView() {
                 <Calendar className="w-5 h-5 text-gray-400" />
                 <div className="text-left">
                   <p className="text-sm font-medium text-white">
-                    {isConnecting === 'icloud' 
-                      ? 'Connecting...' 
-                      : connectedCalendars.icloud 
-                        ? 'iCloud Calendar Connected' 
-                        : 'Connect Your iCloud Calendar'}
+                    {connectedCalendars.icloud ? 'iCloud Calendar Connected' : 'Connect Your iCloud Calendar'}
                   </p>
-                  {connectedCalendars.icloud && isConnecting !== 'icloud' && (
+                  {connectedCalendars.icloud && (
                     <p className="text-xs text-gray-500">Syncing your iCloud events</p>
                   )}
                 </div>
               </div>
               {connectedCalendars.icloud ? (
-                isConnecting === 'icloud' ? (
-                  <span className="text-sm text-gray-400">...</span>
-                ) : (
-                  <Check className="w-5 h-5 text-green-500" />
-                )
+                <span className="text-sm text-green-400">
+                  {connectingProvider === 'icloud' ? 'Disconnecting...' : 'Disconnect'}
+                </span>
               ) : (
-                <span className="text-sm text-primary-400">+ Connect</span>
+                <span className="text-sm text-primary-400">
+                  {connectingProvider === 'icloud' ? 'Connecting...' : '+ Connect'}
+                </span>
               )}
             </button>
           </div>
@@ -485,186 +463,6 @@ export default function SettingsView() {
             {isSaving ? 'Saving...' : 'Save Settings'}
           </button>
         </div>
-      </div>
-
-      {/* Calendar Credentials Modal */}
-      {showCredentialsModal.provider && (
-        <CalendarCredentialsModal
-          provider={showCredentialsModal.provider}
-          onClose={() => setShowCredentialsModal({ provider: null })}
-          onSave={async (clientId, clientSecret) => {
-            const provider = showCredentialsModal.provider!;
-            const result = await window.kakarot.calendar.credentials.save(
-              provider,
-              clientId,
-              clientSecret
-            );
-            
-            if (result.success) {
-              setShowCredentialsModal({ provider: null });
-              // Now start OAuth flow
-              handleConnectCalendar(provider);
-            } else {
-              alert(`Failed to save credentials: ${result.error}`);
-            }
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-interface CalendarCredentialsModalProps {
-  provider: 'google' | 'outlook' | 'icloud';
-  onClose: () => void;
-  onSave: (clientId: string, clientSecret?: string) => Promise<void>;
-}
-
-function CalendarCredentialsModal({ provider, onClose, onSave }: CalendarCredentialsModalProps) {
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!clientId.trim()) return;
-
-    setIsSaving(true);
-    try {
-      await onSave(clientId.trim(), clientSecret.trim() || undefined);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const providerInfo = {
-    google: {
-      name: 'Google Calendar',
-      docsUrl: 'https://console.cloud.google.com/apis/credentials',
-      needsSecret: true,
-      instructions: [
-        '1. Go to Google Cloud Console',
-        '2. Create or select a project',
-        '3. Enable Google Calendar API',
-        '4. Create OAuth 2.0 credentials (Desktop app)',
-        '5. Copy Client ID and Client Secret',
-      ],
-    },
-    outlook: {
-      name: 'Outlook Calendar',
-      docsUrl: 'https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
-      needsSecret: true,
-      instructions: [
-        '1. Go to Azure Portal',
-        '2. Register a new application',
-        '3. Add redirect URI: http://localhost:8888/oauth/callback',
-        '4. Add API permissions: Calendars.Read',
-        '5. Create a client secret',
-        '6. Copy Application (client) ID and secret',
-      ],
-    },
-    icloud: {
-      name: 'iCloud Calendar',
-      docsUrl: 'https://appleid.apple.com/account/manage',
-      needsSecret: false,
-      instructions: [
-        '1. Go to appleid.apple.com',
-        '2. Sign in with your Apple ID',
-        '3. Generate an app-specific password',
-        '4. Use your Apple ID email as Client ID',
-        '5. Use the app-specific password as Client Secret',
-      ],
-    },
-  };
-
-  const info = providerInfo[provider];
-
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-gray-900 rounded-2xl border border-gray-700 shadow-xl max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
-          <h2 className="text-xl font-semibold text-white">
-            Configure {info.name}
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Instructions */}
-          <div className="bg-gray-800/50 rounded-lg p-4 space-y-2">
-            <p className="text-sm font-medium text-white">Setup Instructions:</p>
-            <ul className="text-xs text-gray-400 space-y-1">
-              {info.instructions.map((instruction, i) => (
-                <li key={i}>{instruction}</li>
-              ))}
-            </ul>
-            <a
-              href={info.docsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block text-xs text-primary-400 hover:underline mt-2"
-            >
-              Open {provider === 'icloud' ? 'Apple ID' : provider === 'google' ? 'Google Cloud Console' : 'Azure Portal'} →
-            </a>
-          </div>
-
-          {/* Client ID */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              {provider === 'icloud' ? 'Apple ID Email' : 'Client ID'}
-            </label>
-            <input
-              type="text"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              placeholder={provider === 'icloud' ? 'your@icloud.com' : 'Enter Client ID'}
-              className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-              required
-            />
-          </div>
-
-          {/* Client Secret */}
-          {info.needsSecret && (
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                {provider === 'icloud' ? 'App-Specific Password' : 'Client Secret'}
-              </label>
-              <input
-                type="password"
-                value={clientSecret}
-                onChange={(e) => setClientSecret(e.target.value)}
-                placeholder={provider === 'icloud' ? 'Enter app-specific password' : 'Enter Client Secret'}
-                className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                required={provider !== 'google'} // Google can work without secret for some flows
-              />
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex gap-3 justify-end pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSaving || !clientId.trim()}
-              className="px-6 py-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors"
-            >
-              {isSaving ? 'Saving...' : 'Save & Connect'}
-            </button>
-          </div>
-        </form>
       </div>
     </div>
   );

@@ -1,16 +1,19 @@
 import React, { useEffect, useCallback, useState } from 'react';
 import { useAppStore } from './stores/appStore';
+import { useOnboardingStore } from './stores/onboardingStore';
 import RecordingView from './components/RecordingView';
 import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
 import PrepView from './components/PrepView';
 import Sidebar from './components/Sidebar';
+import OnboardingFlow from './components/onboarding/OnboardingFlow';
 import type { AudioLevels } from '../shared/types';
 import ThemeToggle from './components/ThemeToggle';
 
 export default function App() {
   const { view, setRecordingState, setAudioLevels, setPartialSegment, addTranscriptSegment, setSettings } =
     useAppStore();
+  const { isCompleted: onboardingCompleted, completeOnboarding } = useOnboardingStore();
   const [pillarTab, setPillarTab] = useState<'notes' | 'prep' | 'interact'>('notes');
 
   // Handler that merges incoming audio levels with existing state
@@ -49,6 +52,11 @@ export default function App() {
       unsubFinal();
     };
   }, [setRecordingState, handleAudioLevels, setPartialSegment, addTranscriptSegment, setSettings]);
+
+  // Show onboarding if not completed
+  if (!onboardingCompleted) {
+    return <OnboardingFlow onComplete={completeOnboarding} />;
+  }
 
   return (
     <div className="flex h-screen bg-[#F3F4F6] dark:bg-[#050505]">
