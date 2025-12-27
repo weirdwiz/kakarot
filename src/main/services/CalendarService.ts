@@ -25,17 +25,14 @@ export class CalendarService {
     const allEvents: CalendarEvent[] = [];
     const errors: string[] = [];
 
-    // Google
     const googleResult = await this.fetchFromGoogle(startOfDay, endOfDay);
     allEvents.push(...googleResult.events);
     if (googleResult.error) errors.push(googleResult.error);
 
-    // Outlook
     const outlookResult = await this.fetchFromOutlook(startOfDay, endOfDay);
     allEvents.push(...outlookResult.events);
     if (outlookResult.error) errors.push(outlookResult.error);
 
-    // Sort by start time
     allEvents.sort((a, b) => a.start.getTime() - b.start.getTime());
 
     logger.info('Fetched calendar events', { count: allEvents.length, errorCount: errors.length });

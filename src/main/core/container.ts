@@ -65,10 +65,6 @@ export function initializeContainer(): AppContainer {
   return container;
 }
 
-/**
- * Get the container instance
- * Throws if container hasn't been initialized
- */
 export function getContainer(): AppContainer {
   if (!container) {
     throw new Error('Container not initialized. Call initializeContainer() first.');
@@ -76,10 +72,6 @@ export function getContainer(): AppContainer {
   return container;
 }
 
-/**
- * Reinitialize the AI provider with new settings
- * Called when settings are updated
- */
 export function refreshAIProvider(settings: {
   openAiApiKey: string;
   openAiBaseUrl?: string;

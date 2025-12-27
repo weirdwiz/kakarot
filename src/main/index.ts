@@ -31,15 +31,12 @@ async function createWindows() {
     }
   }
 
-  // Initialize database and container
   await initializeDatabase();
   initializeContainer();
 
-  // Create windows
   mainWindow = createMainWindow();
   calloutWindow = createCalloutWindow();
 
-  // Register IPC handlers
   registerAllHandlers(mainWindow, calloutWindow);
 
   logger.info('Application initialized');

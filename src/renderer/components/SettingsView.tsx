@@ -64,8 +64,7 @@ export default function SettingsView() {
   };
 
   const handleSelectKnowledgePath = async () => {
-    // In a real implementation, this would open a file dialog
-    // For now, we'll use a prompt
+    // TODO: Open a native file dialog instead of prompt
     const path = prompt('Enter the path to your knowledge base folder:');
     if (path) {
       handleChange('knowledgeBasePath', path);
@@ -97,12 +96,10 @@ export default function SettingsView() {
     // Check if credentials are configured
     const credentials = await window.kakarot.calendar.credentials.get(provider);
     if (!credentials) {
-      // Show modal to input credentials
       setShowCredentialsModal({ provider });
       return;
     }
 
-    // Start OAuth flow
     setIsConnecting(provider);
     try {
       const result = await window.kakarot.calendar.oauth.start(provider);

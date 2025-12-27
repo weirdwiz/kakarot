@@ -43,10 +43,8 @@ export class TokenStorageService {
         connectedAt: Date.now(),
       };
 
-      // Cache in memory
       this.cache.set(provider, data);
 
-      // Encrypt and store
       if (safeStorage.isEncryptionAvailable()) {
         const json = JSON.stringify(data);
         const encrypted = safeStorage.encryptString(json);
@@ -66,7 +64,6 @@ export class TokenStorageService {
   }
 
   async getTokens(provider: CalendarProvider): Promise<StoredCalendarData | null> {
-    // Check cache first
     if (this.cache.has(provider)) {
       return this.cache.get(provider)!;
     }
@@ -80,7 +77,6 @@ export class TokenStorageService {
       let data: StoredCalendarData;
 
       if (safeStorage.isEncryptionAvailable()) {
-        // Decrypt
         const encrypted = Buffer.from(stored, 'base64');
         const decrypted = safeStorage.decryptString(encrypted);
         data = JSON.parse(decrypted);
@@ -89,7 +85,6 @@ export class TokenStorageService {
         data = JSON.parse(stored);
       }
 
-      // Cache for future access
       this.cache.set(provider, data);
 
       logger.debug('Retrieved tokens', { provider });

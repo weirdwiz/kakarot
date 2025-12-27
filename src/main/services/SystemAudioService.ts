@@ -78,7 +78,6 @@ export class SystemAudioService {
         this.audioLevelCallback(level);
       }
 
-      // Send to transcription provider
       this.transcriptionProvider.sendAudio(arrayBuffer, 'system');
     });
 
