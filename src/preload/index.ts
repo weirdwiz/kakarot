@@ -15,7 +15,14 @@ import type {
 contextBridge.exposeInMainWorld('kakarot', {
   // Recording controls
   recording: {
-    start: () => ipcRenderer.invoke(IPC_CHANNELS.RECORDING_START),
+    start: (calendarContext?: {
+      calendarEventId: string;
+      calendarEventTitle: string;
+      calendarEventAttendees?: string[];
+      calendarEventStart: string;
+      calendarEventEnd: string;
+      calendarProvider: string;
+    }) => ipcRenderer.invoke(IPC_CHANNELS.RECORDING_START, calendarContext),
     stop: () => ipcRenderer.invoke(IPC_CHANNELS.RECORDING_STOP),
     pause: () => ipcRenderer.invoke(IPC_CHANNELS.RECORDING_PAUSE),
     resume: () => ipcRenderer.invoke(IPC_CHANNELS.RECORDING_RESUME),
@@ -23,6 +30,11 @@ contextBridge.exposeInMainWorld('kakarot', {
       const handler = (_: unknown, state: RecordingState) => callback(state);
       ipcRenderer.on(IPC_CHANNELS.RECORDING_STATE, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.RECORDING_STATE, handler);
+    },
+    onNotesComplete: (callback: (data: { meetingId: string; title: string; overview: string }) => void) => {
+      const handler = (_: unknown, data: { meetingId: string; title: string; overview: string }) => callback(data);
+      ipcRenderer.on(IPC_CHANNELS.MEETING_NOTES_COMPLETE, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.MEETING_NOTES_COMPLETE, handler);
     },
   },
 
@@ -106,6 +118,14 @@ contextBridge.exposeInMainWorld('kakarot', {
       ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_DISCONNECT, provider),
     listToday: (): Promise<CalendarEvent[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_LIST_TODAY),
+    getUpcoming: (): Promise<CalendarEvent[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_GET_UPCOMING),
+    linkEvent: (calendarEventId: string, meetingId: string, provider: 'google' | 'outlook' | 'icloud'): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_LINK_EVENT, calendarEventId, meetingId, provider),
+    getEventForMeeting: (meetingId: string): Promise<CalendarEvent | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_GET_EVENT_FOR_MEETING, meetingId),
+    linkNotes: (calendarEventId: string, notesId: string, provider: 'google' | 'outlook' | 'icloud'): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_LINK_NOTES, calendarEventId, notesId, provider),
   },
 
   // Dev utilities
@@ -123,11 +143,19 @@ declare global {
   interface Window {
     kakarot: {
       recording: {
-        start: () => Promise<void>;
+        start: (calendarContext?: {
+          calendarEventId: string;
+          calendarEventTitle: string;
+          calendarEventAttendees?: string[];
+          calendarEventStart: string;
+          calendarEventEnd: string;
+          calendarProvider: string;
+        }) => Promise<void>;
         stop: () => Promise<Meeting>;
         pause: () => Promise<void>;
         resume: () => Promise<void>;
         onStateChange: (callback: (state: RecordingState) => void) => () => void;
+        onNotesComplete: (callback: (data: { meetingId: string; title: string; overview: string }) => void) => () => void;
       };
       audio: {
         onLevels: (callback: (levels: AudioLevels) => void) => () => void;
@@ -165,6 +193,10 @@ declare global {
         ) => Promise<CalendarConnections>;
         disconnect: (provider: 'google' | 'outlook' | 'icloud') => Promise<CalendarConnections>;
         listToday: () => Promise<CalendarEvent[]>;
+        getUpcoming: () => Promise<CalendarEvent[]>;
+        linkEvent: (calendarEventId: string, meetingId: string, provider: 'google' | 'outlook' | 'icloud') => Promise<void>;
+        getEventForMeeting: (meetingId: string) => Promise<CalendarEvent | null>;
+        linkNotes: (calendarEventId: string, notesId: string, provider: 'google' | 'outlook' | 'icloud') => Promise<void>;
       };
       dev: {
         onResetOnboarding: (callback: () => void) => () => void;

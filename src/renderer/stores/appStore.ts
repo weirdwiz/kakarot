@@ -5,6 +5,7 @@ import type {
   RecordingState,
   AudioLevels,
   AppSettings,
+  CalendarEvent,
 } from '@shared/types';
 
 interface AppState {
@@ -22,6 +23,13 @@ interface AppState {
   meetings: Meeting[];
   selectedMeeting: Meeting | null;
 
+  // Calendar context
+  calendarContext: CalendarEvent | null;
+  activeCalendarContext: CalendarEvent | null; // Calendar event actively being recorded for
+
+  // Notes
+  lastCompletedNoteId: string | null; // ID of last generated notes for navigation
+
   // Settings
   settings: AppSettings | null;
 
@@ -37,6 +45,9 @@ interface AppState {
   clearLiveTranscript: () => void;
   setMeetings: (meetings: Meeting[]) => void;
   setSelectedMeeting: (meeting: Meeting | null) => void;
+  setCalendarContext: (event: CalendarEvent | null) => void;
+  setActiveCalendarContext: (event: CalendarEvent | null) => void;
+  setLastCompletedNoteId: (id: string | null) => void;
   setSettings: (settings: AppSettings) => void;
   setView: (view: 'recording' | 'history' | 'settings') => void;
   setCurrentMeetingId: (id: string | null) => void;
@@ -51,6 +62,9 @@ export const useAppStore = create<AppState>((set) => ({
   currentPartials: { mic: null, system: null },
   meetings: [],
   selectedMeeting: null,
+  calendarContext: null,
+  activeCalendarContext: null,
+  lastCompletedNoteId: null,
   settings: null,
   view: 'recording',
 
@@ -94,6 +108,12 @@ export const useAppStore = create<AppState>((set) => ({
   setMeetings: (meetings) => set({ meetings }),
 
   setSelectedMeeting: (selectedMeeting) => set({ selectedMeeting }),
+
+  setCalendarContext: (calendarContext) => set({ calendarContext }),
+
+  setActiveCalendarContext: (activeCalendarContext) => set({ activeCalendarContext }),
+
+  setLastCompletedNoteId: (lastCompletedNoteId) => set({ lastCompletedNoteId }),
 
   setSettings: (settings) => set({ settings }),
 

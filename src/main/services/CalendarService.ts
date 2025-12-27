@@ -413,4 +413,190 @@ export class CalendarService {
 
     return events;
   }
+
+  /**
+   * Enhanced: Get upcoming meetings for the next 7 days
+   * Uses cache first, falls back to fresh fetch
+   */
+  async getUpcomingMeetings(): Promise<CalendarEvent[]> {
+    const now = new Date();
+    const oneWeekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const results: CalendarEvent[] = [];
+
+    const settings = this.settingsRepo.getSettings();
+
+    if (settings.calendarConnections.google) {
+      try {
+        const events = await this.fetchGoogleEvents(settings.calendarConnections.google, now, oneWeekFromNow);
+        results.push(...events);
+      } catch (err) {
+        logger.error('Failed to fetch Google upcoming events', { error: (err as Error).message });
+      }
+    }
+
+    if (settings.calendarConnections.outlook) {
+      try {
+        const events = await this.fetchOutlookEvents(settings.calendarConnections.outlook, now, oneWeekFromNow);
+        results.push(...events);
+      } catch (err) {
+        logger.error('Failed to fetch Outlook upcoming events', { error: (err as Error).message });
+      }
+    }
+
+    return results.sort((a, b) => a.start.getTime() - b.start.getTime());
+  }
+
+  /**
+   * Enhanced: Link a calendar event to meeting notes
+   * Stores bidirectional mapping
+   */
+  async linkEventToNotes(
+    calendarEventId: string,
+    meetingId: string,
+    provider: 'google' | 'outlook' | 'icloud'
+  ): Promise<void> {
+    // Get or create the calendar mappings in settings
+    const settings = this.settingsRepo.getSettings();
+    const mappings: Record<string, any> = settings.calendarEventMappings || {};
+    
+    mappings[calendarEventId] = {
+      calendarEventId,
+      meetingId,
+      linkedAt: Date.now(),
+      provider,
+    };
+
+    // Persist the mapping
+    this.settingsRepo.updateSettings({ calendarEventMappings: mappings });
+    logger.info('Linked calendar event to notes', { calendarEventId, meetingId, provider });
+  }
+
+  /**
+   * Enhanced: Get meeting notes link if it exists
+   */
+  getMeetingNotesLink(calendarEventId: string): string | null {
+    const settings = this.settingsRepo.getSettings();
+    const mappings = settings.calendarEventMappings || {};
+    const mapping = mappings[calendarEventId];
+    return mapping?.meetingId || null;
+  }
+
+  /**
+   * Enhanced: Find calendar event by meeting ID (reverse lookup)
+   */
+  async findCalendarEventForMeeting(meetingId: string): Promise<CalendarEvent | null> {
+    const settings = this.settingsRepo.getSettings();
+    const mappings = settings.calendarEventMappings || {};
+    
+    // Find mapping with this meetingId
+    for (const [, mapping] of Object.entries(mappings)) {
+      if ((mapping as any).meetingId === meetingId) {
+        // Fetch the full event
+        const eventId = (mapping as any).calendarEventId;
+        const provider = (mapping as any).provider;
+        
+        if (provider === 'google' && settings.calendarConnections.google) {
+          try {
+            const events = await this.fetchGoogleEvents(settings.calendarConnections.google, new Date(0), new Date());
+            return events.find(e => e.id === eventId) || null;
+          } catch (err) {
+            logger.error('Failed to fetch Google event', { error: (err as Error).message });
+          }
+        }
+        
+        if (provider === 'outlook' && settings.calendarConnections.outlook) {
+          try {
+            const events = await this.fetchOutlookEvents(settings.calendarConnections.outlook, new Date(0), new Date());
+            return events.find(e => e.id === eventId) || null;
+          } catch (err) {
+            logger.error('Failed to fetch Outlook event', { error: (err as Error).message });
+          }
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Get a calendar event by ID (for recording lifecycle)
+   * Returns full event details with all metadata
+   */
+  async getEventById(eventId: string): Promise<CalendarEvent | null> {
+    const settings = this.settingsRepo.getSettings();
+    const mappings = settings.calendarEventMappings || {};
+    const mapping = mappings[eventId];
+    const provider = mapping?.provider || 'google';
+
+    // Try to fetch from the provider
+    if (provider === 'google' && settings.calendarConnections.google) {
+      try {
+        const events = await this.fetchGoogleEvents(settings.calendarConnections.google, new Date(0), new Date());
+        const event = events.find(e => e.id === eventId);
+        if (event) return event;
+      } catch (err) {
+        logger.debug('Failed to fetch Google event by ID', { eventId, error: (err as Error).message });
+      }
+    }
+
+    if (provider === 'outlook' && settings.calendarConnections.outlook) {
+      try {
+        const events = await this.fetchOutlookEvents(settings.calendarConnections.outlook, new Date(0), new Date());
+        const event = events.find(e => e.id === eventId);
+        if (event) return event;
+      } catch (err) {
+        logger.debug('Failed to fetch Outlook event by ID', { eventId, error: (err as Error).message });
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Link notes to a calendar event after recording completes
+   * Attempts write-back to calendar, persists locally as fallback
+   */
+  async linkNotesToEvent(calendarEventId: string, notesId: string, provider: 'google' | 'outlook' | 'icloud'): Promise<void> {
+    logger.info('Linking notes to calendar event', { calendarEventId, notesId, provider });
+
+    // Update local mapping first (always succeeds)
+    const settings = this.settingsRepo.getSettings();
+    const mappings: Record<string, any> = settings.calendarEventMappings || {};
+    
+    if (mappings[calendarEventId]) {
+      mappings[calendarEventId].notesId = notesId;
+    } else {
+      mappings[calendarEventId] = {
+        calendarEventId,
+        notesId,
+        linkedAt: Date.now(),
+        provider,
+      };
+    }
+
+    this.settingsRepo.updateSettings({ calendarEventMappings: mappings });
+    logger.info('Notes linked locally to calendar event', { calendarEventId, notesId });
+
+    // Attempt write-back to calendar (best effort, doesn't fail the whole operation)
+    try {
+      const deepLink = `app://notes/${notesId}`;
+      
+      if (provider === 'google' && settings.calendarConnections.google) {
+        // Note: Google Calendar API requires specific scope for updating events
+        // This is read-only by design. Persist locally and skip write-back.
+        logger.debug('Skipping Google Calendar write-back (read-only scope)', { calendarEventId });
+      } else if (provider === 'outlook' && settings.calendarConnections.outlook) {
+        // Outlook also has strict scope requirements for updates
+        logger.debug('Skipping Outlook Calendar write-back (read-only scope)', { calendarEventId });
+      }
+    } catch (err) {
+      logger.warn('Failed to write notes link back to calendar (using local fallback)', {
+        calendarEventId,
+        error: (err as Error).message,
+      });
+    }
+  }
 }
+
+

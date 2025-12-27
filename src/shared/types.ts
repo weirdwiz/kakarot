@@ -98,6 +98,7 @@ export interface AppSettings {
   authApiBaseUrl: string;
   hostedAuthToken: string;
   calendarConnections: CalendarConnections;
+  calendarEventMappings?: Record<string, CalendarEventMapping>;
 }
 
 // IPC payloads
@@ -120,4 +121,19 @@ export interface CalendarEvent {
   location?: string;
   attendees?: string[];
   description?: string;
+}
+
+// Enhanced calendar meeting with notes linking
+export interface CalendarMeeting extends CalendarEvent {
+  notesId?: string; // Links to recording/notes if available
+  hasNotes: boolean; // Computed: true if notesId exists
+}
+
+// Mapping between calendar events and notes/recordings
+export interface CalendarEventMapping {
+  calendarEventId: string;
+  meetingId?: string; // Our internal recording ID
+  notesId?: string;
+  linkedAt: number; // epoch ms
+  provider: 'google' | 'outlook' | 'icloud';
 }

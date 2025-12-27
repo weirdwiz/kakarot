@@ -2,6 +2,7 @@ import { MeetingRepository, CalloutRepository, SettingsRepository } from '../dat
 import { OpenAIProvider } from '../providers/OpenAIProvider';
 import { createLogger } from './logger';
 import { CalendarService } from '../services/CalendarService';
+import { NoteGenerationService } from '../services/NoteGenerationService';
 
 const logger = createLogger('Container');
 
@@ -11,6 +12,7 @@ export interface AppContainer {
   settingsRepo: SettingsRepository;
   aiProvider: OpenAIProvider | null;
   calendarService: CalendarService;
+  noteGenerationService: NoteGenerationService;
 }
 
 let container: AppContainer | null = null;
@@ -26,12 +28,31 @@ export function initializeContainer(): AppContainer {
   settingsRepo.initializeDefaults();
 
   // Create AI provider if API key is available
-  const settings = settingsRepo.getSettings();
-  const aiProvider = settings.openAiApiKey ? new OpenAIProvider({ apiKey: settings.openAiApiKey }) : null;
+  let settings = settingsRepo.getSettings();
+
+  // Force OpenAI API base URL if still pointing to RouteLLM
+  if (settings.openAiBaseUrl && /routellm\.abacus\.ai/i.test(settings.openAiBaseUrl)) {
+    settingsRepo.updateSettings({
+      openAiBaseUrl: 'https://api.openai.com/v1',
+      openAiModel: settings.openAiModel || 'gpt-4o',
+    });
+    settings = settingsRepo.getSettings();
+  }
+  const aiProvider = settings.openAiApiKey
+    ? new OpenAIProvider({
+        apiKey: settings.openAiApiKey,
+        baseURL: settings.openAiBaseUrl || undefined,
+        defaultModel: settings.openAiModel || undefined,
+      })
+    : null;
 
   if (!aiProvider) {
     logger.warn('OpenAI API key not configured - AI features disabled');
   }
+
+  // Initialize note generation service
+  const noteGenerationService = new NoteGenerationService();
+  noteGenerationService.initialize(settings);
 
   container = {
     meetingRepo,
@@ -39,6 +60,7 @@ export function initializeContainer(): AppContainer {
     settingsRepo,
     aiProvider,
     calendarService,
+    noteGenerationService,
   };
 
   logger.info('Container initialized');

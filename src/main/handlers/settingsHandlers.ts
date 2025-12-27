@@ -18,6 +18,8 @@ export function registerSettingsHandlers(): void {
       const currentSettings = settingsRepo.getSettings();
       refreshAIProvider({
         apiKey: currentSettings.openAiApiKey,
+        baseURL: currentSettings.openAiBaseUrl || undefined,
+        defaultModel: currentSettings.openAiModel || undefined,
       });
     }
   });

@@ -35,6 +35,8 @@ export const IPC_CHANNELS = {
   // Post-processing
   MEETING_SUMMARIZE: 'meeting:summarize',
   MEETING_EXPORT: 'meeting:export',
+  MEETING_NOTES_GENERATING: 'meeting:notesGenerating',
+  MEETING_NOTES_COMPLETE: 'meeting:notesComplete',
 
   // Knowledge base
   KNOWLEDGE_INDEX: 'knowledge:index',
@@ -44,6 +46,10 @@ export const IPC_CHANNELS = {
   CALENDAR_CONNECT: 'calendar:connect',
   CALENDAR_DISCONNECT: 'calendar:disconnect',
   CALENDAR_LIST_TODAY: 'calendar:listToday',
+  CALENDAR_GET_UPCOMING: 'calendar:getUpcoming',
+  CALENDAR_LINK_EVENT: 'calendar:linkEvent',
+  CALENDAR_GET_EVENT_FOR_MEETING: 'calendar:getEventForMeeting',
+  CALENDAR_LINK_NOTES: 'calendar:linkNotes',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

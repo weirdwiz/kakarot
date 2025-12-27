@@ -29,4 +29,47 @@ export function registerCalendarHandlers(): void {
       return calendarService.disconnect(provider);
     }
   );
+
+  ipcMain.handle(IPC_CHANNELS.CALENDAR_GET_UPCOMING, async () => {
+    const { calendarService } = getContainer();
+    logger.debug('Handling CALENDAR_GET_UPCOMING');
+    return calendarService.getUpcomingMeetings();
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.CALENDAR_LINK_EVENT,
+    async (
+      _event,
+      calendarEventId: string,
+      meetingId: string,
+      provider: 'google' | 'outlook' | 'icloud'
+    ) => {
+      const { calendarService } = getContainer();
+      logger.debug('Handling CALENDAR_LINK_EVENT', { calendarEventId, meetingId, provider });
+      return calendarService.linkEventToNotes(calendarEventId, meetingId, provider);
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.CALENDAR_GET_EVENT_FOR_MEETING,
+    async (_event, meetingId: string) => {
+      const { calendarService } = getContainer();
+      logger.debug('Handling CALENDAR_GET_EVENT_FOR_MEETING', { meetingId });
+      return calendarService.findCalendarEventForMeeting(meetingId);
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.CALENDAR_LINK_NOTES,
+    async (
+      _event,
+      calendarEventId: string,
+      notesId: string,
+      provider: 'google' | 'outlook' | 'icloud'
+    ) => {
+      const { calendarService } = getContainer();
+      logger.debug('Handling CALENDAR_LINK_NOTES', { calendarEventId, notesId, provider });
+      return calendarService.linkNotesToEvent(calendarEventId, notesId, provider);
+    }
+  );
 }

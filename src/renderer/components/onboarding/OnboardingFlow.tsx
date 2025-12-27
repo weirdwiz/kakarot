@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import WelcomeStep from './WelcomeStep';
 import SignInStep from './SignInStep';
-import CalendarStep from './CalendarStep';
 import AudioPermissionsStep from './AudioPermissionsStep';
 import CompletionStep from './CompletionStep';
 
-export type OnboardingStep = 'welcome' | 'signin' | 'calendar' | 'audio' | 'complete';
+export type OnboardingStep = 'welcome' | 'signin' | 'audio' | 'complete';
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -20,7 +19,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     provider?: 'google' | 'microsoft' | 'apple';
   } | null>(null);
 
-  const steps: OnboardingStep[] = ['welcome', 'signin', 'calendar', 'audio', 'complete'];
+  const steps: OnboardingStep[] = ['welcome', 'signin', 'audio', 'complete'];
   const currentStepIndex = steps.indexOf(currentStep);
 
   const goToStep = (step: OnboardingStep) => {
@@ -67,9 +66,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 nextStep();
               }}
             />
-          )}
-          {currentStep === 'calendar' && (
-            <CalendarStep onSuccess={nextStep} />
           )}
           {currentStep === 'audio' && (
             <AudioPermissionsStep onSuccess={nextStep} />
