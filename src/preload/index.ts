@@ -7,9 +7,8 @@ import type {
   AudioLevels,
   TranscriptUpdate,
   Callout,
-  CalendarListResult,
-  CalendarProvider,
-  CalendarConnectionStatus,
+  CalendarEvent,
+  CalendarConnections,
 } from '@shared/types';
 
 // Expose protected methods to the renderer process
@@ -99,21 +98,22 @@ contextBridge.exposeInMainWorld('kakarot', {
 
   // Calendar
   calendar: {
-    listToday: (): Promise<CalendarListResult> =>
+    connect: (
+      provider: 'google' | 'outlook' | 'icloud',
+      payload?: { appleId: string; appPassword: string }
+    ): Promise<CalendarConnections> => ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_CONNECT, provider, payload),
+    disconnect: (provider: 'google' | 'outlook' | 'icloud'): Promise<CalendarConnections> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_DISCONNECT, provider),
+    listToday: (): Promise<CalendarEvent[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_LIST_TODAY),
-    oauth: {
-      start: (provider: CalendarProvider): Promise<{ success: boolean; error?: string }> =>
-        ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_OAUTH_START, provider),
-      disconnect: (provider: CalendarProvider): Promise<{ success: boolean; error?: string }> =>
-        ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_OAUTH_DISCONNECT, provider),
-      getStatus: (): Promise<CalendarConnectionStatus> =>
-        ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_OAUTH_STATUS),
-    },
-    credentials: {
-      save: (provider: CalendarProvider, clientId: string, clientSecret?: string): Promise<{ success: boolean; error?: string }> =>
-        ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_CREDENTIALS_SAVE, provider, clientId, clientSecret),
-      get: (provider: CalendarProvider): Promise<{ clientId: string; clientSecret?: string } | null> =>
-        ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_CREDENTIALS_GET, provider),
+  },
+
+  // Dev utilities
+  dev: {
+    onResetOnboarding: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on('dev:reset-onboarding', handler);
+      return () => ipcRenderer.removeListener('dev:reset-onboarding', handler);
     },
   },
 });
@@ -159,16 +159,15 @@ declare global {
         search: (query: string) => Promise<unknown[]>;
       };
       calendar: {
-        listToday: () => Promise<CalendarListResult>;
-        oauth: {
-          start: (provider: CalendarProvider) => Promise<{ success: boolean; error?: string }>;
-          disconnect: (provider: CalendarProvider) => Promise<{ success: boolean; error?: string }>;
-          getStatus: () => Promise<CalendarConnectionStatus>;
-        };
-        credentials: {
-          save: (provider: CalendarProvider, clientId: string, clientSecret?: string) => Promise<{ success: boolean; error?: string }>;
-          get: (provider: CalendarProvider) => Promise<{ clientId: string; clientSecret?: string } | null>;
-        };
+        connect: (
+          provider: 'google' | 'outlook' | 'icloud',
+          payload?: { appleId: string; appPassword: string }
+        ) => Promise<CalendarConnections>;
+        disconnect: (provider: 'google' | 'outlook' | 'icloud') => Promise<CalendarConnections>;
+        listToday: () => Promise<CalendarEvent[]>;
+      };
+      dev: {
+        onResetOnboarding: (callback: () => void) => () => void;
       };
     };
   }

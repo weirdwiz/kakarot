@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { ChevronDown, Plus, X } from 'lucide-react';
+import type { Meeting } from '@shared/types';
 
 interface MeetingTypeOption {
   id: string;

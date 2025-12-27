@@ -17,7 +17,8 @@ export interface ChatOptions {
 }
 
 export interface OpenAIProviderConfig {
-  apiKey: string;
+  apiKey?: string;
+  tokenProvider?: () => Promise<string | null>;
   baseURL?: string;
   defaultModel?: string;
 }
@@ -25,18 +26,36 @@ export interface OpenAIProviderConfig {
 export class OpenAIProvider {
   private client: OpenAI;
   private defaultModel: string;
+  private tokenProvider?: () => Promise<string | null>;
+  private baseURL?: string;
 
   constructor(config: OpenAIProviderConfig) {
     this.client = new OpenAI({
-      apiKey: config.apiKey,
+      apiKey: config.apiKey || '',
       baseURL: config.baseURL,
     });
     this.defaultModel = config.defaultModel || AI_MODELS.GPT4O;
-    logger.info('OpenAI provider initialized', { baseURL: config.baseURL || 'default' });
+    this.tokenProvider = config.tokenProvider;
+    this.baseURL = config.baseURL;
+    logger.info('OpenAI provider initialized', { baseURL: config.baseURL || 'default', hosted: !!config.tokenProvider });
+  }
+
+  private async getClient(): Promise<OpenAI> {
+    if (!this.tokenProvider) {
+      return this.client;
+    }
+
+    const token = await this.tokenProvider();
+    if (!token) {
+      throw new Error('OpenAI token unavailable');
+    }
+
+    return new OpenAI({ apiKey: token, baseURL: this.baseURL });
   }
 
   async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<string> {
-    const response = await this.client.chat.completions.create({
+    const client = await this.getClient();
+    const response = await client.chat.completions.create({
       model: options.model || this.defaultModel,
       messages,
       temperature: options.temperature ?? 0.3,
@@ -55,7 +74,8 @@ export class OpenAIProvider {
   }
 
   async embed(text: string): Promise<number[]> {
-    const response = await this.client.embeddings.create({
+    const client = await this.getClient();
+    const response = await client.embeddings.create({
       model: AI_MODELS.EMBEDDING_SMALL,
       input: text,
     });
@@ -63,7 +83,8 @@ export class OpenAIProvider {
   }
 
   async embedBatch(texts: string[]): Promise<number[][]> {
-    const response = await this.client.embeddings.create({
+    const client = await this.getClient();
+    const response = await client.embeddings.create({
       model: AI_MODELS.EMBEDDING_SMALL,
       input: texts,
     });

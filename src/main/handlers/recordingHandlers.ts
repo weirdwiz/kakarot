@@ -22,7 +22,7 @@ export function registerRecordingHandlers(
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_START, async () => {
     logger.info('Recording start requested');
-    const { meetingRepo, settingsRepo } = getContainer();
+    const { meetingRepo, settingsRepo, hostedTokenManager } = getContainer();
     const settings = settingsRepo.getSettings();
     logger.debug('Transcription provider', { provider: settings.transcriptionProvider });
 
@@ -34,7 +34,9 @@ export function registerRecordingHandlers(
     transcriptionProvider = createTranscriptionProvider(
       settings.transcriptionProvider,
       settings.assemblyAiApiKey,
-      settings.deepgramApiKey
+      settings.deepgramApiKey,
+      hostedTokenManager,
+      settings.useHostedTokens
     );
     logger.info('Using transcription provider', { name: transcriptionProvider.name });
 

@@ -1,34 +1,39 @@
 import React from 'react';
-import type { CalendarEvent } from '@shared/types';
-import { Calendar, FileText, Clipboard } from 'lucide-react';
-import { formatTimeShort } from '@renderer/lib/formatters';
+import type { CalendarEvent } from '../../../shared/types';
+import { Calendar, Video, FileText, Clipboard } from 'lucide-react';
 
 interface CompactMeetingBarProps {
   event: CalendarEvent | null;
   isRecording: boolean;
   onStartNotes: () => void;
+  onJoin?: () => void;
   onPrep?: () => void;
-}
-
-function getMinutesUntil(start: Date): number {
-  return Math.floor((new Date(start).getTime() - Date.now()) / 60000);
-}
-
-function getPlatformIcon(location?: string): string | null {
-  if (!location) return null;
-  const lower = location.toLowerCase();
-  if (lower.includes('zoom')) return 'Zoom';
-  if (lower.includes('meet') || lower.includes('google')) return 'Meet';
-  if (lower.includes('teams')) return 'Teams';
-  return null;
 }
 
 export default function CompactMeetingBar({
   event,
   isRecording,
   onStartNotes,
+  onJoin,
   onPrep,
 }: CompactMeetingBarProps) {
+  const formatTime = (date: Date): string => {
+    return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const getMinutesUntil = (start: Date): number => {
+    return Math.floor((new Date(start).getTime() - Date.now()) / 60000);
+  };
+
+  const getPlatformIcon = (location?: string) => {
+    if (!location) return null;
+    const lower = location.toLowerCase();
+    if (lower.includes('zoom')) return 'Zoom';
+    if (lower.includes('meet') || lower.includes('google')) return 'Meet';
+    if (lower.includes('teams')) return 'Teams';
+    return null;
+  };
+
   if (!event) {
     return (
       <div className="w-full rounded-xl border border-white/30 dark:border-white/10 bg-white/70 dark:bg-graphite/80 backdrop-blur-md shadow-soft-card px-4 py-2 flex items-center justify-between">
@@ -75,7 +80,7 @@ export default function CompactMeetingBar({
             )}
           </div>
           <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
-            {formatTimeShort(event.start)} – {formatTimeShort(event.end)}
+            {formatTime(event.start)} – {formatTime(event.end)}
           </p>
         </div>
       </div>

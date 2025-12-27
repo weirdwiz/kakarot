@@ -3,6 +3,7 @@ import type { LucideIcon } from 'lucide-react';
 import { Clipboard, FileText, CheckSquare } from 'lucide-react';
 
 interface ContextPanelProps {
+  selectedMeetingId?: string;
   prepItems?: string[];
   recentNotes?: string[];
   actionItems?: { text: string; completed: boolean }[];
@@ -38,6 +39,7 @@ function SectionEmptyState({ message, bgClass, borderClass }: SectionEmptyStateP
 }
 
 export default function ContextPanel({
+  selectedMeetingId,
   prepItems = [],
   recentNotes = [],
   actionItems = [],
