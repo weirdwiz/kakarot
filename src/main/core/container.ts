@@ -34,7 +34,17 @@ export function initializeContainer(): AppContainer {
   settingsRepo.initializeDefaults();
 
   // Create AI provider if API key is available
-  const settings = settingsRepo.getSettings();
+  let settings = settingsRepo.getSettings();
+
+  // Force OpenAI API base URL if still pointing to RouteLLM
+  if (settings.openAiBaseUrl && /routellm\.abacus\.ai/i.test(settings.openAiBaseUrl)) {
+    settingsRepo.updateSettings({
+      openAiBaseUrl: 'https://api.openai.com/v1',
+      openAiModel: settings.openAiModel || 'gpt-4o',
+    });
+    settings = settingsRepo.getSettings();
+  }
+
   const aiProvider = settings.openAiApiKey
     ? new OpenAIProvider({
         apiKey: settings.openAiApiKey,

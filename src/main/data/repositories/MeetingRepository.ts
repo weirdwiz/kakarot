@@ -10,11 +10,11 @@ let currentMeetingId: string | null = null;
 let meetingStartTime: number | null = null;
 
 export class MeetingRepository {
-  async startNewMeeting(): Promise<string> {
+  async startNewMeeting(title?: string): Promise<string> {
     const db = getDatabase();
     const id = uuidv4();
     const now = Date.now();
-    const title = new Date(now).toLocaleString('en-US', {
+    const meetingTitle = title || new Date(now).toLocaleString('en-US', {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
@@ -22,12 +22,12 @@ export class MeetingRepository {
       minute: '2-digit',
     });
 
-    db.run('INSERT INTO meetings (id, title, created_at) VALUES (?, ?, ?)', [id, title, now]);
+    db.run('INSERT INTO meetings (id, title, created_at) VALUES (?, ?, ?)', [id, meetingTitle, now]);
     currentMeetingId = id;
     meetingStartTime = now;
     saveDatabase();
 
-    logger.info('Started new meeting', { id, title });
+    logger.info('Started new meeting', { id, title: meetingTitle });
     return id;
   }
 
