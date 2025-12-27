@@ -1,28 +1,14 @@
-import { app } from 'electron';
-import { join } from 'path';
-import type { ITranscriptionProvider } from './transcription';
-import { createLogger } from '../core/logger';
+import type { ITranscriptionProvider } from '@main/services/transcription';
+import { createLogger } from '@main/core/logger';
+import { AudioBackendFactory, IAudioCaptureBackend, AudioChunk } from '@main/services/audio';
+import { AUDIO_CONFIG } from '@main/config/constants';
 
 const logger = createLogger('SystemAudio');
 
 type AudioLevelCallback = (level: number) => void;
-type AudioTeeType = any; // Will be imported dynamically
-
-// Get the correct path to the audiotee binary
-// In development: node_modules/audiotee/bin/audiotee
-// In production: resources/audiotee (needs to be configured in electron-builder)
-function getAudioTeeBinaryPath(): string {
-  if (app.isPackaged) {
-    // Production: binary should be in resources directory
-    return join(process.resourcesPath, 'audiotee');
-  } else {
-    // Development: __dirname is dist/main, so go up 2 levels to project root
-    return join(__dirname, '..', '..', 'node_modules', 'audiotee', 'bin', 'audiotee');
-  }
-}
 
 export class SystemAudioService {
-  private audiotee: AudioTeeType | null = null;
+  private backend: IAudioCaptureBackend | null = null;
   private transcriptionProvider: ITranscriptionProvider | null = null;
   private audioLevelCallback: AudioLevelCallback | null = null;
   private capturing: boolean = false;
@@ -37,23 +23,18 @@ export class SystemAudioService {
       return;
     }
 
-    logger.info('Starting system audio capture');
+    logger.info('Starting system audio capture', { platform: process.platform });
     this.transcriptionProvider = transcriptionProvider;
 
-    const binaryPath = getAudioTeeBinaryPath();
-    logger.debug('AudioTee binary path', { path: binaryPath });
-
-    // Dynamically import AudioTee to handle ESM in CommonJS
-    const { AudioTee } = await import('audiotee');
-
-    this.audiotee = new AudioTee({
-      sampleRate: 48000, // Match AssemblyAI requirement (also switches to 16-bit signed int)
-      chunkDurationMs: 256, // ~12288 samples at 48kHz
-      binaryPath,
+    // Create platform-specific backend
+    this.backend = await AudioBackendFactory.create({
+      sampleRate: AUDIO_CONFIG.SAMPLE_RATE,
+      chunkDurationMs: AUDIO_CONFIG.CHUNK_DURATION_MS,
+      channels: AUDIO_CONFIG.CHANNELS,
     });
 
     let chunkCount = 0;
-    this.audiotee.on('data', (chunk: { data: Buffer }) => {
+    this.backend.on('data', (chunk: AudioChunk) => {
       chunkCount++;
       if (chunkCount <= 3 || chunkCount % 50 === 0) {
         logger.debug('Audio chunk received', { chunk: chunkCount, bytes: chunk.data.length });
@@ -64,14 +45,13 @@ export class SystemAudioService {
       }
 
       // Convert Node.js Buffer to ArrayBuffer for transcription provider
-      // Use Uint8Array.from to create a proper ArrayBuffer copy
       const uint8Array = new Uint8Array(chunk.data);
       const arrayBuffer = uint8Array.buffer.slice(
         uint8Array.byteOffset,
         uint8Array.byteOffset + uint8Array.byteLength
       );
 
-      // Calculate RMS level for UI visualization (same algorithm as AudioWorklet)
+      // Calculate RMS level for UI visualization
       const level = this.calculateRmsLevel(chunk.data);
 
       if (this.audioLevelCallback) {
@@ -81,35 +61,32 @@ export class SystemAudioService {
       this.transcriptionProvider.sendAudio(arrayBuffer, 'system');
     });
 
-    this.audiotee.on('start', () => {
-      logger.info('AudioTee started');
+    this.backend.on('start', () => {
+      logger.info('Audio backend started');
       this.capturing = true;
     });
 
-    this.audiotee.on('stop', () => {
-      logger.info('AudioTee stopped');
+    this.backend.on('stop', () => {
+      logger.info('Audio backend stopped');
       this.capturing = false;
     });
 
-    this.audiotee.on('error', (error: Error) => {
-      logger.error('AudioTee error', error);
-    });
-
-    this.audiotee.on('log', (level: string, message: { message: string }) => {
-      logger.debug('AudioTee log', { level, message: message.message });
+    this.backend.on('error', (error: Error) => {
+      logger.error('Audio backend error', error);
     });
 
     try {
-      await this.audiotee.start();
+      await this.backend.start();
     } catch (error) {
-      logger.error('Failed to start AudioTee', error as Error);
-      this.audiotee = null;
+      logger.error('Failed to start audio backend', error as Error);
+      this.backend = null;
       this.transcriptionProvider = null;
+      throw error;
     }
   }
 
   async stop(): Promise<void> {
-    if (!this.audiotee) {
+    if (!this.backend) {
       return;
     }
 
@@ -117,12 +94,12 @@ export class SystemAudioService {
     this.capturing = false;
 
     try {
-      await this.audiotee.stop();
+      await this.backend.stop();
     } catch (error) {
-      logger.error('Error stopping AudioTee', error as Error);
+      logger.error('Error stopping audio backend', error as Error);
     }
 
-    this.audiotee = null;
+    this.backend = null;
     this.transcriptionProvider = null;
     this.audioLevelCallback = null;
   }
