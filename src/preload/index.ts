@@ -7,6 +7,9 @@ import type {
   AudioLevels,
   TranscriptUpdate,
   Callout,
+  CalendarListResult,
+  CalendarProvider,
+  CalendarConnectionStatus,
 } from '@shared/types';
 
 // Expose protected methods to the renderer process
@@ -93,6 +96,26 @@ contextBridge.exposeInMainWorld('kakarot', {
     search: (query: string): Promise<unknown[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.KNOWLEDGE_SEARCH, query),
   },
+
+  // Calendar
+  calendar: {
+    listToday: (): Promise<CalendarListResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_LIST_TODAY),
+    oauth: {
+      start: (provider: CalendarProvider): Promise<{ success: boolean; error?: string }> =>
+        ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_OAUTH_START, provider),
+      disconnect: (provider: CalendarProvider): Promise<{ success: boolean; error?: string }> =>
+        ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_OAUTH_DISCONNECT, provider),
+      getStatus: (): Promise<CalendarConnectionStatus> =>
+        ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_OAUTH_STATUS),
+    },
+    credentials: {
+      save: (provider: CalendarProvider, clientId: string, clientSecret?: string): Promise<{ success: boolean; error?: string }> =>
+        ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_CREDENTIALS_SAVE, provider, clientId, clientSecret),
+      get: (provider: CalendarProvider): Promise<{ clientId: string; clientSecret?: string } | null> =>
+        ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_CREDENTIALS_GET, provider),
+    },
+  },
 });
 
 // TypeScript declaration for window.kakarot
@@ -134,6 +157,18 @@ declare global {
       knowledge: {
         index: (path: string) => Promise<void>;
         search: (query: string) => Promise<unknown[]>;
+      };
+      calendar: {
+        listToday: () => Promise<CalendarListResult>;
+        oauth: {
+          start: (provider: CalendarProvider) => Promise<{ success: boolean; error?: string }>;
+          disconnect: (provider: CalendarProvider) => Promise<{ success: boolean; error?: string }>;
+          getStatus: () => Promise<CalendarConnectionStatus>;
+        };
+        credentials: {
+          save: (provider: CalendarProvider, clientId: string, clientSecret?: string) => Promise<{ success: boolean; error?: string }>;
+          get: (provider: CalendarProvider) => Promise<{ clientId: string; clientSecret?: string } | null>;
+        };
       };
     };
   }

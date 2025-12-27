@@ -14,6 +14,8 @@ export function createMainWindow(): BrowserWindow {
       sandbox: false, // Required for sql.js WASM loading
     },
     titleBarStyle: 'hiddenInset',
+    // Fine-tune macOS traffic light position (approx. 0.1–0.2 cm left shift)
+    trafficLightPosition: { x: 6, y: 10 },
     show: false,
   });
 
