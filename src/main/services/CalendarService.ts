@@ -33,7 +33,7 @@ export class CalendarService {
         const clientId = process.env.GOOGLE_CLIENT_ID;
         const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
         if (!clientId || !clientSecret) {
-          throw new Error('Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET');
+          throw new Error('Google Calendar is not configured. Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET.');
         }
 
         const tokens = await this.runOAuthFlow({
@@ -57,7 +57,7 @@ export class CalendarService {
         const clientId = process.env.OUTLOOK_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID;
         const clientSecret = process.env.OUTLOOK_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET;
         if (!clientId || !clientSecret) {
-          throw new Error('Missing OUTLOOK_CLIENT_ID/SECRET');
+          throw new Error('Microsoft Calendar is not configured. Missing OUTLOOK_CLIENT_ID or MICROSOFT_CLIENT_ID.');
         }
 
         const tokens = await this.runOAuthFlow({

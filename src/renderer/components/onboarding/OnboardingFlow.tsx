@@ -6,7 +6,7 @@ import AudioPermissionsStep from './AudioPermissionsStep';
 import CalloutSetupStep from './CalloutSetupStep';
 import CompletionStep from './CompletionStep';
 
-export type OnboardingStep = 'welcome' | 'signin' | 'calendar' | 'audio' | 'callout' | 'complete';
+export type OnboardingStep = 'welcome' | 'signin' | 'calendar' | 'audio' | 'complete';
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -21,7 +21,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     provider?: 'google' | 'microsoft' | 'apple';
   } | null>(null);
 
-  const steps: OnboardingStep[] = ['welcome', 'signin', 'calendar', 'audio', 'callout', 'complete'];
+  const steps: OnboardingStep[] = ['welcome', 'signin', 'calendar', 'audio', 'complete'];
   const currentStepIndex = steps.indexOf(currentStep);
 
   const goToStep = (step: OnboardingStep) => {
@@ -35,10 +35,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     } else {
       onComplete();
     }
-  };
-
-  const skipToEnd = () => {
-    setCurrentStep('complete');
   };
 
   return (
@@ -63,7 +59,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         {/* Step content */}
         <div className="bg-gray-900 rounded-2xl p-8 shadow-xl border border-gray-800">
           {currentStep === 'welcome' && (
-            <WelcomeStep onContinue={nextStep} onSkip={skipToEnd} />
+            <WelcomeStep onContinue={nextStep} />
           )}
           {currentStep === 'signin' && (
             <SignInStep
@@ -71,21 +67,13 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 setUserData(data);
                 nextStep();
               }}
-              onSkip={nextStep}
             />
           )}
           {currentStep === 'calendar' && (
-            <CalendarStep onSuccess={nextStep} onSkip={nextStep} />
+            <CalendarStep onSuccess={nextStep} />
           )}
           {currentStep === 'audio' && (
             <AudioPermissionsStep onSuccess={nextStep} />
-          )}
-          {currentStep === 'callout' && (
-            <CalloutSetupStep
-              userName={userData?.name || ''}
-              onComplete={nextStep}
-              onSkip={nextStep}
-            />
           )}
           {currentStep === 'complete' && (
             <CompletionStep userName={userData?.name} onFinish={onComplete} />

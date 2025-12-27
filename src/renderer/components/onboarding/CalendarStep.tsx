@@ -3,10 +3,9 @@ import { Calendar, Check } from 'lucide-react';
 
 interface CalendarStepProps {
   onSuccess: () => void;
-  onSkip: () => void;
 }
 
-export default function CalendarStep({ onSuccess, onSkip }: CalendarStepProps) {
+export default function CalendarStep({ onSuccess }: CalendarStepProps) {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [upcomingCount, setUpcomingCount] = useState(0);
@@ -73,18 +72,10 @@ export default function CalendarStep({ onSuccess, onSkip }: CalendarStepProps) {
         )}
 
         {error && (
-          <p className="text-sm text-red-400 text-center mt-3">{error}</p>
+          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg mt-3">
+            <p className="text-sm text-red-300 text-center">{error}</p>
+          </div>
         )}
-      </div>
-
-      <div className="text-center pt-2">
-        <button
-          onClick={onSkip}
-          disabled={isConnecting}
-          className="text-gray-500 hover:text-gray-400 text-sm transition-colors"
-        >
-          Skip this step
-        </button>
       </div>
     </div>
   );

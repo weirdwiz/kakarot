@@ -2,10 +2,9 @@ import React from 'react';
 
 interface WelcomeStepProps {
   onContinue: () => void;
-  onSkip: () => void;
 }
 
-export default function WelcomeStep({ onContinue, onSkip }: WelcomeStepProps) {
+export default function WelcomeStep({ onContinue }: WelcomeStepProps) {
   return (
     <div className="text-center space-y-6">
       {/* Logo placeholder */}
@@ -25,18 +24,12 @@ export default function WelcomeStep({ onContinue, onSkip }: WelcomeStepProps) {
         </p>
       </div>
 
-      <div className="pt-8 space-y-4">
+      <div className="pt-8">
         <button
           onClick={onContinue}
           className="w-full py-3 px-6 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-colors"
         >
-          Continue
-        </button>
-        <button
-          onClick={onSkip}
-          className="text-gray-500 hover:text-gray-400 text-sm transition-colors"
-        >
-          Skip for now
+          Get Started
         </button>
       </div>
     </div>
