@@ -3,7 +3,6 @@ import WelcomeStep from './WelcomeStep';
 import SignInStep from './SignInStep';
 import CalendarStep from './CalendarStep';
 import AudioPermissionsStep from './AudioPermissionsStep';
-import CalloutSetupStep from './CalloutSetupStep';
 import CompletionStep from './CompletionStep';
 
 export type OnboardingStep = 'welcome' | 'signin' | 'calendar' | 'audio' | 'complete';

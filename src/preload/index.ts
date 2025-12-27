@@ -107,6 +107,15 @@ contextBridge.exposeInMainWorld('kakarot', {
     listToday: (): Promise<CalendarEvent[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_LIST_TODAY),
   },
+
+  // Dev utilities
+  dev: {
+    onResetOnboarding: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on('dev:reset-onboarding', handler);
+      return () => ipcRenderer.removeListener('dev:reset-onboarding', handler);
+    },
+  },
 });
 
 // TypeScript declaration for window.kakarot
@@ -156,6 +165,9 @@ declare global {
         ) => Promise<CalendarConnections>;
         disconnect: (provider: 'google' | 'outlook' | 'icloud') => Promise<CalendarConnections>;
         listToday: () => Promise<CalendarEvent[]>;
+      };
+      dev: {
+        onResetOnboarding: (callback: () => void) => () => void;
       };
     };
   }

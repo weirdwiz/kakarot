@@ -10,15 +10,9 @@ interface OnboardingState {
     avatar?: string;
     provider?: 'google' | 'microsoft' | 'apple';
   } | null;
-  calloutSettings: {
-    name: string;
-    aliases: string[];
-    enableCallouts: boolean;
-  } | null;
 
   completeOnboarding: () => void;
   setUserData: (data: NonNullable<OnboardingState['userData']>) => void;
-  setCalloutSettings: (settings: NonNullable<OnboardingState['calloutSettings']>) => void;
   resetOnboarding: () => void;
 }
 
@@ -28,7 +22,6 @@ export const useOnboardingStore = create<OnboardingState>()(
       isCompleted: false,
       completedAt: null,
       userData: null,
-      calloutSettings: null,
 
       completeOnboarding: () =>
         set({
@@ -41,17 +34,11 @@ export const useOnboardingStore = create<OnboardingState>()(
           userData: data,
         }),
 
-      setCalloutSettings: (settings) =>
-        set({
-          calloutSettings: settings,
-        }),
-
       resetOnboarding: () =>
         set({
           isCompleted: false,
           completedAt: null,
           userData: null,
-          calloutSettings: null,
         }),
     }),
     {

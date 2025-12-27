@@ -170,11 +170,22 @@ export class CalendarService {
       }
     }
 
+    // Dev logging
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[OAuth ${config.provider}] Starting OAuth flow`);
+      console.log(`[OAuth ${config.provider}] Redirect URI: ${redirectUri}`);
+    }
+
     await shell.openExternal(authUrl.toString());
     logger.info('Opened OAuth browser flow', { provider: config.provider });
 
     const code = await redirectServer.waitForCode;
     redirectServer.close();
+
+    // Dev logging
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[OAuth ${config.provider}] Received authorization code`);
+    }
 
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
@@ -195,6 +206,9 @@ export class CalendarService {
 
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
+      if (process.env.NODE_ENV === 'development') {
+        console.error(`[OAuth ${config.provider}] Token exchange failed:`, errorText);
+      }
       throw new Error(`Token exchange failed: ${errorText}`);
     }
 
@@ -207,6 +221,12 @@ export class CalendarService {
       tokenType: tokenJson.token_type,
       idToken: tokenJson.id_token,
     };
+
+    // Dev logging
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[OAuth ${config.provider}] ✓ Tokens received successfully`);
+      console.log(`[OAuth ${config.provider}] Expires in: ${tokenJson.expires_in}s`);
+    }
 
     return tokens;
   }

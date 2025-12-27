@@ -13,7 +13,7 @@ import ThemeToggle from './components/ThemeToggle';
 export default function App() {
   const { view, setRecordingState, setAudioLevels, setPartialSegment, addTranscriptSegment, setSettings } =
     useAppStore();
-  const { isCompleted: onboardingCompleted, completeOnboarding } = useOnboardingStore();
+  const { isCompleted: onboardingCompleted, completeOnboarding, resetOnboarding } = useOnboardingStore();
   const [pillarTab, setPillarTab] = useState<'notes' | 'prep' | 'interact'>('notes');
 
   // Handler that merges incoming audio levels with existing state
@@ -29,6 +29,12 @@ export default function App() {
   useEffect(() => {
     // Load initial settings
     window.kakarot.settings.get().then(setSettings);
+
+    // Dev-only: Listen for onboarding reset shortcut (Cmd/Ctrl+Shift+O)
+    const unsubDevReset = window.kakarot.dev.onResetOnboarding(() => {
+      console.log('[DEV] Resetting onboarding via keyboard shortcut');
+      resetOnboarding();
+    });
 
     // Subscribe to recording state changes
     const unsubState = window.kakarot.recording.onStateChange(setRecordingState);
@@ -46,12 +52,13 @@ export default function App() {
     });
 
     return () => {
+      unsubDevReset();
       unsubState();
       unsubLevels();
       unsubTranscript();
       unsubFinal();
     };
-  }, [setRecordingState, handleAudioLevels, setPartialSegment, addTranscriptSegment, setSettings]);
+  }, [setRecordingState, handleAudioLevels, setPartialSegment, addTranscriptSegment, setSettings, resetOnboarding]);
 
   // Show onboarding if not completed
   if (!onboardingCompleted) {
