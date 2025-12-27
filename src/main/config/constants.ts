@@ -46,6 +46,9 @@ export const CALLOUT_CONFIG = {
 // Audio configuration
 export const AUDIO_CONFIG = {
   SAMPLE_RATE: 48000,
+  CHUNK_DURATION_MS: 256,
+  CHANNELS: 1,
+  BIT_DEPTH: 16,
   SILENCE_THRESHOLD: 10,
   PACKET_LOG_INTERVAL: 10,
 } as const;

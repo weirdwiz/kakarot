@@ -8,16 +8,19 @@ files:
   - dist/**/*
   - package.json
 
-# Bundle AudioTee binary for production
-extraResources:
-  - from: node_modules/audiotee/bin/audiotee
-    to: audiotee
+# Platform-specific audio capture binaries
+# macOS: audiotee binary
+# Windows: FFmpeg for WASAPI loopback
+# Linux: Uses system pw-record (PipeWire)
 
 mac:
   category: public.app-category.productivity
   target:
     - target: dmg
       arch: [universal]
+  extraResources:
+    - from: node_modules/audiotee/bin/audiotee
+      to: audiotee
   # Required for system audio capture
   extendInfo:
     NSMicrophoneUsageDescription: "Kakarot needs microphone access to transcribe your voice during meetings."
@@ -40,9 +43,16 @@ win:
   target:
     - target: nsis
       arch: [x64]
+  # FFmpeg is required for Windows audio capture
+  # Users should install FFmpeg or bundle it manually
+  # extraResources:
+  #   - from: resources/win/ffmpeg.exe
+  #     to: ffmpeg.exe
 
 linux:
   target:
     - target: AppImage
       arch: [x64]
   category: AudioVideo
+  # Linux requires PipeWire for system audio capture
+  # pw-record must be available in PATH (part of pipewire package)
