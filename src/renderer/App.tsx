@@ -1,14 +1,17 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { useAppStore } from './stores/appStore';
 import RecordingView from './components/RecordingView';
 import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
+import PrepView from './components/PrepView';
 import Sidebar from './components/Sidebar';
-import type { AudioLevels } from '@shared/types';
+import type { AudioLevels } from '../shared/types';
+import ThemeToggle from './components/ThemeToggle';
 
 export default function App() {
   const { view, setRecordingState, setAudioLevels, setPartialSegment, addTranscriptSegment, setSettings } =
     useAppStore();
+  const [pillarTab, setPillarTab] = useState<'notes' | 'prep' | 'interact'>('notes');
 
   // Handler that merges incoming audio levels with existing state
   // This allows main process to send partial updates (e.g., just { system: level })
@@ -48,13 +51,62 @@ export default function App() {
   }, [setRecordingState, handleAudioLevels, setPartialSegment, addTranscriptSegment, setSettings]);
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-[#F3F4F6] dark:bg-[#050505]">
       <Sidebar />
-      <main className="flex-1 overflow-hidden">
-        {view === 'recording' && <RecordingView />}
-        {view === 'history' && <HistoryView />}
-        {view === 'settings' && <SettingsView />}
-      </main>
+      <div className="flex-1 flex flex-col">
+        {/* Fixed Header */}
+        <header className="sticky top-0 z-30 backdrop-blur-md bg-white/70 dark:bg-[#0C0C0C]/80 border-b border-slate-200 dark:border-[#1A1A1A] drag-region">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-[48px] flex items-center justify-center">
+            {/* Navigation Pills (Center) */}
+            <div className="flex-1 flex justify-center no-drag">
+              <div className="flex items-center gap-2 px-2 py-2 rounded-full border border-white/30 dark:border-white/10 bg-white/70 dark:bg-[#0C0C0C]/70">
+                {(['notes','prep','interact'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setPillarTab(tab)}
+                    className={`px-4 py-2 rounded-full text-sm font-semibold transition ${
+                      pillarTab === tab
+                        ? 'bg-emerald-mist text-onyx dark:bg-[#7C3AED] dark:text-white shadow-soft-card'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-white/60 hover:dark:bg-white/5'
+                    }`}
+                  >
+                    {tab === 'notes' ? 'Home' : tab === 'prep' ? 'Prep' : 'Interact'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Theme Toggle (Right) */}
+            <div className="ml-4 no-drag"><ThemeToggle /></div>
+          </div>
+        </header>
+
+        {/* Scrollable Content */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121212] shadow-soft-card">
+              <div className="p-4 sm:p-6">
+                {view === 'recording' && (
+                  pillarTab === 'notes' ? (
+                    <RecordingView onSelectTab={setPillarTab} />
+                  ) : pillarTab === 'prep' ? (
+                    <PrepView />
+                  ) : (
+                    <div className="h-[60vh] flex items-center justify-center text-center text-slate-500 dark:text-slate-400">
+                      <div>
+                        <p className="text-lg font-medium mb-2">Interact Space</p>
+                        <p className="text-sm">This area is reserved for future features.</p>
+                      </div>
+                    </div>
+                  )
+                )}
+                {view === 'history' && <HistoryView />}
+                {view === 'settings' && <SettingsView />}
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

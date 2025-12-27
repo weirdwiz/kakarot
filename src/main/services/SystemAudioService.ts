@@ -1,4 +1,3 @@
-import { AudioTee } from 'audiotee';
 import { app } from 'electron';
 import { join } from 'path';
 import type { ITranscriptionProvider } from './transcription';
@@ -7,6 +6,7 @@ import { createLogger } from '../core/logger';
 const logger = createLogger('SystemAudio');
 
 type AudioLevelCallback = (level: number) => void;
+type AudioTeeType = any; // Will be imported dynamically
 
 // Get the correct path to the audiotee binary
 // In development: node_modules/audiotee/bin/audiotee
@@ -22,7 +22,7 @@ function getAudioTeeBinaryPath(): string {
 }
 
 export class SystemAudioService {
-  private audiotee: AudioTee | null = null;
+  private audiotee: AudioTeeType | null = null;
   private transcriptionProvider: ITranscriptionProvider | null = null;
   private audioLevelCallback: AudioLevelCallback | null = null;
   private capturing: boolean = false;
@@ -42,6 +42,9 @@ export class SystemAudioService {
 
     const binaryPath = getAudioTeeBinaryPath();
     logger.debug('AudioTee binary path', { path: binaryPath });
+
+    // Dynamically import AudioTee to handle ESM in CommonJS
+    const { AudioTee } = await import('audiotee');
 
     this.audiotee = new AudioTee({
       sampleRate: 48000, // Match AssemblyAI requirement (also switches to 16-bit signed int)
