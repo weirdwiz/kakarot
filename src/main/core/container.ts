@@ -36,7 +36,13 @@ export function initializeContainer(): AppContainer {
 
   // Create AI provider if API key is available
   const settings = settingsRepo.getSettings();
-  const aiProvider = settings.openAiApiKey ? new OpenAIProvider({ apiKey: settings.openAiApiKey }) : null;
+  const aiProvider = settings.openAiApiKey
+    ? new OpenAIProvider({
+        apiKey: settings.openAiApiKey,
+        baseURL: settings.openAiBaseUrl,
+        defaultModel: settings.openAiModel,
+      })
+    : null;
 
   if (!aiProvider) {
     logger.warn('OpenAI API key not configured - AI features disabled');

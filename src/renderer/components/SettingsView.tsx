@@ -216,6 +216,36 @@ export default function SettingsView() {
               </a>
             </p>
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-gray-300 mb-2">OpenAI Base URL</label>
+              <input
+                type="text"
+                value={localSettings.openAiBaseUrl}
+                onChange={(e) => handleChange('openAiBaseUrl', e.target.value)}
+                placeholder="https://api.openai.com/v1"
+                className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Set a custom gateway if you are routing requests through a proxy
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-300 mb-2">OpenAI Model</label>
+              <input
+                type="text"
+                value={localSettings.openAiModel}
+                onChange={(e) => handleChange('openAiModel', e.target.value)}
+                placeholder="gpt-4o"
+                className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Default model used for summaries and callouts
+              </p>
+            </div>
+          </div>
         </section>
 
         {/* Knowledge Base */}

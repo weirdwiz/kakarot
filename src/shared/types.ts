@@ -61,11 +61,15 @@ export interface AudioLevels {
 // Settings
 export interface AppSettings {
   assemblyAiApiKey: string;
+  deepgramApiKey: string;
   openAiApiKey: string;
+  openAiBaseUrl: string;
+  openAiModel: string;
   knowledgeBasePath: string;
   autoDetectQuestions: boolean;
   showFloatingCallout: boolean;
   transcriptionLanguage: string;
+  transcriptionProvider: 'assemblyai' | 'deepgram';
   // Calendar OAuth credentials
   googleCalendarClientId?: string;
   googleCalendarClientSecret?: string;

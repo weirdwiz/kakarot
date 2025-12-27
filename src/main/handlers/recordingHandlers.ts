@@ -26,14 +26,11 @@ export function registerRecordingHandlers(
     const settings = settingsRepo.getSettings();
     logger.debug('Transcription provider', { provider: settings.transcriptionProvider });
 
-    // Start meeting
     await meetingRepo.startNewMeeting();
     logger.info('Meeting started');
 
-    // Update UI immediately
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'recording');
 
-    // Initialize transcription provider based on settings
     transcriptionProvider = createTranscriptionProvider(
       settings.transcriptionProvider,
       settings.assemblyAiApiKey,
@@ -72,7 +69,6 @@ export function registerRecordingHandlers(
       }
     });
 
-    // Connect transcription provider
     transcriptionProvider
       .connect()
       .then(() => {
