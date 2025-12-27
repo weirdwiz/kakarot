@@ -143,7 +143,6 @@ export class KnowledgeService {
       score: this.cosineSimilarity(queryEmbedding, doc.embedding),
     }));
 
-    // Sort by score descending and return top k
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, k);
   }
@@ -161,7 +160,6 @@ export class KnowledgeService {
       const fullMeeting = meetingRepo.findById(meeting.id);
       if (!fullMeeting) continue;
 
-      // Create text from transcript
       const transcriptText = fullMeeting.transcript
         .map((seg) => `${getSpeakerLabel(seg.source)}: ${seg.text}`)
         .join('\n');

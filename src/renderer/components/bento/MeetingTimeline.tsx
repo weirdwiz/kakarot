@@ -1,5 +1,6 @@
 import React from 'react';
 import { Clock, CheckCircle2, Circle } from 'lucide-react';
+import { formatDateTimeContext } from '@renderer/lib/formatters';
 
 interface Meeting {
   id: string;
@@ -16,24 +17,12 @@ interface MeetingTimelineProps {
   onSelect: (id: string) => void;
 }
 
+function isPast(date: Date): boolean {
+  return new Date(date).getTime() < Date.now();
+}
+
 export default function MeetingTimeline({ meetings, selectedId, onSelect }: MeetingTimelineProps) {
-  const formatDate = (date: Date): string => {
-    const d = new Date(date);
-    const today = new Date();
-    const isToday = d.toDateString() === today.toDateString();
-    
-    if (isToday) {
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-    return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + 
-           d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const isPast = (date: Date): boolean => {
-    return new Date(date).getTime() < Date.now();
-  };
-
-  const sortedMeetings = [...meetings].sort((a, b) => 
+  const sortedMeetings = [...meetings].sort((a, b) =>
     new Date(b.start).getTime() - new Date(a.start).getTime()
   );
 
@@ -80,7 +69,7 @@ export default function MeetingTimeline({ meetings, selectedId, onSelect }: Meet
                       {meeting.title}
                     </p>
                     <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                      {formatDate(meeting.start)}
+                      {formatDateTimeContext(meeting.start)}
                     </p>
                     {meeting.status && (
                       <p className={`text-xs mt-1 px-2 py-0.5 rounded-md inline-block ${

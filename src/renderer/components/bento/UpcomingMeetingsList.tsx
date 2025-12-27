@@ -1,34 +1,13 @@
 import React from 'react';
-import type { CalendarEvent } from '../../../shared/types';
+import type { CalendarEvent } from '@shared/types';
 import { Calendar, Clock } from 'lucide-react';
+import { formatDateShort, formatTimeShort, isToday, isTomorrow } from '@renderer/lib/formatters';
 
 interface UpcomingMeetingsListProps {
   meetings: CalendarEvent[];
 }
 
 export default function UpcomingMeetingsList({ meetings }: UpcomingMeetingsListProps) {
-  const formatDate = (date: Date): string => {
-    const d = new Date(date);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
-  };
-
-  const formatTime = (date: Date): string => {
-    return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const isToday = (date: Date): boolean => {
-    const today = new Date();
-    const d = new Date(date);
-    return d.toDateString() === today.toDateString();
-  };
-
-  const isTomorrow = (date: Date): boolean => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const d = new Date(date);
-    return d.toDateString() === tomorrow.toDateString();
-  };
-
   const todayMeetings = meetings.filter(m => isToday(m.start));
   const tomorrowMeetings = meetings.filter(m => isTomorrow(m.start));
   const laterMeetings = meetings.filter(m => !isToday(m.start) && !isTomorrow(m.start));
@@ -41,7 +20,7 @@ export default function UpcomingMeetingsList({ meetings }: UpcomingMeetingsListP
       <div className="flex items-start gap-2.5">
         <div className="flex-shrink-0 px-2 py-1 rounded bg-[#8B5CF6]/20 dark:bg-[#8B5CF6]/10 border border-[#8B5CF6]/30">
           <p className="text-[10px] font-bold text-[#8B5CF6] leading-tight">
-            {formatDate(meeting.start)}
+            {formatDateShort(meeting.start)}
           </p>
         </div>
         
@@ -52,7 +31,7 @@ export default function UpcomingMeetingsList({ meetings }: UpcomingMeetingsListP
           <div className="flex items-center gap-1.5 mt-1">
             <Clock className="w-3 h-3 text-slate-500 dark:text-slate-400" />
             <p className="text-xs text-slate-600 dark:text-slate-400">
-              {formatTime(meeting.start)} – {formatTime(meeting.end)}
+              {formatTimeShort(meeting.start)} – {formatTimeShort(meeting.end)}
             </p>
           </div>
         </div>

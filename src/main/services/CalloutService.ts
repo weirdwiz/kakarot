@@ -52,7 +52,6 @@ export class CalloutService {
     const { aiProvider, calloutRepo, meetingRepo } = getContainer();
     if (!aiProvider) return null;
 
-    // Gather context from multiple sources
     const conversationContext = this.getConversationContext();
     const knowledgeContext = await this.getKnowledgeContext(question);
     const pastMeetingContext = await this.getPastMeetingContext(question);
@@ -61,7 +60,6 @@ export class CalloutService {
       .filter(Boolean)
       .join('\n\n');
 
-    // Call AI
     const messages = buildCalloutMessages(question, allContext);
     const response = await aiProvider.chat(messages, {
       responseFormat: 'json',
@@ -73,7 +71,6 @@ export class CalloutService {
       return null;
     }
 
-    // Build sources
     const sources: CalloutSource[] = [];
     if (conversationContext) {
       sources.push({
@@ -83,7 +80,6 @@ export class CalloutService {
       });
     }
 
-    // Create callout
     const callout: Callout = {
       id: uuidv4(),
       meetingId: meetingRepo.getCurrentMeetingId() || '',

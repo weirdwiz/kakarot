@@ -1,8 +1,8 @@
 import { ipcMain } from 'electron';
-import { IPC_CHANNELS } from '../../shared/ipcChannels';
+import { IPC_CHANNELS } from '@shared/ipcChannels';
 import { getContainer } from '../core/container';
 import { createLogger } from '../core/logger';
-import { CalendarProvider } from '../../shared/types';
+import type { CalendarProvider } from '@shared/types';
 
 const logger = createLogger('CalendarHandlers');
 
@@ -13,17 +13,14 @@ export function registerCalendarHandlers(): void {
     return calendarService.listToday();
   });
 
-  // Start OAuth flow for a calendar provider
   ipcMain.handle(
     IPC_CHANNELS.CALENDAR_OAUTH_START,
     async (_, provider: CalendarProvider) => {
-      const { calendarAuthService, tokenStorageService, settingsRepo } = getContainer();
+      const { calendarAuthService, tokenStorageService } = getContainer();
       logger.info('Starting OAuth flow', { provider });
 
       try {
-        // Get stored credentials
         const credentials = await tokenStorageService.getClientCredentials(provider);
-        
         if (!credentials) {
           logger.error('No credentials found for provider', { provider });
           return {
@@ -32,7 +29,6 @@ export function registerCalendarHandlers(): void {
           };
         }
 
-        // Start OAuth flow
         const tokens = await calendarAuthService.startOAuthFlow(
           provider,
           credentials.clientId,
@@ -46,7 +42,6 @@ export function registerCalendarHandlers(): void {
           };
         }
 
-        // Store tokens securely
         await tokenStorageService.storeTokens(
           provider,
           tokens,
@@ -66,7 +61,6 @@ export function registerCalendarHandlers(): void {
     }
   );
 
-  // Disconnect calendar (revoke tokens)
   ipcMain.handle(
     IPC_CHANNELS.CALENDAR_OAUTH_DISCONNECT,
     async (_, provider: CalendarProvider) => {
@@ -75,13 +69,9 @@ export function registerCalendarHandlers(): void {
 
       try {
         const data = await tokenStorageService.getTokens(provider);
-        
         if (data) {
-          // Revoke the token
           await calendarAuthService.revokeToken(provider, data.tokens.accessToken);
         }
-
-        // Delete stored tokens
         await tokenStorageService.deleteTokens(provider);
 
         logger.info('Calendar disconnected successfully', { provider });
@@ -96,7 +86,6 @@ export function registerCalendarHandlers(): void {
     }
   );
 
-  // Get connection status for all calendars
   ipcMain.handle(IPC_CHANNELS.CALENDAR_OAUTH_STATUS, async () => {
     const { tokenStorageService } = getContainer();
     logger.debug('Getting calendar connection status');
@@ -113,14 +102,17 @@ export function registerCalendarHandlers(): void {
         status[provider] = await tokenStorageService.hasTokens(provider);
       }
 
-      return status;
+      return { success: true, status };
     } catch (error) {
       logger.error('Error getting connection status', { error });
-      return { google: false, outlook: false, icloud: false };
+      return {
+        success: false,
+        error: 'Failed to check calendar connections',
+        status: { google: false, outlook: false, icloud: false },
+      };
     }
   });
 
-  // Save OAuth credentials (client ID/secret)
   ipcMain.handle(
     IPC_CHANNELS.CALENDAR_CREDENTIALS_SAVE,
     async (
@@ -149,7 +141,6 @@ export function registerCalendarHandlers(): void {
     }
   );
 
-  // Get OAuth credentials
   ipcMain.handle(
     IPC_CHANNELS.CALENDAR_CREDENTIALS_GET,
     async (_, provider: CalendarProvider) => {
@@ -158,10 +149,14 @@ export function registerCalendarHandlers(): void {
 
       try {
         const credentials = await tokenStorageService.getClientCredentials(provider);
-        return credentials || null;
+        return { success: true, credentials: credentials || null };
       } catch (error) {
         logger.error('Error getting credentials', { provider, error });
-        return null;
+        return {
+          success: false,
+          error: 'Failed to retrieve calendar credentials',
+          credentials: null,
+        };
       }
     }
   );

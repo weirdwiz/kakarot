@@ -12,6 +12,7 @@ export interface AppContainer {
   calloutRepo: CalloutRepository;
   settingsRepo: SettingsRepository;
   aiProvider: OpenAIProvider | null;
+  noteService: NoteGenerationService;
   calendarService: CalendarService;
   calendarAuthService: CalendarAuthService;
   tokenStorageService: TokenStorageService;
@@ -24,12 +25,10 @@ export function initializeContainer(): AppContainer {
   const meetingRepo = new MeetingRepository();
   const calloutRepo = new CalloutRepository();
   const settingsRepo = new SettingsRepository();
-  const calendarService = new CalendarService();
+  const noteService = new NoteGenerationService();
   const calendarAuthService = new CalendarAuthService();
   const tokenStorageService = new TokenStorageService(settingsRepo);
-
-  // Wire up calendar service dependencies
-  calendarService.setDependencies(tokenStorageService, calendarAuthService);
+  const calendarService = new CalendarService(tokenStorageService, calendarAuthService);
 
   // Initialize default settings
   settingsRepo.initializeDefaults();
@@ -47,6 +46,7 @@ export function initializeContainer(): AppContainer {
     calloutRepo,
     settingsRepo,
     aiProvider,
+    noteService,
     calendarService,
     calendarAuthService,
     tokenStorageService,
@@ -76,6 +76,20 @@ export function refreshAIProvider(config: { apiKey: string; baseURL?: string; de
     throw new Error('Container not initialized');
   }
 
-  container.aiProvider = config.apiKey ? new OpenAIProvider(config) : null;
-  logger.info('AI provider refreshed', { configured: !!config.apiKey });
+  container.aiProvider = settings.openAiApiKey
+    ? new OpenAIProvider({
+        apiKey: settings.openAiApiKey,
+        baseURL: settings.openAiBaseUrl || undefined,
+        defaultModel: settings.openAiModel || undefined,
+      })
+    : null;
+
+  // Also refresh the noteService's AI provider
+  container.noteService.initialize({
+    openAiApiKey: settings.openAiApiKey,
+    openAiBaseUrl: settings.openAiBaseUrl || '',
+    openAiModel: settings.openAiModel || '',
+  } as import('@shared/types').AppSettings);
+
+  logger.info('AI provider refreshed', { configured: !!settings.openAiApiKey });
 }

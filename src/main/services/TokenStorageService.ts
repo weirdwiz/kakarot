@@ -1,10 +1,9 @@
 import { safeStorage } from 'electron';
 import { createLogger } from '../core/logger';
-import { CalendarTokens } from './CalendarAuthService';
+import type { CalendarTokens, CalendarProvider } from '@shared/types';
+import type { SettingsRepository } from '../data/repositories/SettingsRepository';
 
 const logger = createLogger('TokenStorageService');
-
-export type CalendarProvider = 'google' | 'outlook' | 'icloud';
 
 interface StoredCalendarData {
   tokens: CalendarTokens;
@@ -24,13 +23,10 @@ interface StoredCalendarData {
 export class TokenStorageService {
   private cache: Map<string, StoredCalendarData> = new Map();
 
-  constructor(private settingsRepo: any) {
+  constructor(private settingsRepo: SettingsRepository) {
     this.loadFromSettings();
   }
 
-  /**
-   * Store calendar tokens securely
-   */
   async storeTokens(
     provider: CalendarProvider,
     tokens: CalendarTokens,
@@ -47,10 +43,8 @@ export class TokenStorageService {
         connectedAt: Date.now(),
       };
 
-      // Cache in memory
       this.cache.set(provider, data);
 
-      // Encrypt and store
       if (safeStorage.isEncryptionAvailable()) {
         const json = JSON.stringify(data);
         const encrypted = safeStorage.encryptString(json);
@@ -69,11 +63,7 @@ export class TokenStorageService {
     }
   }
 
-  /**
-   * Retrieve calendar tokens
-   */
   async getTokens(provider: CalendarProvider): Promise<StoredCalendarData | null> {
-    // Check cache first
     if (this.cache.has(provider)) {
       return this.cache.get(provider)!;
     }
@@ -87,7 +77,6 @@ export class TokenStorageService {
       let data: StoredCalendarData;
 
       if (safeStorage.isEncryptionAvailable()) {
-        // Decrypt
         const encrypted = Buffer.from(stored, 'base64');
         const decrypted = safeStorage.decryptString(encrypted);
         data = JSON.parse(decrypted);
@@ -96,21 +85,17 @@ export class TokenStorageService {
         data = JSON.parse(stored);
       }
 
-      // Cache for future access
       this.cache.set(provider, data);
 
       logger.debug('Retrieved tokens', { provider });
       return data;
-    } catch (error) {
-      // Likely no tokens stored yet, not an error
-      logger.debug('No tokens found for provider', { provider });
+    } catch {
+      // No tokens stored yet
+      logger.debug('No tokens found', { provider });
       return null;
     }
   }
 
-  /**
-   * Delete stored tokens for a provider
-   */
   async deleteTokens(provider: CalendarProvider): Promise<void> {
     try {
       this.cache.delete(provider);
@@ -122,9 +107,6 @@ export class TokenStorageService {
     }
   }
 
-  /**
-   * Check if tokens exist for a provider
-   */
   async hasTokens(provider: CalendarProvider): Promise<boolean> {
     if (this.cache.has(provider)) {
       return true;
@@ -134,16 +116,10 @@ export class TokenStorageService {
     return !!stored;
   }
 
-  /**
-   * Check if access token is expired
-   */
   isTokenExpired(tokens: CalendarTokens): boolean {
     return Date.now() >= tokens.expiresAt - (5 * 60 * 1000); // 5 minute buffer
   }
 
-  /**
-   * Get all connected providers
-   */
   async getConnectedProviders(): Promise<CalendarProvider[]> {
     const providers: CalendarProvider[] = ['google', 'outlook', 'icloud'];
     const connected: CalendarProvider[] = [];
@@ -157,9 +133,6 @@ export class TokenStorageService {
     return connected;
   }
 
-  /**
-   * Store client credentials (OAuth client ID/secret)
-   */
   async storeClientCredentials(
     provider: CalendarProvider,
     clientId: string,
@@ -184,9 +157,6 @@ export class TokenStorageService {
     }
   }
 
-  /**
-   * Get client credentials
-   */
   async getClientCredentials(
     provider: CalendarProvider
   ): Promise<{ clientId: string; clientSecret?: string } | null> {
@@ -209,9 +179,6 @@ export class TokenStorageService {
     }
   }
 
-  /**
-   * Load tokens from settings into cache
-   */
   private async loadFromSettings(): Promise<void> {
     const providers: CalendarProvider[] = ['google', 'outlook', 'icloud'];
     
@@ -227,13 +194,5 @@ export class TokenStorageService {
     }
 
     logger.debug('Loaded calendar tokens from settings');
-  }
-
-  /**
-   * Clear all cached tokens
-   */
-  clearCache(): void {
-    this.cache.clear();
-    logger.debug('Cleared token cache');
   }
 }

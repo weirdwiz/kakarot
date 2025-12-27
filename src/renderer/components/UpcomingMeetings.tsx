@@ -13,8 +13,8 @@ export default function UpcomingMeetings() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    window.kakarot.calendar.listToday().then((res: CalendarEvent[]) => {
-      setEvents(res);
+    window.kakarot.calendar.listToday().then((result) => {
+      setEvents(result.events);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);

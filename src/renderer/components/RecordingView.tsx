@@ -13,11 +13,7 @@ interface RecordingViewProps {
 export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const { recordingState, audioLevels, liveTranscript, currentPartials, clearLiveTranscript } = useAppStore();
   const { startCapture, stopCapture, pause, resume } = useAudioCapture();
-  const [pillarTab, setPillarTab] = React.useState<'notes' | 'prep' | 'interact'>('notes');
-
-  // Forward tab changes to parent if handler provided
   const handleSelectTab = (tab: 'notes' | 'prep' | 'interact') => {
-    setPillarTab(tab);
     onSelectTab?.(tab);
   };
 
@@ -32,15 +28,8 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const handleStartRecording = async () => {
     console.log('[RecordingView] Start button clicked');
     clearLiveTranscript();
-    try {
-      console.log('[RecordingView] Calling recording.start()...');
-      await window.kakarot.recording.start();
-      console.log('[RecordingView] recording.start() completed, calling startCapture()...');
-      await startCapture();
-      console.log('[RecordingView] startCapture() completed');
-    } catch (error) {
-      console.error('[RecordingView] Error starting recording:', error);
-    }
+    await window.kakarot.recording.start();
+    await startCapture();
   };
 
   const handleStopRecording = async () => {

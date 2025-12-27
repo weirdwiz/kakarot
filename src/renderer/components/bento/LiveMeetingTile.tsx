@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import type { CalendarEvent } from '../../../shared/types';
-import { Calendar, Users, Clock, Play, AlertCircle, CheckCircle2, Zap } from 'lucide-react';
+import React from 'react';
+import type { CalendarEvent } from '@shared/types';
+import { Calendar, Users, Clock, Play, Zap } from 'lucide-react';
+import { formatTimeShort } from '@renderer/lib/formatters';
 
 interface LiveMeetingTileProps {
   event: CalendarEvent | null;
@@ -8,19 +9,15 @@ interface LiveMeetingTileProps {
   onStartNotes: () => void;
 }
 
+function getMinutesUntil(start: Date): number {
+  return Math.floor((new Date(start).getTime() - Date.now()) / 60000);
+}
+
 export default function LiveMeetingTile({
   event,
   isRecording,
   onStartNotes,
 }: LiveMeetingTileProps) {
-  const getMinutesUntil = (start: Date): number => {
-    return Math.floor((new Date(start).getTime() - Date.now()) / 60000);
-  };
-
-  const formatTime = (date: Date): string => {
-    return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
   if (!event) {
     return (
       <div className="rounded-3xl border border-white/30 dark:border-white/10 bg-gradient-to-br from-white/80 via-slate-50/60 dark:from-[#0C0C0C]/90 dark:via-[#1A1A1A]/70 to-white/60 dark:to-[#121212]/80 backdrop-blur-md shadow-soft-card p-6 sm:p-8 col-span-1 sm:col-span-2 row-span-2 flex flex-col justify-between">
@@ -61,7 +58,7 @@ export default function LiveMeetingTile({
         <div className="space-y-2 mb-6">
           <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
             <Clock className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-            {formatTime(event.start)} – {formatTime(event.end)}
+            {formatTimeShort(event.start)} – {formatTimeShort(event.end)}
           </div>
           {event.location && (
             <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">

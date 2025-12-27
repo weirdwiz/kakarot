@@ -1,5 +1,6 @@
 import React from 'react';
 import { Calendar, FileText, Plus } from 'lucide-react';
+import { formatDateShort, formatTimeShort } from '@renderer/lib/formatters';
 
 interface Meeting {
   id: string;
@@ -15,15 +16,6 @@ interface PreviousMeetingsListProps {
 }
 
 export default function PreviousMeetingsList({ meetings, onViewNotes }: PreviousMeetingsListProps) {
-  const formatDate = (date: Date): string => {
-    const d = new Date(date);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
-  };
-
-  const formatTime = (date: Date): string => {
-    return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
   return (
     <div className="h-full rounded-xl border border-white/30 dark:border-white/10 bg-white/60 dark:bg-graphite/70 backdrop-blur-md shadow-soft-card p-3 flex flex-col opacity-90">
       <h3 className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 mb-3 px-1">
@@ -45,7 +37,7 @@ export default function PreviousMeetingsList({ meetings, onViewNotes }: Previous
               <div className="flex items-start gap-2.5">
                 <div className="flex-shrink-0 px-2 py-1 rounded bg-slate-200/40 dark:bg-slate-700/30 border border-slate-300/30 dark:border-slate-600/30">
                   <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 leading-tight">
-                    {formatDate(meeting.start)}
+                    {formatDateShort(meeting.start)}
                   </p>
                 </div>
                 
@@ -54,7 +46,7 @@ export default function PreviousMeetingsList({ meetings, onViewNotes }: Previous
                     {meeting.title}
                   </h4>
                   <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
-                    {formatTime(meeting.start)} – {formatTime(meeting.end)}
+                    {formatTimeShort(meeting.start)} – {formatTimeShort(meeting.end)}
                   </p>
                   
                   <div className="mt-2">

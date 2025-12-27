@@ -7,7 +7,7 @@ import type {
   AudioLevels,
   TranscriptUpdate,
   Callout,
-  CalendarEvent,
+  CalendarListResult,
   CalendarProvider,
   CalendarConnectionStatus,
 } from '@shared/types';
@@ -99,7 +99,7 @@ contextBridge.exposeInMainWorld('kakarot', {
 
   // Calendar
   calendar: {
-    listToday: (): Promise<CalendarEvent[]> =>
+    listToday: (): Promise<CalendarListResult> =>
       ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_LIST_TODAY),
     oauth: {
       start: (provider: CalendarProvider): Promise<{ success: boolean; error?: string }> =>
@@ -159,7 +159,7 @@ declare global {
         search: (query: string) => Promise<unknown[]>;
       };
       calendar: {
-        listToday: () => Promise<CalendarEvent[]>;
+        listToday: () => Promise<CalendarListResult>;
         oauth: {
           start: (provider: CalendarProvider) => Promise<{ success: boolean; error?: string }>;
           disconnect: (provider: CalendarProvider) => Promise<{ success: boolean; error?: string }>;

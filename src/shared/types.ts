@@ -1,5 +1,19 @@
 // Meeting and transcript types
 
+export interface MeetingChapter {
+  id: string;
+  title: string;
+  startTime: number; // ms from meeting start
+  endTime: number;
+}
+
+export interface MeetingPerson {
+  email: string;
+  displayName?: string;
+  avatar?: string;
+  source: 'mic' | 'system';
+}
+
 export interface Meeting {
   id: string;
   title: string;
@@ -59,6 +73,8 @@ export interface AudioLevels {
 }
 
 // Settings
+export type TranscriptionProvider = 'assemblyai' | 'deepgram';
+
 export interface AppSettings {
   assemblyAiApiKey: string;
   openAiApiKey: string;
@@ -66,6 +82,7 @@ export interface AppSettings {
   autoDetectQuestions: boolean;
   showFloatingCallout: boolean;
   transcriptionLanguage: string;
+  transcriptionProvider: TranscriptionProvider;
   // Calendar OAuth credentials
   googleCalendarClientId?: string;
   googleCalendarClientSecret?: string;
@@ -86,25 +103,66 @@ export interface CalloutTrigger {
 }
 
 // Calendar
+export type CalendarProvider = 'google' | 'outlook' | 'icloud';
+
 export interface CalendarEvent {
   id: string;
   title: string;
   start: Date;
   end: Date;
-  provider: 'google' | 'apple' | 'outlook' | 'unknown';
+  provider: CalendarProvider;
   location?: string;
   attendees?: string[];
   description?: string;
 }
 
+// Calendar API response types (for type-safe API parsing)
+export interface GoogleCalendarItem {
+  id: string;
+  summary?: string;
+  start: { dateTime?: string; date?: string };
+  end: { dateTime?: string; date?: string };
+  location?: string;
+  attendees?: { email: string }[];
+  description?: string;
+}
+
+export interface GoogleCalendarResponse {
+  items?: GoogleCalendarItem[];
+}
+
+export interface OutlookCalendarItem {
+  id: string;
+  subject?: string;
+  start: { dateTime: string };
+  end: { dateTime: string };
+  location?: { displayName?: string };
+  attendees?: { emailAddress: { address: string } }[];
+  bodyPreview?: string;
+}
+
+export interface OutlookCalendarResponse {
+  value?: OutlookCalendarItem[];
+}
+
+// Calendar fetch result with error handling
+export interface CalendarFetchResult {
+  events: CalendarEvent[];
+  error?: string;
+}
+
+// Calendar list result with errors from multiple providers
+export interface CalendarListResult {
+  events: CalendarEvent[];
+  errors: string[];
+}
+
 export interface CalendarTokens {
   accessToken: string;
   refreshToken?: string;
-  expiresAt: number;
+  expiresAt: number; // Unix timestamp in milliseconds
   scope?: string;
 }
-
-export type CalendarProvider = 'google' | 'outlook' | 'icloud';
 
 export interface CalendarConnectionStatus {
   google: boolean;

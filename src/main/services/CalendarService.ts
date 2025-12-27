@@ -1,5 +1,5 @@
 import { createLogger } from '../core/logger';
-import type { CalendarEvent } from '../../shared/types';
+import type { CalendarEvent, CalendarListResult } from '@shared/types';
 import { CalendarAPIService } from './CalendarAPIService';
 import { TokenStorageService } from './TokenStorageService';
 import { CalendarAuthService } from './CalendarAuthService';
@@ -7,155 +7,106 @@ import { CalendarAuthService } from './CalendarAuthService';
 const logger = createLogger('CalendarService');
 
 export class CalendarService {
-  private apiService: CalendarAPIService;
-  private tokenStorage: TokenStorageService | null = null;
-  private authService: CalendarAuthService | null = null;
+  private apiService = new CalendarAPIService();
+  private tokenStorage: TokenStorageService;
+  private authService: CalendarAuthService;
 
-  constructor() {
-    this.apiService = new CalendarAPIService();
-  }
-
-  /**
-   * Set dependencies (called by container after initialization)
-   */
-  setDependencies(tokenStorage: TokenStorageService, authService: CalendarAuthService) {
+  constructor(tokenStorage: TokenStorageService, authService: CalendarAuthService) {
     this.tokenStorage = tokenStorage;
     this.authService = authService;
   }
 
-  async listToday(): Promise<CalendarEvent[]> {
-    if (!this.tokenStorage || !this.authService) {
-      logger.warn('Token storage not initialized, returning mock data');
-      return this.getMockEvents();
-    }
+  async listToday(): Promise<CalendarListResult> {
 
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
     const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
     const allEvents: CalendarEvent[] = [];
+    const errors: string[] = [];
 
-    // Fetch from Google Calendar
-    try {
-      const googleData = await this.tokenStorage.getTokens('google');
-      if (googleData) {
-        let tokens = googleData.tokens;
+    const googleResult = await this.fetchFromGoogle(startOfDay, endOfDay);
+    allEvents.push(...googleResult.events);
+    if (googleResult.error) errors.push(googleResult.error);
 
-        // Refresh token if expired
-        if (this.tokenStorage.isTokenExpired(tokens) && tokens.refreshToken) {
-          logger.info('Refreshing Google access token');
-          const newTokens = await this.authService.refreshToken(
-            'google',
-            tokens.refreshToken,
-            googleData.clientId,
-            googleData.clientSecret || ''
-          );
+    const outlookResult = await this.fetchFromOutlook(startOfDay, endOfDay);
+    allEvents.push(...outlookResult.events);
+    if (outlookResult.error) errors.push(outlookResult.error);
 
-          if (newTokens) {
-            tokens = newTokens;
-            await this.tokenStorage.storeTokens(
-              'google',
-              newTokens,
-              googleData.clientId,
-              googleData.clientSecret
-            );
-          }
-        }
-
-        const events = await this.apiService.fetchGoogleEvents(tokens, startOfDay, endOfDay);
-        allEvents.push(...events);
-      }
-    } catch (error) {
-      logger.error('Error fetching Google events', { error });
-    }
-
-    // Fetch from Outlook Calendar
-    try {
-      const outlookData = await this.tokenStorage.getTokens('outlook');
-      if (outlookData) {
-        let tokens = outlookData.tokens;
-
-        // Refresh token if expired
-        if (this.tokenStorage.isTokenExpired(tokens) && tokens.refreshToken) {
-          logger.info('Refreshing Outlook access token');
-          const newTokens = await this.authService.refreshToken(
-            'outlook',
-            tokens.refreshToken,
-            outlookData.clientId,
-            outlookData.clientSecret || ''
-          );
-
-          if (newTokens) {
-            tokens = newTokens;
-            await this.tokenStorage.storeTokens(
-              'outlook',
-              newTokens,
-              outlookData.clientId,
-              outlookData.clientSecret
-            );
-          }
-        }
-
-        const events = await this.apiService.fetchOutlookEvents(tokens, startOfDay, endOfDay);
-        allEvents.push(...events);
-      }
-    } catch (error) {
-      logger.error('Error fetching Outlook events', { error });
-    }
-
-    // Fetch from iCloud Calendar
-    try {
-      const icloudData = await this.tokenStorage.getTokens('icloud');
-      if (icloudData && icloudData.userEmail) {
-        // iCloud uses CalDAV, not OAuth
-        // For now, this is a placeholder
-        logger.info('iCloud calendar integration not fully implemented');
-        // const events = await this.apiService.fetchICloudEvents(
-        //   icloudData.userEmail,
-        //   icloudData.tokens.accessToken,
-        //   startOfDay,
-        //   endOfDay
-        // );
-        // allEvents.push(...events);
-      }
-    } catch (error) {
-      logger.error('Error fetching iCloud events', { error });
-    }
-
-    // Sort by start time
     allEvents.sort((a, b) => a.start.getTime() - b.start.getTime());
 
-    logger.info('Fetched calendar events', { count: allEvents.length });
-
-    // Return mock events if no real events found (for backwards compatibility)
-    return allEvents.length > 0 ? allEvents : this.getMockEvents();
+    logger.info('Fetched calendar events', { count: allEvents.length, errorCount: errors.length });
+    return { events: allEvents, errors };
   }
 
-  private getMockEvents(): CalendarEvent[] {
-    const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  private async fetchFromGoogle(
+    startOfDay: Date,
+    endOfDay: Date
+  ): Promise<{ events: CalendarEvent[]; error?: string }> {
+    try {
+      const data = await this.tokenStorage.getTokens('google');
+      if (!data) return { events: [] };
 
-    const sample: CalendarEvent[] = [
-      {
-        id: 'evt-1',
-        title: 'Weekly Sprint Planning',
-        start: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 20, 0),
-        end: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 20, 45),
-        provider: 'unknown',
-        location: 'Zoom',
-        attendees: ['Team'],
-      },
-      {
-        id: 'evt-2',
-        title: 'Enter Weekly Forecast',
-        start: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 21, 0),
-        end: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 22, 0),
-        provider: 'unknown',
-      },
-    ];
+      let { tokens } = data;
 
-    logger.info('Returning mock calendar events', { count: sample.length });
-    return sample.filter((e) => e.start >= startOfDay && e.start.getDate() === now.getDate());
+      // Refresh if expired
+      if (this.tokenStorage.isTokenExpired(tokens) && tokens.refreshToken) {
+        logger.info('Refreshing Google token');
+        const refreshed = await this.authService.refreshToken(
+          'google',
+          tokens.refreshToken,
+          data.clientId,
+          data.clientSecret || ''
+        );
+
+        if (!refreshed) {
+          return { events: [], error: 'Google Calendar session expired. Please reconnect.' };
+        }
+
+        tokens = refreshed;
+        await this.tokenStorage.storeTokens('google', tokens, data.clientId, data.clientSecret);
+      }
+
+      return await this.apiService.fetchGoogleEvents(tokens, startOfDay, endOfDay);
+    } catch (err) {
+      logger.error('Google calendar fetch failed', { err });
+      return { events: [], error: 'Failed to fetch Google Calendar events.' };
+    }
+  }
+
+  private async fetchFromOutlook(
+    startOfDay: Date,
+    endOfDay: Date
+  ): Promise<{ events: CalendarEvent[]; error?: string }> {
+    try {
+      const data = await this.tokenStorage.getTokens('outlook');
+      if (!data) return { events: [] };
+
+      let { tokens } = data;
+
+      // Refresh if expired
+      if (this.tokenStorage.isTokenExpired(tokens) && tokens.refreshToken) {
+        logger.info('Refreshing Outlook token');
+        const refreshed = await this.authService.refreshToken(
+          'outlook',
+          tokens.refreshToken,
+          data.clientId,
+          data.clientSecret || ''
+        );
+
+        if (!refreshed) {
+          return { events: [], error: 'Outlook Calendar session expired. Please reconnect.' };
+        }
+
+        tokens = refreshed;
+        await this.tokenStorage.storeTokens('outlook', tokens, data.clientId, data.clientSecret);
+      }
+
+      return await this.apiService.fetchOutlookEvents(tokens, startOfDay, endOfDay);
+    } catch (err) {
+      logger.error('Outlook calendar fetch failed', { err });
+      return { events: [], error: 'Failed to fetch Outlook Calendar events.' };
+    }
   }
 }
 

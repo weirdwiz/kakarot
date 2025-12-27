@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import type { CalendarEvent } from '../../../shared/types';
+import type { CalendarEvent, CalendarListResult } from '@shared/types';
 import CompactMeetingBar from './CompactMeetingBar';
 import UpcomingMeetingsList from './UpcomingMeetingsList';
 import PreviousMeetingsList from './PreviousMeetingsList';
@@ -12,24 +12,17 @@ interface BentoDashboardProps {
 
 export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab }: BentoDashboardProps) {
   const [upcomingEvent, setUpcomingEvent] = useState<CalendarEvent | null>(null);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
 
-  // Mock upcoming meetings (placeholder)
-  const mockUpcomingMeetings: CalendarEvent[] = [
+  // Placeholder meetings shown when no calendar connected
+  const placeholderMeetings: CalendarEvent[] = [
     {
-      id: '1',
-      title: 'Product Roadmap Review',
+      id: 'placeholder-1',
+      title: 'Connect your calendar',
       start: new Date(Date.now() + 7200000),
       end: new Date(Date.now() + 10800000),
-      provider: 'zoom',
-      location: 'Zoom',
-    },
-    {
-      id: '2',
-      title: 'Engineering Standup',
-      start: new Date(Date.now() + 18000000),
-      end: new Date(Date.now() + 19800000),
-      provider: 'meet',
-      location: 'Google Meet',
+      provider: 'google',
+      location: 'Settings',
     },
   ];
 
@@ -59,15 +52,15 @@ export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab 
   ];
 
   useEffect(() => {
-    window.kakarot.calendar.listToday().then((events) => {
-      if (events.length > 0) {
-        setUpcomingEvent(events[0]);
+    window.kakarot.calendar.listToday().then((result: CalendarListResult) => {
+      setCalendarEvents(result.events);
+      if (result.events.length > 0) {
+        setUpcomingEvent(result.events[0]);
       }
     });
   }, []);
 
-  const handleViewNotes = (meetingId: string) => {
-    console.log('View notes for meeting:', meetingId);
+  const handleViewNotes = (_meetingId: string) => {
     // TODO: Navigate to meeting notes view
   };
 
@@ -85,7 +78,7 @@ export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab 
 
       {/* Two-column layout: Upcoming | Previous */}
       <div className="flex-1 grid grid-cols-2 gap-2.5 min-h-0">
-        <UpcomingMeetingsList meetings={mockUpcomingMeetings} />
+        <UpcomingMeetingsList meetings={calendarEvents.length > 0 ? calendarEvents : placeholderMeetings} />
         <PreviousMeetingsList meetings={mockPreviousMeetings} onViewNotes={handleViewNotes} />
       </div>
     </div>

@@ -1,164 +1,117 @@
 import { createLogger } from '../core/logger';
-import { CalendarEvent } from '../../shared/types';
-import { CalendarTokens } from './CalendarAuthService';
+import type {
+  CalendarTokens,
+  CalendarFetchResult,
+  GoogleCalendarResponse,
+  GoogleCalendarItem,
+  OutlookCalendarResponse,
+  OutlookCalendarItem,
+} from '@shared/types';
 
-const logger = createLogger('CalendarAPIService');
+const logger = createLogger('CalendarAPI');
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-/**
- * Service for fetching calendar events from Google, Outlook, and iCloud
- */
+function httpError(provider: string, status: number): string {
+  if (status === 401) return `${provider} access expired. Please reconnect.`;
+  if (status === 403) return `${provider} access denied. Check permissions.`;
+  return `${provider} error (${status})`;
+}
+
 export class CalendarAPIService {
-  /**
-   * Fetch events from Google Calendar
-   */
   async fetchGoogleEvents(
     tokens: CalendarTokens,
     timeMin?: Date,
     timeMax?: Date
-  ): Promise<CalendarEvent[]> {
-    try {
-      const params = new URLSearchParams({
-        timeMin: (timeMin || new Date()).toISOString(),
-        timeMax: (timeMax || new Date(Date.now() + 24 * 60 * 60 * 1000)).toISOString(),
-        singleEvents: 'true',
-        orderBy: 'startTime',
-        maxResults: '50',
-      });
+  ): Promise<CalendarFetchResult> {
+    const start = timeMin ?? new Date();
+    const end = timeMax ?? new Date(Date.now() + DAY_MS);
 
-      const response = await fetch(
+    const params = new URLSearchParams({
+      timeMin: start.toISOString(),
+      timeMax: end.toISOString(),
+      singleEvents: 'true',
+      orderBy: 'startTime',
+      maxResults: '50',
+    });
+
+    try {
+      const resp = await fetch(
         `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${tokens.accessToken}`,
-            'Accept': 'application/json',
-          },
-        }
+        { headers: { Authorization: `Bearer ${tokens.accessToken}` } }
       );
 
-      if (!response.ok) {
-        const error = await response.text();
-        logger.error('Google Calendar API error', { error, status: response.status });
-        return [];
+      if (!resp.ok) {
+        logger.error('Google API error', { status: resp.status });
+        return { events: [], error: httpError('Google Calendar', resp.status) };
       }
 
-      const data = await response.json();
-
-      const events: CalendarEvent[] = (data.items || []).map((item: any) => ({
-        id: item.id,
-        title: item.summary || 'Untitled Event',
-        start: new Date(item.start.dateTime || item.start.date),
-        end: new Date(item.end.dateTime || item.end.date),
+      const data: GoogleCalendarResponse = await resp.json();
+      const events = (data.items ?? []).map((e: GoogleCalendarItem) => ({
+        id: e.id,
+        title: e.summary || 'Untitled',
+        start: new Date(e.start.dateTime || e.start.date || ''),
+        end: new Date(e.end.dateTime || e.end.date || ''),
         provider: 'google' as const,
-        location: item.location,
-        attendees: item.attendees?.map((a: any) => a.email) || [],
-        description: item.description,
+        location: e.location,
+        attendees: e.attendees?.map((a) => a.email) ?? [],
+        description: e.description,
       }));
 
-      logger.info('Fetched Google Calendar events', { count: events.length });
-      return events;
-    } catch (error) {
-      logger.error('Error fetching Google events', { error });
-      return [];
+      logger.info('Fetched Google events', { count: events.length });
+      return { events };
+    } catch (err) {
+      logger.error('Google fetch failed', { err });
+      return { events: [], error: 'Cannot reach Google Calendar.' };
     }
   }
 
-  /**
-   * Fetch events from Outlook/Microsoft Calendar via Graph API
-   */
   async fetchOutlookEvents(
     tokens: CalendarTokens,
     timeMin?: Date,
     timeMax?: Date
-  ): Promise<CalendarEvent[]> {
-    try {
-      const startDateTime = (timeMin || new Date()).toISOString();
-      const endDateTime = (timeMax || new Date(Date.now() + 24 * 60 * 60 * 1000)).toISOString();
+  ): Promise<CalendarFetchResult> {
+    const start = (timeMin ?? new Date()).toISOString();
+    const end = (timeMax ?? new Date(Date.now() + DAY_MS)).toISOString();
 
-      const response = await fetch(
-        `https://graph.microsoft.com/v1.0/me/calendarview?startDateTime=${startDateTime}&endDateTime=${endDateTime}&$orderby=start/dateTime&$top=50`,
-        {
-          headers: {
-            'Authorization': `Bearer ${tokens.accessToken}`,
-            'Accept': 'application/json',
-          },
-        }
+    try {
+      const resp = await fetch(
+        `https://graph.microsoft.com/v1.0/me/calendarview?startDateTime=${start}&endDateTime=${end}&$orderby=start/dateTime&$top=50`,
+        { headers: { Authorization: `Bearer ${tokens.accessToken}` } }
       );
 
-      if (!response.ok) {
-        const error = await response.text();
-        logger.error('Outlook Calendar API error', { error, status: response.status });
-        return [];
+      if (!resp.ok) {
+        logger.error('Outlook API error', { status: resp.status });
+        return { events: [], error: httpError('Outlook Calendar', resp.status) };
       }
 
-      const data = await response.json();
-
-      const events: CalendarEvent[] = (data.value || []).map((item: any) => ({
-        id: item.id,
-        title: item.subject || 'Untitled Event',
-        start: new Date(item.start.dateTime + 'Z'), // Graph API returns datetime without Z
-        end: new Date(item.end.dateTime + 'Z'),
+      const data: OutlookCalendarResponse = await resp.json();
+      const events = (data.value ?? []).map((e: OutlookCalendarItem) => ({
+        id: e.id,
+        title: e.subject || 'Untitled',
+        start: new Date(e.start.dateTime + 'Z'),
+        end: new Date(e.end.dateTime + 'Z'),
         provider: 'outlook' as const,
-        location: item.location?.displayName,
-        attendees: item.attendees?.map((a: any) => a.emailAddress.address) || [],
-        description: item.bodyPreview,
+        location: e.location?.displayName,
+        attendees: e.attendees?.map((a) => a.emailAddress.address) ?? [],
+        description: e.bodyPreview,
       }));
 
-      logger.info('Fetched Outlook Calendar events', { count: events.length });
-      return events;
-    } catch (error) {
-      logger.error('Error fetching Outlook events', { error });
-      return [];
+      logger.info('Fetched Outlook events', { count: events.length });
+      return { events };
+    } catch (err) {
+      logger.error('Outlook fetch failed', { err });
+      return { events: [], error: 'Cannot reach Outlook Calendar.' };
     }
   }
 
-  /**
-   * Fetch events from iCloud Calendar via CalDAV
-   * Note: iCloud uses CalDAV protocol, which is more complex than REST APIs
-   * This is a simplified implementation
-   */
   async fetchICloudEvents(
-    username: string,
-    appPassword: string,
-    timeMin?: Date,
-    timeMax?: Date
-  ): Promise<CalendarEvent[]> {
-    try {
-      // iCloud CalDAV endpoint
-      const caldavUrl = `https://caldav.icloud.com/${username}/calendars/`;
-
-      // For now, return empty array
-      // Full CalDAV implementation requires XML parsing and PROPFIND requests
-      logger.warn('iCloud CalDAV integration not fully implemented');
-      
-      // TODO: Implement full CalDAV support
-      // - Discover calendar collections via PROPFIND
-      // - Query events via REPORT with calendar-query
-      // - Parse iCalendar (ICS) format responses
-      
-      return [];
-    } catch (error) {
-      logger.error('Error fetching iCloud events', { error });
-      return [];
-    }
-  }
-
-  /**
-   * Refresh access token if expired
-   */
-  private async refreshAccessTokenIfNeeded(
-    provider: 'google' | 'outlook',
-    tokens: CalendarTokens,
-    refreshCallback: (newTokens: CalendarTokens) => Promise<void>
-  ): Promise<CalendarTokens> {
-    // Check if token is expired (with 5 minute buffer)
-    if (Date.now() >= tokens.expiresAt - (5 * 60 * 1000)) {
-      logger.info('Access token expired, refreshing', { provider });
-      
-      // Refresh logic would be handled by CalendarAuthService
-      // This is just a placeholder for the flow
-      return tokens;
-    }
-
-    return tokens;
+    _username: string,
+    _appPassword: string,
+    _timeMin?: Date,
+    _timeMax?: Date
+  ): Promise<CalendarFetchResult> {
+    // CalDAV needs PROPFIND/REPORT with XML - not implemented
+    logger.warn('iCloud CalDAV not implemented');
+    return { events: [], error: 'iCloud coming soon.' };
   }
 }

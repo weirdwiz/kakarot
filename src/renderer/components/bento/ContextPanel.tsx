@@ -2,14 +2,12 @@ import React from 'react';
 import { Clipboard, FileText, CheckSquare } from 'lucide-react';
 
 interface ContextPanelProps {
-  selectedMeetingId?: string;
   prepItems?: string[];
   recentNotes?: string[];
   actionItems?: { text: string; completed: boolean }[];
 }
 
 export default function ContextPanel({
-  selectedMeetingId,
   prepItems = [],
   recentNotes = [],
   actionItems = [],

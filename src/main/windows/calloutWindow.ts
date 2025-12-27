@@ -31,7 +31,6 @@ export function createCalloutWindow(): BrowserWindow {
     focusable: false,
   });
 
-  // Load callout page
   if (process.env.NODE_ENV === 'development' || process.env.VITE_DEV_SERVER_URL) {
     const baseUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
     calloutWindow.loadURL(`${baseUrl}/callout.html`);
