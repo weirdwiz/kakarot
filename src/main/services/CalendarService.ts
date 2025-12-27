@@ -473,9 +473,7 @@ export class CalendarService {
         return [];
       }
       const data = await resp.json();
-      return (data.items || [])
-        .filter((c: any) => !c.id.includes('@group.calendar.google.com'))
-        .map((c: any) => ({ id: c.id, name: c.summary }));
+      return (data.items || []).map((c: any) => ({ id: c.id, name: c.summary }));
     }
     if (provider === 'outlook' && settings.calendarConnections.outlook) {
       // Optional: implement in future
