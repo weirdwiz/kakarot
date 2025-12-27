@@ -1,10 +1,15 @@
 import { BrowserWindow, shell } from 'electron';
 import { createLogger } from '../core/logger';
 import { randomBytes } from 'crypto';
-import type { Server } from 'http';
-import type { CalendarTokens, CalendarProvider } from '@shared/types';
 
 const logger = createLogger('CalendarAuthService');
+
+export interface CalendarTokens {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number; // timestamp
+  scope?: string;
+}
 
 export interface OAuthConfig {
   clientId: string;
@@ -37,13 +42,18 @@ const OAUTH_CONFIGS = {
 
 export class CalendarAuthService {
   private authWindow: BrowserWindow | null = null;
-  private authServer: Server | null = null;
+  private authServer: any = null; // HTTP server for OAuth callback
   private pendingAuth: {
-    provider: CalendarProvider;
+    provider: 'google' | 'outlook' | 'icloud';
     resolve: (tokens: CalendarTokens | null) => void;
     state: string;
   } | null = null;
 
+  constructor() {}
+
+  /**
+   * Start OAuth flow for a calendar provider
+   */
   async startOAuthFlow(
     provider: 'google' | 'outlook' | 'icloud',
     clientId: string,
@@ -102,7 +112,10 @@ export class CalendarAuthService {
     return result;
   }
 
-  // iCloud uses CalDAV with app-specific passwords, not OAuth
+  /**
+   * Handle iCloud calendar authentication
+   * iCloud uses CalDAV with app-specific passwords
+   */
   private async handleICloudAuth(): Promise<CalendarTokens | null> {
     logger.info('iCloud uses CalDAV authentication');
     
@@ -115,6 +128,9 @@ export class CalendarAuthService {
     };
   }
 
+  /**
+   * Start local HTTP server to handle OAuth callback
+   */
   private async startCallbackServer(clientId: string, clientSecret: string): Promise<void> {
     const http = await import('http');
     const url = await import('url');
@@ -148,15 +164,7 @@ export class CalendarAuthService {
         // Verify state
         if (this.pendingAuth && state === this.pendingAuth.state) {
           const provider = this.pendingAuth.provider;
-
-          // iCloud uses CalDAV, not OAuth - should never reach this callback
-          if (provider === 'icloud') {
-            logger.error('iCloud should not use OAuth callback');
-            res.writeHead(400, { 'Content-Type': 'text/html' });
-            res.end('<html><body><h1>Invalid provider</h1></body></html>');
-            return;
-          }
-
+          
           // Exchange code for tokens
           const tokens = await this.exchangeCodeForTokens(
             provider,
@@ -165,19 +173,15 @@ export class CalendarAuthService {
             clientSecret
           );
 
-          if (tokens) {
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end(`<html><body style="font-family: system-ui; padding: 40px; text-align: center;">
-              <h1 style="color: #10B981;">Connected</h1>
-              <p>You can close this window.</p>
-            </body></html>`);
-          } else {
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end(`<html><body style="font-family: system-ui; padding: 40px; text-align: center;">
-              <h1 style="color: #EF4444;">Connection Failed</h1>
-              <p>Could not complete authentication. Please try again.</p>
-            </body></html>`);
-          }
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(`
+            <html>
+              <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 40px; text-align: center;">
+                <h1 style="color: #10B981;">✓ Successfully connected!</h1>
+                <p>You can close this window and return to Kakarot.</p>
+              </body>
+            </html>
+          `);
 
           this.pendingAuth.resolve(tokens);
           this.pendingAuth = null;
@@ -193,11 +197,14 @@ export class CalendarAuthService {
       }
     });
 
-    this.authServer.listen(8888, '127.0.0.1', () => {
-      logger.info('OAuth callback server started on localhost:8888');
+    this.authServer.listen(8888, () => {
+      logger.info('OAuth callback server started', { port: 8888 });
     });
   }
 
+  /**
+   * Stop the OAuth callback server
+   */
   private stopCallbackServer(): void {
     if (this.authServer) {
       this.authServer.close();
@@ -206,6 +213,9 @@ export class CalendarAuthService {
     }
   }
 
+  /**
+   * Exchange authorization code for access/refresh tokens
+   */
   private async exchangeCodeForTokens(
     provider: 'google' | 'outlook',
     code: string,
@@ -255,6 +265,9 @@ export class CalendarAuthService {
     }
   }
 
+  /**
+   * Refresh an expired access token
+   */
   async refreshToken(
     provider: 'google' | 'outlook',
     refreshToken: string,
@@ -303,6 +316,9 @@ export class CalendarAuthService {
     }
   }
 
+  /**
+   * Revoke access token (disconnect calendar)
+   */
   async revokeToken(
     provider: 'google' | 'outlook' | 'icloud',
     token: string

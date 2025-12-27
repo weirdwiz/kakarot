@@ -99,6 +99,8 @@ export interface AppSettings {
   outlookCalendarClientSecret?: string;
   icloudCalendarUsername?: string;
   icloudCalendarPassword?: string; // App-specific password
+  calendarConnections?: CalendarConnections;
+  calendarEventMappings?: Record<string, string>; // meetingId -> calendarEventId
 }
 
 // IPC payloads
@@ -171,6 +173,14 @@ export interface CalendarTokens {
   refreshToken?: string;
   expiresAt: number; // Unix timestamp in milliseconds
   scope?: string;
+}
+
+export type OAuthTokens = CalendarTokens;
+
+export interface CalendarConnections {
+  google?: CalendarTokens;
+  outlook?: CalendarTokens;
+  icloud?: { username: string; password: string };
 }
 
 export interface CalendarConnectionStatus {

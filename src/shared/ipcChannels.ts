@@ -46,6 +46,12 @@ export const IPC_CHANNELS = {
 
   // Calendar
   CALENDAR_LIST_TODAY: 'calendar:listToday',
+  CALENDAR_CONNECT: 'calendar:connect',
+  CALENDAR_DISCONNECT: 'calendar:disconnect',
+  CALENDAR_GET_UPCOMING: 'calendar:getUpcoming',
+  CALENDAR_LINK_EVENT: 'calendar:linkEvent',
+  CALENDAR_GET_EVENT_FOR_MEETING: 'calendar:getEventForMeeting',
+  CALENDAR_LINK_NOTES: 'calendar:linkNotes',
   
   // Calendar OAuth
   CALENDAR_OAUTH_START: 'calendar:oauth:start',
