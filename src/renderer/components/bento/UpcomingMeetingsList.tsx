@@ -1,14 +1,15 @@
 import React from 'react';
 import type { CalendarEvent } from '../../../shared/types';
-import { Calendar, Clock, Settings } from 'lucide-react';
+import { Calendar, Clock, Settings, FileText, BookOpen } from 'lucide-react';
 
 interface UpcomingMeetingsListProps {
   meetings: CalendarEvent[];
   onNavigateSettings?: () => void;
   onSelectMeeting?: (meeting: CalendarEvent) => void;
+  onTakeNotes?: (meeting: CalendarEvent) => void;
 }
 
-export default function UpcomingMeetingsList({ meetings, onNavigateSettings, onSelectMeeting }: UpcomingMeetingsListProps) {
+export default function UpcomingMeetingsList({ meetings, onNavigateSettings, onSelectMeeting, onTakeNotes }: UpcomingMeetingsListProps) {
   const formatDate = (date: Date): string => {
     const d = new Date(date);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
@@ -36,12 +37,11 @@ export default function UpcomingMeetingsList({ meetings, onNavigateSettings, onS
   const laterMeetings = meetings.filter(m => !isToday(m.start) && !isTomorrow(m.start));
 
   const renderMeeting = (meeting: CalendarEvent): JSX.Element => (
-    <button
+    <div
       key={meeting.id}
-      onClick={() => onSelectMeeting?.(meeting)}
-      className="w-full text-left px-3 py-2 rounded-lg bg-slate-50/50 dark:bg-slate-800/30 border border-slate-200/50 dark:border-slate-700/50 hover:bg-slate-100/50 dark:hover:bg-slate-700/40 transition-colors cursor-pointer"
+      className="px-3 py-2 rounded-lg bg-slate-50/50 dark:bg-slate-800/30 border border-slate-200/50 dark:border-slate-700/50"
     >
-      <div className="flex items-start gap-2.5">
+      <div className="flex items-start gap-2.5 mb-2">
         <div className="flex-shrink-0 px-2 py-1 rounded bg-[#8B5CF6]/20 dark:bg-[#8B5CF6]/10 border border-[#8B5CF6]/30">
           <p className="text-[10px] font-bold text-[#8B5CF6] leading-tight">
             {formatDate(meeting.start)}
@@ -60,7 +60,25 @@ export default function UpcomingMeetingsList({ meetings, onNavigateSettings, onS
           </div>
         </div>
       </div>
-    </button>
+
+      {/* Action Buttons */}
+      <div className="flex items-center gap-2 mt-3">
+        <button
+          onClick={() => onSelectMeeting?.(meeting)}
+          className="flex-1 px-3 py-1.5 rounded-lg bg-slate-200/40 dark:bg-slate-700/40 hover:bg-slate-300/40 dark:hover:bg-slate-600/40 text-slate-700 dark:text-slate-300 text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+        >
+          <BookOpen className="w-3 h-3" />
+          Prep
+        </button>
+        <button
+          onClick={() => onTakeNotes?.(meeting)}
+          className="flex-1 px-3 py-1.5 rounded-lg bg-emerald-mist hover:bg-emerald-mist/90 text-onyx text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+        >
+          <FileText className="w-3 h-3" />
+          Take Notes
+        </button>
+      </div>
+    </div>
   );
 
   const MeetingSection = (props: {

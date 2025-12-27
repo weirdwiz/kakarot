@@ -73,6 +73,10 @@ export class OpenAIProvider {
     return content;
   }
 
+  async complete(prompt: string, model?: string): Promise<string> {
+    return this.chat([{ role: 'user', content: prompt }], { model: model || this.defaultModel });
+  }
+
   async embed(text: string): Promise<number[]> {
     const client = await this.getClient();
     const response = await client.embeddings.create({

@@ -18,6 +18,8 @@ export default function SettingsView() {
     outlook: false,
     icloud: false,
   });
+  const [googleCalendars, setGoogleCalendars] = useState<Array<{ id: string; name: string }>>([]);
+  const [visibleGoogleIds, setVisibleGoogleIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (settings) {
@@ -27,8 +29,25 @@ export default function SettingsView() {
         outlook: !!settings.calendarConnections?.outlook,
         icloud: !!settings.calendarConnections?.icloud,
       });
+      setVisibleGoogleIds(settings.visibleCalendars?.google || []);
     }
   }, [settings]);
+
+  useEffect(() => {
+    async function loadCalendars() {
+      try {
+        if (connectedCalendars.google) {
+          const list = await window.kakarot.calendar.listCalendars('google');
+          setGoogleCalendars(list);
+        } else {
+          setGoogleCalendars([]);
+        }
+      } catch (err) {
+        console.warn('Failed to load calendars', err);
+      }
+    }
+    loadCalendars();
+  }, [connectedCalendars.google]);
 
   const handleChange = (key: keyof AppSettings, value: string | boolean) => {
     if (!localSettings) return;
@@ -447,6 +466,43 @@ export default function SettingsView() {
             </button>
           </div>
         </section>
+
+        {/* Visible Calendars */}
+        {connectedCalendars.google && (
+          <section className="space-y-4">
+            <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
+              Visible Calendars
+            </h2>
+            <div className="space-y-2">
+              {googleCalendars.length === 0 && (
+                <p className="text-sm text-gray-400">No calendars found</p>
+              )}
+              {googleCalendars.map((cal) => {
+                const enabled = visibleGoogleIds.includes(cal.id);
+                return (
+                  <div key={cal.id} className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-700 bg-gray-800">
+                    <div className="flex items-center gap-3">
+                      <span className="w-3 h-3 rounded-sm bg-emerald-500" />
+                      <p className="text-sm text-white">{cal.name}</p>
+                    </div>
+                    <ToggleSwitch
+                      enabled={enabled}
+                      onChange={(on) => {
+                        const next = on
+                          ? Array.from(new Set([...visibleGoogleIds, cal.id]))
+                          : visibleGoogleIds.filter((id) => id !== cal.id);
+                        setVisibleGoogleIds(next);
+                        const nextSettings = { ...localSettings!, visibleCalendars: { ...(localSettings!.visibleCalendars || {}), google: next } };
+                        setLocalSettings(nextSettings);
+                        window.kakarot.calendar.setVisibleCalendars('google', next).catch(() => {});
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* Save button */}
         <div className="flex items-center justify-between pt-4 border-t border-gray-700">

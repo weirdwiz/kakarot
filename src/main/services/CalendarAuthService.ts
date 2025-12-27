@@ -166,12 +166,18 @@ export class CalendarAuthService {
           const provider = this.pendingAuth.provider;
           
           // Exchange code for tokens
-          const tokens = await this.exchangeCodeForTokens(
-            provider,
-            code as string,
-            clientId,
-            clientSecret
-          );
+          let tokens: CalendarTokens | null = null;
+          if (provider === 'google' || provider === 'outlook') {
+            tokens = await this.exchangeCodeForTokens(
+              provider,
+              code as string,
+              clientId,
+              clientSecret
+            );
+          } else {
+            // iCloud does not use OAuth code exchange here
+            tokens = null;
+          }
 
           res.writeHead(200, { 'Content-Type': 'text/html' });
           res.end(`

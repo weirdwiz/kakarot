@@ -1,12 +1,11 @@
 import React from 'react';
 import type { CalendarEvent } from '../../../shared/types';
-import { Calendar, Video, FileText, Clipboard } from 'lucide-react';
+import { Calendar, FileText, Clipboard } from 'lucide-react';
 
 interface CompactMeetingBarProps {
   event: CalendarEvent | null;
   isRecording: boolean;
-  onStartNotes: () => void;
-  onJoin?: () => void;
+  onStartNotes: (event?: CalendarEvent) => void;
   onPrep?: () => void;
 }
 
@@ -14,7 +13,6 @@ export default function CompactMeetingBar({
   event,
   isRecording,
   onStartNotes,
-  onJoin,
   onPrep,
 }: CompactMeetingBarProps) {
   const formatTime = (date: Date): string => {
@@ -36,28 +34,20 @@ export default function CompactMeetingBar({
 
   if (!event) {
     return (
-      <div className="w-full rounded-xl border border-white/30 dark:border-white/10 bg-white/70 dark:bg-graphite/80 backdrop-blur-md shadow-soft-card px-4 py-2 flex items-center justify-between">
+      <div className="w-full rounded-xl border border-white/30 dark:border-white/10 bg-white/70 dark:bg-graphite/80 backdrop-blur-md shadow-soft-card px-4 py-2 flex items-center justify-start">
         <div className="flex items-center gap-3">
           <Calendar className="w-4 h-4 text-slate-500 dark:text-slate-400" />
           <div>
-            <p className="text-sm font-semibold text-slate-900 dark:text-white">No upcoming meetings</p>
-            <p className="text-[11px] text-slate-600 dark:text-slate-400">Ready to take notes anytime</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">No Meeting Going on, enjoy some wind down time :)</p>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400">We’ll surface your meeting here when it’s live.</p>
           </div>
         </div>
-        <button
-          onClick={onStartNotes}
-          disabled={isRecording}
-          className="px-3 py-1.5 bg-[#8B5CF6] text-white text-sm font-semibold rounded-lg shadow-soft-card transition hover:opacity-95 disabled:opacity-60 flex items-center gap-1.5"
-        >
-          <FileText className="w-3.5 h-3.5" />
-          Start Notes
-        </button>
       </div>
     );
   }
 
   const minutesUntil = getMinutesUntil(event.start);
-  const isLive = minutesUntil <= 0 && minutesUntil > -60;
+  const isLive = minutesUntil <= 0 && new Date(event.end).getTime() - Date.now() > 0;
   const platform = getPlatformIcon(event.location);
 
   return (
@@ -87,7 +77,7 @@ export default function CompactMeetingBar({
 
       <div className="flex items-center gap-2 ml-4">
         <button
-          onClick={onStartNotes}
+          onClick={() => onStartNotes(event)}
           disabled={isRecording}
           className="px-3 py-1.5 bg-emerald-mist text-onyx text-sm font-semibold rounded-lg shadow-soft-card transition hover:opacity-95 disabled:opacity-60 flex items-center gap-1.5"
         >

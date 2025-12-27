@@ -103,9 +103,18 @@ export class MeetingRepository {
     const result = db.exec('SELECT * FROM meetings ORDER BY created_at DESC');
     if (result.length === 0) return [];
 
-    return result[0].values.map((_, i) =>
-      this.rowToMeeting(resultToObjectByIndex(result[0], i), [])
-    );
+    return result[0].values.map((_, i) => {
+      const row = resultToObjectByIndex(result[0], i);
+      const segmentsResult = db.exec(
+        'SELECT * FROM transcript_segments WHERE meeting_id = ? ORDER BY timestamp',
+        [row.id as string]
+      );
+      const segments =
+        segmentsResult.length > 0
+          ? segmentsResult[0].values.map((__, j) => resultToObjectByIndex(segmentsResult[0], j))
+          : [];
+      return this.rowToMeeting(row, segments);
+    });
   }
 
   search(query: string): Meeting[] {
@@ -176,6 +185,12 @@ export class MeetingRepository {
     saveDatabase();
   }
 
+  updateNoteEntries(id: string, noteEntries: any[]): void {
+    const db = getDatabase();
+    db.run('UPDATE meetings SET note_entries = ? WHERE id = ?', [JSON.stringify(noteEntries), id]);
+    saveDatabase();
+  }
+
   private rowToMeeting(row: Record<string, unknown>, segments: Record<string, unknown>[]): Meeting {
     return {
       id: row.id as string,
@@ -193,6 +208,7 @@ export class MeetingRepository {
         words: [],
         speakerId: s.speaker_id as string | undefined,
       })),
+      noteEntries: row.note_entries ? JSON.parse(row.note_entries as string) : [],
       notes: row.notes ? JSON.parse(row.notes as string) : null,
       notesPlain: (row.notes_plain as string) || null,
       notesMarkdown: (row.notes_markdown as string) || null,

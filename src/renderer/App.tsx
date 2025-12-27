@@ -71,7 +71,32 @@ export default function App() {
       <div className="flex-1 flex flex-col">
         {/* Fixed Header */}
         <header className="sticky top-0 z-30 backdrop-blur-md bg-white/70 dark:bg-[#0C0C0C]/80 border-b border-slate-200 dark:border-[#1A1A1A] drag-region">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-[48px] flex items-center justify-center">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-[48px] flex items-center justify-between">
+            {/* Back button (left, next to traffic lights area) */}
+            <div className="w-32 flex items-center no-drag">
+              <button
+                className="px-3 py-1.5 rounded-md text-sm text-slate-700 dark:text-slate-300 hover:bg-white/60 hover:dark:bg-white/5"
+                onClick={() => {
+                  // Back button navigates using app-level state stack
+                  // If viewing notes/history/settings, return to recording (home)
+                  // If in recording and have calendar context, clear it (go to start screen)
+                  const currentView = useAppStore.getState().view;
+                  if (currentView !== 'recording') {
+                    useAppStore.getState().setView('recording');
+                  } else {
+                    // Already in recording; if there's a pillar tab selected other than 'notes', reset to notes
+                    if (pillarTab !== 'notes') {
+                      setPillarTab('notes');
+                    }
+                    // Otherwise, stay in recording/home
+                  }
+                }}
+              >
+                <span className="inline-flex items-center gap-1">
+                  ← Back
+                </span>
+              </button>
+            </div>
             {/* Navigation Pills (Center) */}
             <div className="flex-1 flex justify-center no-drag">
               <div className="flex items-center gap-2 px-2 py-2 rounded-full border border-white/30 dark:border-white/10 bg-white/70 dark:bg-[#0C0C0C]/70">
@@ -92,7 +117,7 @@ export default function App() {
             </div>
 
             {/* Theme Toggle (Right) */}
-            <div className="ml-4 no-drag"><ThemeToggle /></div>
+            <div className="w-32 flex justify-end no-drag"><ThemeToggle /></div>
           </div>
         </header>
 

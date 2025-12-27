@@ -328,7 +328,7 @@ export class CalendarService {
     return refreshed;
   }
 
-  private async fetchGoogleEvents(tokens: OAuthTokens, start: Date, end: Date): Promise<CalendarEvent[]> {
+  private async fetchGoogleEvents(tokens: OAuthTokens, start: Date, end: Date, calendarId: string = 'primary'): Promise<CalendarEvent[]> {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     if (!clientId || !clientSecret) return [];
@@ -339,7 +339,7 @@ export class CalendarService {
       clientSecret,
     });
 
-    const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
+    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`);
     url.searchParams.set('timeMin', start.toISOString());
     url.searchParams.set('timeMax', end.toISOString());
     url.searchParams.set('singleEvents', 'true');
@@ -428,8 +428,16 @@ export class CalendarService {
 
     if (settings.calendarConnections.google) {
       try {
-        const events = await this.fetchGoogleEvents(settings.calendarConnections.google, now, oneWeekFromNow);
-        results.push(...events);
+        const visible = settings.visibleCalendars?.google;
+        if (visible && visible.length > 0) {
+          for (const calId of visible) {
+            const events = await this.fetchGoogleEvents(settings.calendarConnections.google, now, oneWeekFromNow, calId);
+            results.push(...events);
+          }
+        } else {
+          const events = await this.fetchGoogleEvents(settings.calendarConnections.google, now, oneWeekFromNow);
+          results.push(...events);
+        }
       } catch (err) {
         logger.error('Failed to fetch Google upcoming events', { error: (err as Error).message });
       }
@@ -445,6 +453,47 @@ export class CalendarService {
     }
 
     return results.sort((a, b) => a.start.getTime() - b.start.getTime());
+  }
+
+  async listCalendars(provider: Provider): Promise<Array<{ id: string; name: string }>> {
+    const settings = this.settingsRepo.getSettings();
+    if (provider === 'google' && settings.calendarConnections.google) {
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      if (!clientId || !clientSecret) return [];
+      const tokens = await this.ensureFreshToken('google', settings.calendarConnections.google, {
+        tokenUrl: 'https://oauth2.googleapis.com/token',
+        clientId,
+        clientSecret,
+      });
+      const url = new URL('https://www.googleapis.com/calendar/v3/users/me/calendarList');
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${tokens.accessToken}` } });
+      if (!resp.ok) {
+        logger.warn('Failed to list google calendars', { status: resp.status });
+        return [];
+      }
+      const data = await resp.json();
+      return (data.items || [])
+        .filter((c: any) => !c.id.includes('@group.calendar.google.com'))
+        .map((c: any) => ({ id: c.id, name: c.summary }));
+    }
+    if (provider === 'outlook' && settings.calendarConnections.outlook) {
+      // Optional: implement in future
+      return [];
+    }
+    if (provider === 'icloud' && settings.calendarConnections.icloud) {
+      // Optional: implement in future
+      return [];
+    }
+    return [];
+  }
+
+  async setVisibleCalendars(provider: Provider, ids: string[]): Promise<void> {
+    const settings = this.settingsRepo.getSettings();
+    const visible = settings.visibleCalendars || {};
+    const next = { ...visible, [provider]: ids } as typeof visible;
+    this.settingsRepo.updateSettings({ visibleCalendars: next });
+    logger.info('Updated visible calendars', { provider, count: ids.length });
   }
 
   /**

@@ -44,6 +44,70 @@ export function registerMeetingHandlers(): void {
     }
   );
 
+  ipcMain.handle(
+    IPC_CHANNELS.MEETING_ASK_NOTES,
+    async (_, meetingId: string, query: string) => {
+      const { aiProvider } = getContainer();
+      if (!aiProvider) {
+        throw new Error('AI provider not configured');
+      }
+
+      const meeting = meetingRepo.findById(meetingId);
+      if (!meeting) {
+        throw new Error('Meeting not found');
+      }
+
+      // Build context for the AI
+      const transcript = meeting.transcript.map((s) => `${s.source === 'mic' ? 'You' : 'Other'}: ${s.text}`).join('\n');
+      const notes = meeting.notesMarkdown || meeting.overview || '';
+
+      const prompt = `You are a helpful meeting assistant. The user is asking about their meeting notes.
+
+Meeting Title: ${meeting.title}
+Date: ${new Date(meeting.createdAt).toLocaleString()}
+
+Generated Notes:
+${notes}
+
+Full Transcript:
+${transcript}
+
+User Question: ${query}
+
+Provide a concise, helpful answer based on the meeting notes and transcript.`;
+
+      const response = await aiProvider.complete(prompt, 'gpt-4o');
+      return response;
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.MEETING_NOTES_SAVE_MANUAL,
+    (_, meetingId: string, content: string) => {
+      const meeting = meetingRepo.findById(meetingId);
+      if (!meeting) {
+        throw new Error('Meeting not found');
+      }
+
+      // Append manual note entry to existing notes
+      const noteEntries = meeting.noteEntries || [];
+      const newEntry = {
+        id: `${meetingId}-manual-${Date.now()}`,
+        content,
+        type: 'manual' as const,
+        createdAt: new Date(),
+        source: 'upcoming' as const,
+      };
+
+      noteEntries.push(newEntry);
+
+      // Update meeting with new note entries
+      meetingRepo.updateNoteEntries(meetingId, noteEntries);
+      
+      console.log('Saved manual notes for meeting:', { meetingId, entryId: newEntry.id, contentLength: content.length });
+    }
+  );
+
   // Desktop sources for audio capture
   ipcMain.handle(IPC_CHANNELS.AUDIO_GET_SOURCES, async () => {
     const sources = await desktopCapturer.getSources({

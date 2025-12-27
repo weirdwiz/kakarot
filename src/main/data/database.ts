@@ -93,6 +93,7 @@ function createTables(): void {
     { name: 'overview', def: 'TEXT' },
     { name: 'chapters', def: "TEXT DEFAULT '[]'" },
     { name: 'people', def: "TEXT DEFAULT '[]'" },
+    { name: 'note_entries', def: "TEXT DEFAULT '[]'" },
   ];
   for (const col of newCols) {
     if (!existingCols.includes(col.name)) {

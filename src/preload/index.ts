@@ -80,6 +80,10 @@ contextBridge.exposeInMainWorld('kakarot', {
       ipcRenderer.invoke(IPC_CHANNELS.MEETING_SUMMARIZE, id),
     export: (id: string, format: 'markdown' | 'pdf'): Promise<string> =>
       ipcRenderer.invoke(IPC_CHANNELS.MEETING_EXPORT, id, format),
+    saveManualNotes: (id: string, content: string): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEETING_NOTES_SAVE_MANUAL, id, content),
+    askNotes: (id: string, query: string): Promise<string> =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEETING_ASK_NOTES, id, query),
   },
 
   // Callout
@@ -126,6 +130,10 @@ contextBridge.exposeInMainWorld('kakarot', {
       ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_GET_EVENT_FOR_MEETING, meetingId),
     linkNotes: (calendarEventId: string, notesId: string, provider: 'google' | 'outlook' | 'icloud'): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_LINK_NOTES, calendarEventId, notesId, provider),
+    listCalendars: (provider: 'google' | 'outlook' | 'icloud'): Promise<Array<{ id: string; name: string }>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_LIST_CALENDARS, provider),
+    setVisibleCalendars: (provider: 'google' | 'outlook' | 'icloud', ids: string[]): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_SET_VISIBLE_CALENDARS, provider, ids),
   },
 
   // Dev utilities
@@ -150,7 +158,7 @@ declare global {
           calendarEventStart: string;
           calendarEventEnd: string;
           calendarProvider: string;
-        }) => Promise<void>;
+        }) => Promise<string>;
         stop: () => Promise<Meeting>;
         pause: () => Promise<void>;
         resume: () => Promise<void>;
@@ -173,6 +181,8 @@ declare global {
         search: (query: string) => Promise<Meeting[]>;
         summarize: (id: string) => Promise<string>;
         export: (id: string, format: 'markdown' | 'pdf') => Promise<string>;
+        saveManualNotes: (id: string, content: string) => Promise<void>;
+        askNotes: (id: string, query: string) => Promise<string>;
       };
       callout: {
         onShow: (callback: (callout: Callout) => void) => () => void;
@@ -197,6 +207,8 @@ declare global {
         linkEvent: (calendarEventId: string, meetingId: string, provider: 'google' | 'outlook' | 'icloud') => Promise<void>;
         getEventForMeeting: (meetingId: string) => Promise<CalendarEvent | null>;
         linkNotes: (calendarEventId: string, notesId: string, provider: 'google' | 'outlook' | 'icloud') => Promise<void>;
+        listCalendars: (provider: 'google' | 'outlook' | 'icloud') => Promise<Array<{ id: string; name: string }>>;
+        setVisibleCalendars: (provider: 'google' | 'outlook' | 'icloud', ids: string[]) => Promise<void>;
       };
       dev: {
         onResetOnboarding: (callback: () => void) => () => void;

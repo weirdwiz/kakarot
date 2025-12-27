@@ -7,14 +7,17 @@ interface Meeting {
   start: Date;
   end: Date;
   hasTranscript?: boolean;
+  isCalendarEvent?: boolean;
+  onViewNotes?: () => void;
 }
 
 interface PreviousMeetingsListProps {
   meetings: Meeting[];
   onViewNotes?: (id: string) => void;
+  onViewCalendarEventNotes?: (id: string) => void;
 }
 
-export default function PreviousMeetingsList({ meetings, onViewNotes }: PreviousMeetingsListProps) {
+export default function PreviousMeetingsList({ meetings, onViewNotes, onViewCalendarEventNotes }: PreviousMeetingsListProps) {
   const formatDate = (date: Date): string => {
     const d = new Date(date);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
@@ -22,6 +25,16 @@ export default function PreviousMeetingsList({ meetings, onViewNotes }: Previous
 
   const formatTime = (date: Date): string => {
     return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const handleMeetingClick = (meeting: Meeting) => {
+    if (meeting.onViewNotes) {
+      meeting.onViewNotes();
+    } else if (meeting.isCalendarEvent) {
+      onViewCalendarEventNotes?.(meeting.id);
+    } else {
+      onViewNotes?.(meeting.id);
+    }
   };
 
   return (
@@ -38,9 +51,10 @@ export default function PreviousMeetingsList({ meetings, onViewNotes }: Previous
           </div>
         ) : (
           meetings.map((meeting) => (
-            <div
+            <button
               key={meeting.id}
-              className="px-3 py-2 rounded-lg bg-slate-50/30 dark:bg-slate-800/20 border border-slate-200/40 dark:border-slate-700/40"
+              onClick={() => handleMeetingClick(meeting)}
+              className="w-full px-3 py-2 rounded-lg bg-slate-50/30 dark:bg-slate-800/20 border border-slate-200/40 dark:border-slate-700/40 hover:bg-slate-100/40 dark:hover:bg-slate-700/30 transition-colors text-left"
             >
               <div className="flex items-start gap-2.5">
                 <div className="flex-shrink-0 px-2 py-1 rounded bg-slate-200/40 dark:bg-slate-700/30 border border-slate-300/30 dark:border-slate-600/30">
@@ -59,26 +73,20 @@ export default function PreviousMeetingsList({ meetings, onViewNotes }: Previous
                   
                   <div className="mt-2">
                     {meeting.hasTranscript ? (
-                      <button
-                        onClick={() => onViewNotes?.(meeting.id)}
-                        className="text-xs text-[#8B5CF6] hover:text-[#7C3AED] dark:hover:text-[#A78BFA] font-medium flex items-center gap-1 transition-colors"
-                      >
+                      <span className="text-xs text-[#8B5CF6] dark:text-[#A78BFA] font-medium flex items-center gap-1">
                         <FileText className="w-3 h-3" />
                         View Notes
-                      </button>
+                      </span>
                     ) : (
-                      <button
-                        onClick={() => onViewNotes?.(meeting.id)}
-                        className="text-xs text-[#8B5CF6] hover:text-[#7C3AED] dark:hover:text-[#A78BFA] font-medium flex items-center gap-1 transition-colors"
-                      >
+                      <span className="text-xs text-[#8B5CF6] dark:text-[#A78BFA] font-medium flex items-center gap-1">
                         <Plus className="w-3 h-3" />
                         Add notes
-                      </button>
+                      </span>
                     )}
                   </div>
                 </div>
               </div>
-            </div>
+            </button>
           ))
         )}
       </div>

@@ -30,7 +30,7 @@ export function registerRecordingHandlers(
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_START, async (_, calendarContext?: any) => {
     logger.info('Recording start requested', { hasCalendarContext: !!calendarContext });
-    const { meetingRepo, settingsRepo, hostedTokenManager } = getContainer();
+    const { meetingRepo, settingsRepo } = getContainer();
     const settings = settingsRepo.getSettings();
     logger.debug('Transcription provider', { provider: settings.transcriptionProvider });
 
@@ -45,8 +45,13 @@ export function registerRecordingHandlers(
 
     // Start meeting with calendar title if available
     const meetingTitle = calendarContext?.calendarEventTitle;
-    await meetingRepo.startNewMeeting(meetingTitle);
-    logger.info('Meeting started');
+    const meetingId = await meetingRepo.startNewMeeting(meetingTitle);
+    logger.info('Meeting started', { 
+      meetingId,
+      meetingTitle, 
+      hadCalendarContext: !!calendarContext,
+      actualTitle: meetingTitle || 'will use default timestamp'
+    });
 
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'recording');
 
@@ -54,7 +59,7 @@ export function registerRecordingHandlers(
       settings.transcriptionProvider,
       settings.assemblyAiApiKey,
       settings.deepgramApiKey,
-      hostedTokenManager,
+      undefined,
       settings.useHostedTokens
     );
     logger.info('Using transcription provider', { name: transcriptionProvider.name });
@@ -115,6 +120,8 @@ export function registerRecordingHandlers(
       .catch((error) => {
         logger.error('Transcription provider connection failed', error);
       });
+
+    return meetingId;
   });
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_STOP, async () => {
@@ -164,9 +171,23 @@ export function registerRecordingHandlers(
             logger.info('Notes generated successfully', { meetingId: meeting.id });
             meetingRepo.updateNotes(meeting.id, null, notes.notesMarkdown, notes.notesMarkdown);
             meetingRepo.updateOverview(meeting.id, notes.overview);
-            const db = getDatabase();
-            db.run('UPDATE meetings SET title = ? WHERE id = ?', [notes.title, meeting.id]);
-            saveDatabase();
+
+            // Preserve calendar-derived titles; only override when we don't have a calendar context
+            if (!calendContext) {
+              logger.info('Updating meeting title with AI-generated title (no calendar context)', {
+                meetingId: meeting.id,
+                aiTitle: notes.title
+              });
+              const db = getDatabase();
+              db.run('UPDATE meetings SET title = ? WHERE id = ?', [notes.title, meeting.id]);
+              saveDatabase();
+            } else {
+              logger.info('Preserving calendar-derived title (calendar context exists)', {
+                meetingId: meeting.id,
+                calendarTitle: fullMeeting.title,
+                aiTitleNotUsed: notes.title
+              });
+            }
 
             // Link notes back to calendar event if context exists
             if (calendContext) {

@@ -4,9 +4,12 @@ import { useAudioCapture } from '../hooks/useAudioCapture';
 import AudioLevelMeter from './AudioLevelMeter';
 import LiveTranscript from './LiveTranscript';
 import BentoDashboard from './bento/BentoDashboard';
+import AskNotesBar from './AskNotesBar';
+import ManualNotesView from './ManualNotesView';
 import MeetingContextPreview from './MeetingContextPreview';
-import { FileText, Square, Pause, Play, Search, Loader2 } from 'lucide-react';
+import { FileText, Square, Pause, Play, Search, Loader2, Calendar as CalendarIcon, Users, Folder } from 'lucide-react';
 import { formatDateTime } from '../lib/formatters';
+import type { CalendarEvent, AppSettings } from '@shared/types';
 
 interface RecordingViewProps {
   onSelectTab?: (tab: 'notes' | 'prep' | 'interact') => void;
@@ -17,15 +20,62 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const { startCapture, stopCapture, pause, resume } = useAudioCapture();
   const [pillarTab, setPillarTab] = React.useState<'notes' | 'prep' | 'interact'>('notes');
   const [recordingTitle, setRecordingTitle] = React.useState<string>(''); // Title to display during recording
-  const [phase, setPhase] = React.useState<'recording' | 'generating_notes' | 'completed' | 'error'>('recording');
+  const [upcomingMeetingId, setUpcomingMeetingId] = React.useState<string | null>(null); // Meeting ID for upcoming notes
+  type MeetingPhase = 'recording' | 'processing' | 'completed' | 'error';
+  const [phase, setPhase] = React.useState<MeetingPhase>('recording');
   const [errorMessage, setErrorMessage] = React.useState<string>('');
   const [completedMeeting, setCompletedMeeting] = React.useState<any>(null);
+  const [aiResponse, setAiResponse] = React.useState<string>('');
+  const isIdle = recordingState === 'idle';
 
   // Forward tab changes to parent if handler provided
   const handleSelectTab = (tab: 'notes' | 'prep' | 'interact') => {
     setPillarTab(tab);
     onSelectTab?.(tab);
   };
+
+  // Initialize meeting when entering manual notes view for upcoming meetings
+  React.useEffect(() => {
+    if (isIdle && pillarTab === 'notes' && (activeCalendarContext || calendarContext) && !upcomingMeetingId) {
+      const meeting = activeCalendarContext || calendarContext;
+      if (meeting) {
+        // Check if this calendar event already has linked notes; if so, reuse that meeting ID
+        window.kakarot.settings.get()
+          .then((settings) => {
+            const mappings = (settings as AppSettings).calendarEventMappings || {};
+            const existing = mappings[meeting.id];
+            if (existing?.notesId) {
+              setUpcomingMeetingId(existing.notesId);
+              console.log('[RecordingView] Using existing notes meeting for upcoming event:', existing.notesId);
+              return null; // signal no creation needed
+            }
+            // Otherwise, create a new meeting entry for upcoming calendar event notes and link it
+            return window.kakarot.recording.start({
+              calendarEventId: meeting.id,
+              calendarEventTitle: meeting.title,
+              calendarEventAttendees: meeting.attendees,
+              calendarEventStart: meeting.start.toISOString(),
+              calendarEventEnd: meeting.end.toISOString(),
+              calendarProvider: meeting.provider,
+            })
+              .then(async (meetingId) => {
+                setUpcomingMeetingId(meetingId);
+                console.log('[RecordingView] Created meeting for upcoming notes:', meetingId);
+                try {
+                  await window.kakarot.calendar.linkNotes(meeting.id, meetingId, meeting.provider as 'google' | 'outlook' | 'icloud');
+                  console.log('[RecordingView] Linked notes to calendar event:', meeting.id);
+                } catch (linkErr) {
+                  console.warn('[RecordingView] Failed to link notes to calendar event:', linkErr);
+                }
+                return meetingId;
+              });
+          })
+          .catch((err) => {
+            console.error('[RecordingView] Failed initializing manual notes meeting:', err);
+          });
+      }
+    }
+  }, [isIdle, pillarTab, activeCalendarContext, calendarContext, upcomingMeetingId]);
 
   // Hook into meeting notes completion event
   React.useEffect(() => {
@@ -68,32 +118,46 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     return `Good Evening, ${userName}`;
   };
 
-  const handleStartRecording = async () => {
+  const handleStartRecording = async (calendarEvent?: CalendarEvent) => {
     console.log('[RecordingView] Start button clicked');
+    
+    // If an event is explicitly passed, use it and set as active calendar context
+    // If no event is passed (manual recording), clear any existing calendar context
+    if (calendarEvent) {
+      console.log('[RecordingView] Setting active calendar context from event:', calendarEvent.title);
+      setActiveCalendarContext(calendarEvent);
+    } else {
+      console.log('[RecordingView] Manual recording - clearing active calendar context');
+      setActiveCalendarContext(null);
+    }
+    
+    // Use only the passed event, not any previously stored context
+    const contextToUse = calendarEvent || null;
+    console.log('[RecordingView] Active calendar context:', contextToUse);
+    
     clearLiveTranscript();
     setPhase('recording');
     setCompletedMeeting(null);
     setErrorMessage('');
     
-    // Set the recording title from calendar context
-    if (activeCalendarContext) {
-      setRecordingTitle(activeCalendarContext.title);
-    } else {
-      setRecordingTitle(`Meeting ${formatDateTime(new Date())}`);
-    }
+    // Determine the title: prefer calendar context, fallback to "New Meeting"
+    const titleToUse = contextToUse?.title || 'New Meeting';
+    console.log('[RecordingView] Title to use:', titleToUse, 'from calendar:', !!contextToUse);
+    setRecordingTitle(titleToUse);
     
     try {
       console.log('[RecordingView] Calling recording.start()...');
       // Pass active calendar context if available
-      const calendarContextData = activeCalendarContext ? {
-        calendarEventId: activeCalendarContext.id,
-        calendarEventTitle: activeCalendarContext.title,
-        calendarEventAttendees: activeCalendarContext.attendees,
-        calendarEventStart: activeCalendarContext.start.toISOString(),
-        calendarEventEnd: activeCalendarContext.end.toISOString(),
-        calendarProvider: activeCalendarContext.provider,
+      const calendarContextData = contextToUse ? {
+        calendarEventId: contextToUse.id,
+        calendarEventTitle: contextToUse.title,
+        calendarEventAttendees: contextToUse.attendees,
+        calendarEventStart: contextToUse.start.toISOString(),
+        calendarEventEnd: contextToUse.end.toISOString(),
+        calendarProvider: contextToUse.provider,
       } : undefined;
       
+      console.log('[RecordingView] Calendar context being sent:', calendarContextData);
       await window.kakarot.recording.start(calendarContextData);
       console.log('[RecordingView] recording.start() completed, calling startCapture()...');
       await startCapture();
@@ -102,13 +166,14 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
       
       // Clear the preview modal now that recording has started
       setCalendarContext(null);
+      // Keep activeCalendarContext for the entire recording session
     } catch (error) {
       console.error('[RecordingView] Error starting recording:', error);
     }
   };
 
   const handleStopRecording = async () => {
-    setPhase('generating_notes');
+    setPhase('processing');
     setErrorMessage('');
     await stopCapture();
     const meeting = await window.kakarot.recording.stop();
@@ -133,8 +198,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
       }
     }
     
-    // Clear the active calendar context
-    setActiveCalendarContext(null);
+    // Keep active calendar context until notes render so metadata can be surfaced
   };
 
   const handlePauseRecording = async () => {
@@ -149,10 +213,31 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
 
   const isRecording = recordingState === 'recording';
   const isPaused = recordingState === 'paused';
-  const isIdle = recordingState === 'idle';
-  const isGenerating = phase === 'generating_notes';
+  const isGenerating = phase === 'processing';
+
+  // Display title: use recordingTitle which is set from calendar context or timestamp at start
+  // For completed meetings, prefer the stored title which should be calendar title if it existed
+  const displayTitle = (phase === 'completed' && completedMeeting) 
+    ? completedMeeting.title 
+    : recordingTitle;
+  const displayDate = activeCalendarContext?.start || (completedMeeting ? new Date(completedMeeting.createdAt) : new Date());
+  const displayAttendees: string[] = (activeCalendarContext?.attendees as any) || completedMeeting?.participants || [];
+  const displayLocation = activeCalendarContext?.location;
 
   return (
+    <>
+    {/* Show Manual Notes View if viewing notes tab while idle and have calendar context */}
+    {isIdle && pillarTab === 'notes' && (activeCalendarContext || calendarContext) ? (
+      <ManualNotesView 
+        meetingId={upcomingMeetingId || undefined} 
+        onSelectTab={handleSelectTab}
+        onSaveNotes={() => {
+          // After notes are saved, go back to home view
+          setPillarTab('notes');
+          setActiveCalendarContext(null);
+        }}
+      />
+    ) : (
     <div className="h-full bg-studio text-slate-ink dark:bg-onyx dark:text-gray-100">
       {/* Meeting Context Preview Modal */}
       {calendarContext && isIdle && (
@@ -163,33 +248,19 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
       )}
 
       <div className="mx-auto w-full px-4 sm:px-6 py-4 flex flex-col gap-4">
-        {/* Greeting + Unified Action Row */}
-        <div className="space-y-3">
-          {/* Greeting or Recording Title */}
-          <div>
-            {isIdle ? (
+        {/* Greeting + Unified Action Row - Only show when truly idle (not viewing completed notes) */}
+        {isIdle && (
+          <div className="space-y-3">
+            {/* Greeting */}
+            <div>
               <h1 className="text-3xl font-medium text-slate-900 dark:text-white">
                 {getGreeting()}
               </h1>
-            ) : (
-              <div className="space-y-1">
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {isRecording && 'Recording in progress... keep the conversation flowing'}
-                  {isPaused && 'Recording paused — resume when ready'}
-                </p>
-                {recordingTitle && (
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white truncate">
-                    {recordingTitle}
-                  </h2>
-                )}
-              </div>
-            )}
-          </div>
+            </div>
 
-          {/* Unified Action Row (Search + Take Notes) */}
-          <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-white/30 dark:border-white/10 bg-transparent backdrop-blur-sm">
-            {/* Search Bar */}
-            {isIdle && (
+            {/* Unified Action Row (Search + Take Notes) */}
+            <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-white/30 dark:border-white/10 bg-transparent backdrop-blur-sm">
+              {/* Search Bar */}
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                 <input
@@ -198,50 +269,67 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                   className="w-full pl-10 pr-4 py-2 bg-white/70 dark:bg-graphite/80 border border-white/30 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/50 backdrop-blur-md transition"
                 />
               </div>
-            )}
 
-            {/* Action Buttons */}
-            {isIdle ? (
+              {/* Take Notes Button */}
               <button
-                onClick={handleStartRecording}
+                onClick={() => handleStartRecording()}
                 className="px-4 py-2 bg-[#8B5CF6] text-white font-semibold rounded-lg flex items-center gap-2 shadow-soft-card transition hover:opacity-95 flex-shrink-0"
               >
                 <FileText className="w-4 h-4" />
                 + Take Notes
               </button>
-            ) : (
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {isPaused ? (
-                  <button
-                    onClick={handleResumeRecording}
-                    disabled={isGenerating}
-                    className={`px-4 py-2 bg-[#8B5CF6] text-white font-semibold rounded-lg flex items-center gap-2 transition ${isGenerating ? 'opacity-60 cursor-not-allowed' : 'hover:opacity-95'}`}
-                  >
-                    <Play className="w-4 h-4" />
-                    Resume
-                  </button>
-                ) : (
-                  <button
-                    onClick={handlePauseRecording}
-                    disabled={isGenerating}
-                    className={`px-4 py-2 bg-slate-100 text-slate-ink font-semibold rounded-lg flex items-center gap-2 transition dark:bg-slate-800/80 dark:text-gray-100 ${isGenerating ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-200 dark:hover:bg-slate-700'}`}
-                  >
-                    <Pause className="w-4 h-4" />
-                    Pause
-                  </button>
-                )}
-                <button
-                  onClick={handleStopRecording}
-                  disabled={isGenerating}
-                  className={`px-4 py-2 bg-red-600 text-white font-semibold rounded-lg flex items-center gap-2 transition ${isGenerating ? 'opacity-60 cursor-not-allowed' : 'hover:bg-red-700'}`}
-                >
-                  <Square className="w-4 h-4" />
-                  Stop
-                </button>
-              </div>
-            )}
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Recording controls and titles - Show when recording, paused, or generating notes */}
+        {!isIdle && (
+          <div className="space-y-3">
+            {/* Recording Title */}
+            <div className="space-y-1">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isRecording && 'Recording in progress... keep the conversation flowing'}
+                {isPaused && 'Recording paused — resume when ready'}
+              </p>
+              {displayTitle && (
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white truncate">
+                  {displayTitle}
+                </h2>
+              )}
+            </div>
+
+            {/* Recording Control Buttons */}
+            <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-white/30 dark:border-white/10 bg-transparent backdrop-blur-sm">
+              {isPaused ? (
+                <button
+                  onClick={handleResumeRecording}
+                  disabled={isGenerating}
+                  className={`px-4 py-2 bg-[#8B5CF6] text-white font-semibold rounded-lg flex items-center gap-2 transition ${isGenerating ? 'opacity-60 cursor-not-allowed' : 'hover:opacity-95'}`}
+                >
+                  <Play className="w-4 h-4" />
+                  Resume
+                </button>
+              ) : (
+                <button
+                  onClick={handlePauseRecording}
+                  disabled={isGenerating}
+                  className={`px-4 py-2 bg-slate-100 text-slate-ink font-semibold rounded-lg flex items-center gap-2 transition dark:bg-slate-800/80 dark:text-gray-100 ${isGenerating ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                >
+                  <Pause className="w-4 h-4" />
+                  Pause
+                </button>
+              )}
+              <button
+                onClick={handleStopRecording}
+                disabled={isGenerating}
+                className={`px-4 py-2 bg-red-600 text-white font-semibold rounded-lg flex items-center gap-2 transition ${isGenerating ? 'opacity-60 cursor-not-allowed' : 'hover:bg-red-700'}`}
+              >
+                <Square className="w-4 h-4" />
+                Stop
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Compact audio meters moved into transcript header */}
 
@@ -252,10 +340,10 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
               <div className="mb-4 flex items-center justify-between flex-shrink-0">
                 <div>
                   <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                    {phase === 'completed' ? 'Meeting Complete' : 'Live Transcript'}
+                    {phase === 'completed' ? 'Meeting Notes' : 'Live Transcript'}
                   </p>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {phase === 'completed' ? 'Notes generated successfully' : 'Local audio is highlighted in Emerald Mist.'}
+                    {phase === 'completed' ? 'Generated from your meeting' : 'Local audio is highlighted in Emerald Mist.'}
                   </p>
                 </div>
                 {(isRecording || isPaused) && (
@@ -271,32 +359,65 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
               </div>
               {isGenerating ? (
                 <div className="flex-1 flex items-center justify-center">
-                  <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span className="text-sm">Generating notes…</span>
+                  <div className="text-center">
+                    <Loader2 className="w-10 h-10 animate-spin mx-auto text-[#8B5CF6]" />
+                    <p className="mt-3 text-base font-medium text-slate-900 dark:text-white">Generating Notes…</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-300">This usually takes a few seconds.</p>
                   </div>
                 </div>
               ) : phase === 'completed' && completedMeeting ? (
-                <div className="flex-1 overflow-y-auto space-y-4">
-                  {/* Notes Section */}
-                  {completedMeeting.overview && (
-                    <div className="bg-blue-50/50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-200/40 dark:border-blue-800/40">
-                      <h3 className="text-sm font-medium text-blue-700 dark:text-blue-300 mb-2">Overview</h3>
-                      <p className="text-sm text-gray-900 dark:text-gray-100">{completedMeeting.overview}</p>
-                    </div>
-                  )}
-                  {completedMeeting.notesMarkdown && (
-                    <div className="bg-gray-50/50 dark:bg-gray-900/20 rounded-xl p-4 border border-gray-200/40 dark:border-gray-800/40">
-                      <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">Notes</h3>
-                      <div className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap prose prose-sm max-w-none dark:prose-invert">
-                        {completedMeeting.notesMarkdown}
+                <div className="flex-1 overflow-y-auto pb-32 space-y-6">
+                  {/* Title - Large and Primary */}
+                  <div className="space-y-4">
+                    <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white leading-tight">
+                      {displayTitle || 'Meeting'}
+                    </h2>
+
+                    {/* Metadata Blocks */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-2.5">
+                        <CalendarIcon className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                        <div className="text-sm text-slate-800 dark:text-slate-200">{formatDateTime(displayDate)}</div>
+                      </div>
+
+                      <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-2.5">
+                        <Users className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                        <div className="text-sm text-slate-800 dark:text-slate-200">
+                          {displayAttendees && displayAttendees.length > 0
+                            ? displayAttendees.slice(0, 2).join(', ') + (displayAttendees.length > 2 ? ` +${displayAttendees.length - 2}` : '')
+                            : 'Add attendees'}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-2.5">
+                        <Folder className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                        <div className="text-sm text-slate-800 dark:text-slate-200">
+                          {displayLocation || 'No folder'}
+                        </div>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Overview Card */}
+                  {completedMeeting.overview && (
+                    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-5 border border-slate-200 dark:border-slate-800">
+                      <p className="text-base leading-relaxed text-slate-800 dark:text-slate-100">
+                        {completedMeeting.overview}
+                      </p>
+                    </div>
                   )}
+
+                  {/* Notes Section */}
+                  {completedMeeting.notesMarkdown && (
+                    <div className="prose prose-sm max-w-none dark:prose-invert text-slate-800 dark:text-slate-200">
+                      <div dangerouslySetInnerHTML={{ __html: (completedMeeting.notesMarkdown as string).replace(/\n/g, '<br/>') }} />
+                    </div>
+                  )}
+
                   {/* Transcript Section */}
                   {liveTranscript.length > 0 && (
-                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                      <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-3">Transcript</h3>
+                    <div className="border-t border-slate-200 dark:border-slate-800 pt-6">
+                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Transcript</h3>
                       <div className="space-y-3">
                         {liveTranscript.map((segment) => (
                           <div
@@ -304,13 +425,13 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                             className={`flex ${segment.source === 'mic' ? 'justify-end' : 'justify-start'}`}
                           >
                             <div
-                              className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                              className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
                                 segment.source === 'mic'
-                                  ? 'bg-gray-900 dark:bg-gray-800 text-white'
-                                  : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-600'
+                                  ? 'bg-slate-900 dark:bg-slate-700 text-white'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
                               }`}
                             >
-                              <p className="text-sm">{segment.text}</p>
+                              <p>{segment.text}</p>
                             </div>
                           </div>
                         ))}
@@ -355,6 +476,33 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
           )}
         </div>
       </div>
+
+      {/* "Ask your notes" bar - only in completed phase */}
+      {phase === 'completed' && completedMeeting && (
+        <AskNotesBar meeting={completedMeeting} onResponse={setAiResponse} />
+      )}
+      {/* AI Response Panel - render above ask bar if response exists */}
+      {aiResponse && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-19 max-w-2xl w-full max-h-[300px] overflow-y-auto pointer-events-auto">
+          <div className="mx-4 p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-soft-card">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1">
+                <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap">
+                  {aiResponse}
+                </p>
+              </div>
+              <button
+                onClick={() => setAiResponse('')}
+                className="flex-shrink-0 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+    )}
+    </>
   );
 }

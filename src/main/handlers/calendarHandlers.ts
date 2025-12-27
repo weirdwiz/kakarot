@@ -72,4 +72,22 @@ export function registerCalendarHandlers(): void {
       return calendarService.linkNotesToEvent(calendarEventId, notesId, provider);
     }
   );
+
+  ipcMain.handle(
+    IPC_CHANNELS.CALENDAR_LIST_CALENDARS,
+    async (_event, provider: 'google' | 'outlook' | 'icloud') => {
+      const { calendarService } = getContainer();
+      logger.debug('Handling CALENDAR_LIST_CALENDARS', { provider });
+      return calendarService.listCalendars(provider);
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.CALENDAR_SET_VISIBLE_CALENDARS,
+    async (_event, provider: 'google' | 'outlook' | 'icloud', ids: string[]) => {
+      const { calendarService } = getContainer();
+      logger.debug('Handling CALENDAR_SET_VISIBLE_CALENDARS', { provider, count: ids.length });
+      return calendarService.setVisibleCalendars(provider, ids);
+    }
+  );
 }
