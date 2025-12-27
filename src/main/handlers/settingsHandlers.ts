@@ -17,9 +17,7 @@ export function registerSettingsHandlers(): void {
     if (settings.openAiApiKey !== undefined || settings.openAiBaseUrl !== undefined || settings.openAiModel !== undefined) {
       const currentSettings = settingsRepo.getSettings();
       refreshAIProvider({
-        openAiApiKey: currentSettings.openAiApiKey,
-        openAiBaseUrl: currentSettings.openAiBaseUrl,
-        openAiModel: currentSettings.openAiModel,
+        apiKey: currentSettings.openAiApiKey,
       });
     }
   });

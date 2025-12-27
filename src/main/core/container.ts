@@ -1,6 +1,5 @@
 import { MeetingRepository, CalloutRepository, SettingsRepository } from '../data/repositories';
 import { OpenAIProvider } from '../providers/OpenAIProvider';
-import { NoteGenerationService } from '../services/NoteGenerationService';
 import { createLogger } from './logger';
 import { CalendarService } from '../services/CalendarService';
 import { CalendarAuthService } from '../services/CalendarAuthService';
@@ -21,6 +20,7 @@ export interface AppContainer {
 
 let container: AppContainer | null = null;
 
+
 export function initializeContainer(): AppContainer {
   const meetingRepo = new MeetingRepository();
   const calloutRepo = new CalloutRepository();
@@ -35,20 +35,11 @@ export function initializeContainer(): AppContainer {
 
   // Create AI provider if API key is available
   const settings = settingsRepo.getSettings();
-  const aiProvider = settings.openAiApiKey
-    ? new OpenAIProvider({
-        apiKey: settings.openAiApiKey,
-        baseURL: settings.openAiBaseUrl || undefined,
-        defaultModel: settings.openAiModel || undefined,
-      })
-    : null;
+  const aiProvider = settings.openAiApiKey ? new OpenAIProvider({ apiKey: settings.openAiApiKey }) : null;
 
   if (!aiProvider) {
     logger.warn('OpenAI API key not configured - AI features disabled');
   }
-
-  // Initialize note service with settings
-  noteService.initialize(settings);
 
   container = {
     meetingRepo,
@@ -65,6 +56,10 @@ export function initializeContainer(): AppContainer {
   return container;
 }
 
+/**
+ * Get the container instance
+ * Throws if container hasn't been initialized
+ */
 export function getContainer(): AppContainer {
   if (!container) {
     throw new Error('Container not initialized. Call initializeContainer() first.');
@@ -72,11 +67,11 @@ export function getContainer(): AppContainer {
   return container;
 }
 
-export function refreshAIProvider(settings: {
-  openAiApiKey: string;
-  openAiBaseUrl?: string;
-  openAiModel?: string;
-}): void {
+/**
+ * Reinitialize the AI provider with new settings
+ * Called when settings are updated
+ */
+export function refreshAIProvider(config: { apiKey: string; baseURL?: string; defaultModel?: string }): void {
   if (!container) {
     throw new Error('Container not initialized');
   }

@@ -21,13 +21,7 @@ export interface Meeting {
   endedAt: Date | null;
   duration: number; // in seconds
   transcript: TranscriptSegment[];
-  notes: unknown | null;
-  notesPlain: string | null;
-  notesMarkdown: string | null;
-  overview: string | null;
   summary: string | null;
-  chapters: MeetingChapter[];
-  people: MeetingPerson[];
   actionItems: string[];
   participants: string[];
 }
@@ -83,10 +77,7 @@ export type TranscriptionProvider = 'assemblyai' | 'deepgram';
 
 export interface AppSettings {
   assemblyAiApiKey: string;
-  deepgramApiKey: string;
   openAiApiKey: string;
-  openAiBaseUrl: string;
-  openAiModel: string;
   knowledgeBasePath: string;
   autoDetectQuestions: boolean;
   showFloatingCallout: boolean;

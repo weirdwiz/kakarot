@@ -26,6 +26,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   };
 
   const handleStartRecording = async () => {
+    console.log('[RecordingView] Start button clicked');
     clearLiveTranscript();
     await window.kakarot.recording.start();
     await startCapture();
@@ -33,7 +34,8 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
 
   const handleStopRecording = async () => {
     await stopCapture();
-    await window.kakarot.recording.stop();
+    const meeting = await window.kakarot.recording.stop();
+    console.log('Meeting ended:', meeting);
   };
 
   const handlePauseRecording = async () => {
