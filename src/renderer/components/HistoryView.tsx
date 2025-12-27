@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { Meeting } from '@shared/types';
-import { Search, Trash2, Folder } from 'lucide-react';
+import { Search, Trash2, Folder, Calendar as CalendarIcon, Users } from 'lucide-react';
 import { formatDuration, formatTimestamp, getSpeakerLabel } from '../lib/formatters';
 
 export default function HistoryView() {
@@ -122,16 +122,36 @@ export default function HistoryView() {
           <>
             {/* Header */}
             <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-xl font-semibold text-gray-900">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 space-y-3 min-w-0">
+                  <h1 className="text-2xl font-semibold text-gray-900 truncate">
                     {selectedMeeting.title}
                   </h1>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {formatDuration(selectedMeeting.duration)} - {selectedMeeting.transcript.length} segments
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                      <CalendarIcon className="w-4 h-4 text-gray-500" />
+                      <div className="text-sm text-gray-800 whitespace-nowrap">
+                        {new Date(selectedMeeting.createdAt).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                      <Users className="w-4 h-4 text-gray-500" />
+                      <div className="text-sm text-gray-800 truncate">
+                        {selectedMeeting.participants && selectedMeeting.participants.length > 0
+                          ? selectedMeeting.participants.slice(0, 2).join(', ') + (selectedMeeting.participants.length > 2 ? ` +${selectedMeeting.participants.length - 2}` : '')
+                          : 'Add attendees'}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                      <Folder className="w-4 h-4 text-gray-500" />
+                      <div className="text-sm text-gray-800 truncate">No folder</div>
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    {formatDuration(selectedMeeting.duration)} · {selectedMeeting.transcript.length} segments
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-shrink-0">
                   {!selectedMeeting.summary && (
                     <button
                       onClick={handleGenerateSummary}

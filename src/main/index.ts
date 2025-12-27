@@ -1,6 +1,6 @@
 import { config } from 'dotenv';
 import { resolve } from 'path';
-import { app, BrowserWindow, systemPreferences } from 'electron';
+import { app, BrowserWindow, systemPreferences, globalShortcut } from 'electron';
 import { createMainWindow } from './windows/mainWindow';
 import { createCalloutWindow } from './windows/calloutWindow';
 import { initializeDatabase, closeDatabase } from './data/database';
@@ -38,6 +38,16 @@ async function createWindows() {
   calloutWindow = createCalloutWindow();
 
   registerAllHandlers(mainWindow, calloutWindow);
+
+  // Dev-only: Register keyboard shortcut to reset onboarding (Cmd/Ctrl+Shift+O)
+  if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+    const resetShortcut = process.platform === 'darwin' ? 'Cmd+Shift+O' : 'Ctrl+Shift+O';
+    globalShortcut.register(resetShortcut, () => {
+      logger.info('Dev: Resetting onboarding via keyboard shortcut');
+      mainWindow?.webContents.send('dev:reset-onboarding');
+    });
+    logger.info('Dev: Registered onboarding reset shortcut', { shortcut: resetShortcut });
+  }
 
   logger.info('Application initialized');
 }

@@ -10,11 +10,11 @@ let currentMeetingId: string | null = null;
 let meetingStartTime: number | null = null;
 
 export class MeetingRepository {
-  async startNewMeeting(): Promise<string> {
+  async startNewMeeting(title?: string): Promise<string> {
     const db = getDatabase();
     const id = uuidv4();
     const now = Date.now();
-    const title = new Date(now).toLocaleString('en-US', {
+    const meetingTitle = title || new Date(now).toLocaleString('en-US', {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
@@ -22,12 +22,12 @@ export class MeetingRepository {
       minute: '2-digit',
     });
 
-    db.run('INSERT INTO meetings (id, title, created_at) VALUES (?, ?, ?)', [id, title, now]);
+    db.run('INSERT INTO meetings (id, title, created_at) VALUES (?, ?, ?)', [id, meetingTitle, now]);
     currentMeetingId = id;
     meetingStartTime = now;
     saveDatabase();
 
-    logger.info('Started new meeting', { id, title });
+    logger.info('Started new meeting', { id, title: meetingTitle });
     return id;
   }
 
@@ -103,9 +103,18 @@ export class MeetingRepository {
     const result = db.exec('SELECT * FROM meetings ORDER BY created_at DESC');
     if (result.length === 0) return [];
 
-    return result[0].values.map((_, i) =>
-      this.rowToMeeting(resultToObjectByIndex(result[0], i), [])
-    );
+    return result[0].values.map((_, i) => {
+      const row = resultToObjectByIndex(result[0], i);
+      const segmentsResult = db.exec(
+        'SELECT * FROM transcript_segments WHERE meeting_id = ? ORDER BY timestamp',
+        [row.id as string]
+      );
+      const segments =
+        segmentsResult.length > 0
+          ? segmentsResult[0].values.map((__, j) => resultToObjectByIndex(segmentsResult[0], j))
+          : [];
+      return this.rowToMeeting(row, segments);
+    });
   }
 
   search(query: string): Meeting[] {
@@ -176,6 +185,12 @@ export class MeetingRepository {
     saveDatabase();
   }
 
+  updateNoteEntries(id: string, noteEntries: any[]): void {
+    const db = getDatabase();
+    db.run('UPDATE meetings SET note_entries = ? WHERE id = ?', [JSON.stringify(noteEntries), id]);
+    saveDatabase();
+  }
+
   private rowToMeeting(row: Record<string, unknown>, segments: Record<string, unknown>[]): Meeting {
     return {
       id: row.id as string,
@@ -193,6 +208,7 @@ export class MeetingRepository {
         words: [],
         speakerId: s.speaker_id as string | undefined,
       })),
+      noteEntries: row.note_entries ? JSON.parse(row.note_entries as string) : [],
       notes: row.notes ? JSON.parse(row.notes as string) : null,
       notesPlain: (row.notes_plain as string) || null,
       notesMarkdown: (row.notes_markdown as string) || null,

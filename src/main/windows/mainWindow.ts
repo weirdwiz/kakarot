@@ -35,7 +35,10 @@ export function createMainWindow(): BrowserWindow {
 
   if (isDev) {
     // In development, load from vite dev server
-    mainWindow.loadURL('http://localhost:5173');
+    // Use environment variable if available (set by vite-plugin-electron), fallback to 5173
+    const port = process.env.VITE_DEV_SERVER_PORT || '5173';
+    const host = process.env.VITE_DEV_SERVER_HOST || 'localhost';
+    mainWindow.loadURL(`http://${host}:${port}`);
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
