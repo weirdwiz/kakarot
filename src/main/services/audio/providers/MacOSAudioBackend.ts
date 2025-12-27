@@ -1,5 +1,6 @@
 import { app } from 'electron';
 import { join } from 'path';
+import { existsSync } from 'fs';
 import { BaseAudioBackend, AudioCaptureConfig, AudioChunk } from '@main/services/audio/IAudioCaptureBackend';
 import { createLogger } from '@main/core/logger';
 
@@ -17,11 +18,39 @@ interface AudioTeeInstance {
 }
 
 function getAudioTeeBinaryPath(): string {
-  if (app.isPackaged) {
-    return join(process.resourcesPath, 'audiotee');
-  } else {
-    return join(__dirname, '..', '..', '..', '..', 'node_modules', 'audiotee', 'bin', 'audiotee');
+  // Try multiple candidates to avoid env/path issues in dev
+  const candidates: string[] = [];
+
+  // Packaged app resources
+  if (process.resourcesPath) {
+    candidates.push(join(process.resourcesPath, 'audiotee'));
   }
+
+  // App path node_modules
+  try {
+    const appPath = app.getAppPath();
+    candidates.push(join(appPath, 'node_modules', 'audiotee', 'bin', 'audiotee'));
+    // In Vite dev, appPath may point to dist; try parent
+    candidates.push(join(appPath, '..', 'node_modules', 'audiotee', 'bin', 'audiotee'));
+  } catch {
+    // ignore
+  }
+
+  // Current working directory node_modules (dev)
+  candidates.push(join(process.cwd(), 'node_modules', 'audiotee', 'bin', 'audiotee'));
+
+  // Relative from compiled __dirname
+  candidates.push(join(__dirname, '..', '..', '..', '..', 'node_modules', 'audiotee', 'bin', 'audiotee'));
+  candidates.push(join(__dirname, '..', '..', '..', 'node_modules', 'audiotee', 'bin', 'audiotee'));
+
+  for (const path of candidates) {
+    if (existsSync(path)) {
+      return path;
+    }
+  }
+
+  // Fallback to last candidate (may error, but logged)
+  return candidates[candidates.length - 1];
 }
 
 export class MacOSAudioBackend extends BaseAudioBackend {

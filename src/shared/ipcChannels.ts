@@ -35,23 +35,27 @@ export const IPC_CHANNELS = {
   // Post-processing
   MEETING_SUMMARIZE: 'meeting:summarize',
   MEETING_EXPORT: 'meeting:export',
-
-  // Meeting notes
-  MEETING_NOTES_GENERATING: 'meeting:notes:generating',
-  MEETING_NOTES_COMPLETE: 'meeting:notes:complete',
+  MEETING_NOTES_GENERATING: 'meeting:notesGenerating',
+  MEETING_NOTES_COMPLETE: 'meeting:notesComplete',
 
   // Knowledge base
   KNOWLEDGE_INDEX: 'knowledge:index',
   KNOWLEDGE_SEARCH: 'knowledge:search',
 
   // Calendar
-  CALENDAR_LIST_TODAY: 'calendar:listToday',
   CALENDAR_CONNECT: 'calendar:connect',
   CALENDAR_DISCONNECT: 'calendar:disconnect',
+  CALENDAR_LIST_TODAY: 'calendar:listToday',
+<<<<<<< HEAD
+  CALENDAR_CONNECT: 'calendar:connect',
+  CALENDAR_DISCONNECT: 'calendar:disconnect',
+=======
+>>>>>>> 24b5726f2d857d558a8da9f0fa4c9fe860b76865
   CALENDAR_GET_UPCOMING: 'calendar:getUpcoming',
   CALENDAR_LINK_EVENT: 'calendar:linkEvent',
   CALENDAR_GET_EVENT_FOR_MEETING: 'calendar:getEventForMeeting',
   CALENDAR_LINK_NOTES: 'calendar:linkNotes',
+<<<<<<< HEAD
   
   // Calendar OAuth
   CALENDAR_OAUTH_START: 'calendar:oauth:start',
@@ -59,6 +63,8 @@ export const IPC_CHANNELS = {
   CALENDAR_OAUTH_STATUS: 'calendar:oauth:status',
   CALENDAR_CREDENTIALS_SAVE: 'calendar:credentials:save',
   CALENDAR_CREDENTIALS_GET: 'calendar:credentials:get',
+=======
+>>>>>>> 24b5726f2d857d558a8da9f0fa4c9fe860b76865
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

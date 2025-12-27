@@ -1,43 +1,130 @@
 # CLAUDE.md
 
-Claude Code guidance for this repository. See [AGENTS.md](./AGENTS.md) for full architecture and style guide.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Quick Reference
+## Project Overview
+
+Kakarot is an Electron-based AI meeting assistant that captures dual audio (microphone + system), transcribes in real-time via AssemblyAI, detects questions, and provides contextual response suggestions using OpenAI.
+
+## Development Commands
 
 ```bash
-npm run dev:electron  # Development with hot reload
-npm run typecheck     # Type checking
-npm run lint          # Linting
-npm run build         # Production build
+# Development (Vite + Electron with hot reload)
+npm run dev:electron
+
+# Type checking only
+npm run typecheck
+
+# Linting
+npm run lint
+
+# Production build (outputs to release/)
+npm run build
 ```
 
-## Must Follow
+## Architecture
 
-- Read AGENTS.md before making changes
-- Run `npm run typecheck && npm run lint` before any commit
-- Sign all commits with `-s` flag
-- Use conventional commit format: `type(scope): subject`
-- No `any` types, no implicit returns on exported functions
-- Use path aliases: `@main/`, `@renderer/`, `@shared/`
+### Process Model
 
-## Do Not
+Electron three-process architecture:
+- **Main process** (`src/main/`): Node.js backend - audio capture, transcription, storage, AI services
+- **Renderer process** (`src/renderer/`): React UI running in Chromium
+- **Preload** (`src/preload/`): Secure IPC bridge exposing `window.kakarot` API
 
-- Create new files unless absolutely necessary
-- Add dependencies without discussion
-- Skip error handling
-- Use relative imports across process boundaries
-- Commit without running type/lint checks
+### Main Process Structure
 
-## Process Boundaries
+```
+src/main/
+├── index.ts              # Entry point, app lifecycle
+├── core/                 # Infrastructure
+│   ├── logger.ts         # Structured logging (debug/info/warn/error)
+│   └── container.ts      # Dependency injection container
+├── handlers/             # IPC handlers by domain
+│   ├── index.ts          # Registers all handlers
+│   ├── recordingHandlers.ts
+│   ├── meetingHandlers.ts
+│   ├── settingsHandlers.ts
+│   └── calloutHandlers.ts
+├── data/                 # Data access layer
+│   ├── database.ts       # SQLite connection (sql.js)
+│   └── repositories/     # Repository pattern
+│       ├── MeetingRepository.ts
+│       ├── CalloutRepository.ts
+│       └── SettingsRepository.ts
+├── services/             # Business logic
+│   ├── CalloutService.ts
+│   ├── KnowledgeService.ts
+│   ├── TranscriptionService.ts
+│   ├── SystemAudioService.ts
+│   └── ExportService.ts
+├── providers/            # External API clients
+│   └── OpenAIProvider.ts # Centralized OpenAI client
+├── prompts/              # LLM prompt templates
+│   ├── calloutPrompts.ts
+│   └── summaryPrompts.ts
+├── config/               # Constants and configuration
+│   └── constants.ts      # All magic numbers, patterns, defaults
+└── windows/              # Electron window management
+    ├── mainWindow.ts
+    └── calloutWindow.ts
+```
 
-- `src/main/` - Node.js (has `fs`, `path`, native modules)
-- `src/renderer/` - Browser (no Node APIs, uses `window.kakarot`)
-- `src/shared/` - Pure TypeScript (no Node or browser APIs)
-- Never import main from renderer or vice versa
+### Dependency Injection
 
-## When Stuck
+Services access dependencies via `getContainer()` from `src/main/core/container.ts`:
+- `aiProvider` - OpenAIProvider instance
+- `meetingRepo`, `calloutRepo`, `settingsRepo` - Data repositories
+- `knowledgeService`, `calloutService` - Business services
 
-1. Check `src/shared/types.ts` for data shapes
-2. Check `src/shared/ipcChannels.ts` for IPC patterns
-3. Check `src/main/core/container.ts` for available services
-4. Check `src/main/config/constants.ts` for configuration
+### IPC Communication Pattern
+
+All main<->renderer communication uses typed IPC channels defined in `src/shared/ipcChannels.ts`. Handlers are organized by domain in `src/main/handlers/`:
+- `recordingHandlers` - start/stop/pause/resume, audio streaming
+- `meetingHandlers` - CRUD, search, summarize, export
+- `settingsHandlers` - API keys, preferences
+- `calloutHandlers` - dismiss callout
+
+### Renderer Structure
+
+React 18 + Zustand for state (`src/renderer/stores/appStore.ts`). Three main views:
+- `RecordingView` - Live recording UI with transcript display
+- `HistoryView` - Past meetings browser
+- `SettingsView` - API keys and preferences
+
+Icons use `lucide-react` (direct imports). Floating `CalloutOverlay` renders in separate Electron window.
+
+### Shared Utilities
+
+Located in `src/shared/utils/formatters.ts`:
+- `formatTimestamp(ms)` - Formats milliseconds as MM:SS
+- `formatDuration(ms)` - Formats duration with hours if needed
+- `getSpeakerLabel(source)` - Maps 'mic'/'system' to 'You'/'Other'
+
+### Path Aliases
+
+Configured in both `tsconfig.json` and `vite.config.ts`:
+- `@/*` -> `src/*`
+- `@main/*` -> `src/main/*`
+- `@renderer/*` -> `src/renderer/*`
+- `@shared/*` -> `src/shared/*`
+
+## Key Files
+
+- `src/main/core/container.ts` - DI container, service initialization
+- `src/main/handlers/index.ts` - Registers all IPC handlers
+- `src/main/data/database.ts` - SQLite schema and connection
+- `src/shared/types.ts` - Shared TypeScript interfaces (Meeting, Callout, Settings)
+- `src/shared/ipcChannels.ts` - Type-safe IPC channel constants
+- `src/preload/index.ts` - Renderer API surface + global type declarations
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and configure:
+- `ASSEMBLYAI_API_KEY` - Real-time transcription
+- `OPENAI_API_KEY` - Callout generation and summaries
+
+## Platform Requirements
+
+- macOS 13.2+ (for system audio loopback)
+- Windows 10+
+- Node.js 18+

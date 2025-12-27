@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import type { CalendarEvent, CalendarListResult, Meeting } from '@shared/types';
+import type { CalendarEvent, Meeting } from '@shared/types';
 import { useAppStore } from '@renderer/stores/appStore';
 import CompactMeetingBar from './CompactMeetingBar';
 import UpcomingMeetingsList from './UpcomingMeetingsList';
@@ -14,7 +14,7 @@ interface BentoDashboardProps {
 type CompletedMeeting = Meeting & { endedAt: Date };
 
 export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab }: BentoDashboardProps): JSX.Element {
-  const { setView, setSelectedMeeting } = useAppStore();
+  const { setView, setSelectedMeeting, setCalendarContext, setActiveCalendarContext } = useAppStore();
   const [upcomingEvent, setUpcomingEvent] = useState<CalendarEvent | null>(null);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [previousMeetings, setPreviousMeetings] = useState<CompletedMeeting[]>([]);
@@ -32,19 +32,22 @@ export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab 
     }
   }, []);
 
+  const loadUpcomingMeetings = useCallback(async () => {
+    try {
+      const events = await window.kakarot.calendar.getUpcoming();
+      setCalendarEvents(events);
+      if (events.length > 0) {
+        setUpcomingEvent(events[0]);
+      }
+    } catch (err) {
+      console.error('Failed to load calendar events:', err);
+    }
+  }, []);
+
   useEffect(() => {
-    window.kakarot.calendar.listToday()
-      .then((result: CalendarListResult) => {
-        setCalendarEvents(result.events);
-        if (result.events.length > 0) {
-          setUpcomingEvent(result.events[0]);
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to load calendar events:', err);
-      });
+    loadUpcomingMeetings();
     loadPreviousMeetings();
-  }, [loadPreviousMeetings]);
+  }, [loadUpcomingMeetings, loadPreviousMeetings]);
 
   const handleViewNotes = async (meetingId: string) => {
     try {
@@ -60,6 +63,20 @@ export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab 
 
   const handleNavigateSettings = () => {
     setView('settings');
+  };
+
+  /**
+   * Handle clicking on an upcoming meeting
+   * Navigates to recording flow with calendar context
+   */
+  const handleSelectUpcomingMeeting = (event: CalendarEvent) => {
+    // Store both preview context and active context for the recording
+    setCalendarContext(event);
+    setActiveCalendarContext(event);
+    
+    // Navigate to start recording with this calendar context
+    setView('recording');
+    onSelectTab?.('prep');
   };
 
   return (
@@ -79,6 +96,7 @@ export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab 
         <UpcomingMeetingsList
           meetings={calendarEvents}
           onNavigateSettings={handleNavigateSettings}
+          onSelectMeeting={handleSelectUpcomingMeeting}
         />
         <PreviousMeetingsList
           meetings={previousMeetings.map((m) => ({

@@ -7,16 +7,22 @@ import type {
   AudioLevels,
   TranscriptUpdate,
   Callout,
-  CalendarListResult,
-  CalendarProvider,
-  CalendarConnectionStatus,
+  CalendarEvent,
+  CalendarConnections,
 } from '@shared/types';
 
 // Expose protected methods to the renderer process
 contextBridge.exposeInMainWorld('kakarot', {
   // Recording controls
   recording: {
-    start: () => ipcRenderer.invoke(IPC_CHANNELS.RECORDING_START),
+    start: (calendarContext?: {
+      calendarEventId: string;
+      calendarEventTitle: string;
+      calendarEventAttendees?: string[];
+      calendarEventStart: string;
+      calendarEventEnd: string;
+      calendarProvider: string;
+    }) => ipcRenderer.invoke(IPC_CHANNELS.RECORDING_START, calendarContext),
     stop: () => ipcRenderer.invoke(IPC_CHANNELS.RECORDING_STOP),
     pause: () => ipcRenderer.invoke(IPC_CHANNELS.RECORDING_PAUSE),
     resume: () => ipcRenderer.invoke(IPC_CHANNELS.RECORDING_RESUME),
@@ -24,6 +30,11 @@ contextBridge.exposeInMainWorld('kakarot', {
       const handler = (_: unknown, state: RecordingState) => callback(state);
       ipcRenderer.on(IPC_CHANNELS.RECORDING_STATE, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.RECORDING_STATE, handler);
+    },
+    onNotesComplete: (callback: (data: { meetingId: string; title: string; overview: string }) => void) => {
+      const handler = (_: unknown, data: { meetingId: string; title: string; overview: string }) => callback(data);
+      ipcRenderer.on(IPC_CHANNELS.MEETING_NOTES_COMPLETE, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.MEETING_NOTES_COMPLETE, handler);
     },
   },
 
@@ -99,21 +110,30 @@ contextBridge.exposeInMainWorld('kakarot', {
 
   // Calendar
   calendar: {
-    listToday: (): Promise<CalendarListResult> =>
+    connect: (
+      provider: 'google' | 'outlook' | 'icloud',
+      payload?: { appleId: string; appPassword: string }
+    ): Promise<CalendarConnections> => ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_CONNECT, provider, payload),
+    disconnect: (provider: 'google' | 'outlook' | 'icloud'): Promise<CalendarConnections> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_DISCONNECT, provider),
+    listToday: (): Promise<CalendarEvent[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_LIST_TODAY),
-    oauth: {
-      start: (provider: CalendarProvider): Promise<{ success: boolean; error?: string }> =>
-        ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_OAUTH_START, provider),
-      disconnect: (provider: CalendarProvider): Promise<{ success: boolean; error?: string }> =>
-        ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_OAUTH_DISCONNECT, provider),
-      getStatus: (): Promise<CalendarConnectionStatus> =>
-        ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_OAUTH_STATUS),
-    },
-    credentials: {
-      save: (provider: CalendarProvider, clientId: string, clientSecret?: string): Promise<{ success: boolean; error?: string }> =>
-        ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_CREDENTIALS_SAVE, provider, clientId, clientSecret),
-      get: (provider: CalendarProvider): Promise<{ clientId: string; clientSecret?: string } | null> =>
-        ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_CREDENTIALS_GET, provider),
+    getUpcoming: (): Promise<CalendarEvent[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_GET_UPCOMING),
+    linkEvent: (calendarEventId: string, meetingId: string, provider: 'google' | 'outlook' | 'icloud'): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_LINK_EVENT, calendarEventId, meetingId, provider),
+    getEventForMeeting: (meetingId: string): Promise<CalendarEvent | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_GET_EVENT_FOR_MEETING, meetingId),
+    linkNotes: (calendarEventId: string, notesId: string, provider: 'google' | 'outlook' | 'icloud'): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_LINK_NOTES, calendarEventId, notesId, provider),
+  },
+
+  // Dev utilities
+  dev: {
+    onResetOnboarding: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on('dev:reset-onboarding', handler);
+      return () => ipcRenderer.removeListener('dev:reset-onboarding', handler);
     },
   },
 });
@@ -123,11 +143,19 @@ declare global {
   interface Window {
     kakarot: {
       recording: {
-        start: () => Promise<void>;
+        start: (calendarContext?: {
+          calendarEventId: string;
+          calendarEventTitle: string;
+          calendarEventAttendees?: string[];
+          calendarEventStart: string;
+          calendarEventEnd: string;
+          calendarProvider: string;
+        }) => Promise<void>;
         stop: () => Promise<Meeting>;
         pause: () => Promise<void>;
         resume: () => Promise<void>;
         onStateChange: (callback: (state: RecordingState) => void) => () => void;
+        onNotesComplete: (callback: (data: { meetingId: string; title: string; overview: string }) => void) => () => void;
       };
       audio: {
         onLevels: (callback: (levels: AudioLevels) => void) => () => void;
@@ -159,16 +187,19 @@ declare global {
         search: (query: string) => Promise<unknown[]>;
       };
       calendar: {
-        listToday: () => Promise<CalendarListResult>;
-        oauth: {
-          start: (provider: CalendarProvider) => Promise<{ success: boolean; error?: string }>;
-          disconnect: (provider: CalendarProvider) => Promise<{ success: boolean; error?: string }>;
-          getStatus: () => Promise<CalendarConnectionStatus>;
-        };
-        credentials: {
-          save: (provider: CalendarProvider, clientId: string, clientSecret?: string) => Promise<{ success: boolean; error?: string }>;
-          get: (provider: CalendarProvider) => Promise<{ clientId: string; clientSecret?: string } | null>;
-        };
+        connect: (
+          provider: 'google' | 'outlook' | 'icloud',
+          payload?: { appleId: string; appPassword: string }
+        ) => Promise<CalendarConnections>;
+        disconnect: (provider: 'google' | 'outlook' | 'icloud') => Promise<CalendarConnections>;
+        listToday: () => Promise<CalendarEvent[]>;
+        getUpcoming: () => Promise<CalendarEvent[]>;
+        linkEvent: (calendarEventId: string, meetingId: string, provider: 'google' | 'outlook' | 'icloud') => Promise<void>;
+        getEventForMeeting: (meetingId: string) => Promise<CalendarEvent | null>;
+        linkNotes: (calendarEventId: string, notesId: string, provider: 'google' | 'outlook' | 'icloud') => Promise<void>;
+      };
+      dev: {
+        onResetOnboarding: (callback: () => void) => () => void;
       };
     };
   }

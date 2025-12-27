@@ -170,6 +170,14 @@ Settings are stored locally and can be configured in the app:
 | Show Floating Callout | Enable/disable overlay popups |
 | Transcription Language | Supported: en, es, fr, de, it, pt |
 
+### Hosted tokens (zero-config onboarding)
+
+Use hosted auth if your org issues short-lived OpenAI/AssemblyAI tokens from its own API:
+
+1. In Settings → API Keys, enable "Use hosted tokens".
+2. Enter the Auth API base URL and your JWT (provided by your admin).
+3. The app will fetch and refresh scoped tokens automatically; leave the toggle off to use your own API keys instead.
+
 ## Platform Notes
 
 ### macOS
