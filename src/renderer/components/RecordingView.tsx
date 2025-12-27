@@ -1,18 +1,52 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { useAudioCapture } from '../hooks/useAudioCapture';
 import AudioLevelMeter from './AudioLevelMeter';
 import LiveTranscript from './LiveTranscript';
 import BentoDashboard from './bento/BentoDashboard';
 import { FileText, Square, Pause, Play, Search } from 'lucide-react';
+import type { Meeting } from '@shared/types';
 
 interface RecordingViewProps {
   onSelectTab?: (tab: 'notes' | 'prep' | 'interact') => void;
 }
 
+type RecordingPhase = 'recording' | 'generating_notes' | 'completed' | 'error';
+
 export default function RecordingView({ onSelectTab }: RecordingViewProps) {
-  const { recordingState, audioLevels, liveTranscript, currentPartials, clearLiveTranscript } = useAppStore();
+  const { recordingState, audioLevels, liveTranscript, currentPartials, clearLiveTranscript, lastCompletedNoteId, setLastCompletedNoteId } = useAppStore();
   const { startCapture, stopCapture, pause, resume } = useAudioCapture();
+  const [phase, setPhase] = useState<RecordingPhase>('recording');
+  const [completedMeeting, setCompletedMeeting] = useState<Meeting | null>(null);
+
+  // Listen for notes generation events
+  useEffect(() => {
+    const handleNotesGenerating = () => {
+      setPhase('generating_notes');
+    };
+
+    const handleNotesComplete = async (meetingId: string) => {
+      try {
+        const meeting = await window.kakarot.meeting.getById(meetingId);
+        if (meeting) {
+          setCompletedMeeting(meeting);
+          setPhase('completed');
+          setLastCompletedNoteId(meetingId);
+        }
+      } catch (error) {
+        console.error('[RecordingView] Failed to fetch completed meeting:', error);
+        setPhase('error');
+      }
+    };
+
+    window.kakarot.meeting.onNotesGenerating(handleNotesGenerating);
+    window.kakarot.meeting.onNotesComplete(handleNotesComplete);
+
+    return () => {
+      // Cleanup listeners if needed
+    };
+  }, [setLastCompletedNoteId]);
+
   const handleSelectTab = (tab: 'notes' | 'prep' | 'interact') => {
     onSelectTab?.(tab);
   };
@@ -27,6 +61,8 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
 
   const handleStartRecording = async () => {
     clearLiveTranscript();
+    setPhase('recording');
+    setCompletedMeeting(null);
     await window.kakarot.recording.start();
     await startCapture();
   };
@@ -132,7 +168,63 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
 
         {/* Dashboard or live transcript - full height, no scroll */}
         <div className="flex-1 rounded-2xl bg-white/70 dark:bg-graphite/80 border border-white/30 dark:border-white/10 shadow-soft-card backdrop-blur-md overflow-hidden flex flex-col">
-          {isRecording || isPaused ? (
+          {phase === 'generating_notes' ? (
+            <div className="h-full flex items-center justify-center p-6">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#8B5CF6] mx-auto mb-4"></div>
+                <p className="text-lg font-medium text-slate-900 dark:text-white">Generating notes...</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">This will just take a moment</p>
+              </div>
+            </div>
+          ) : phase === 'completed' && completedMeeting ? (
+            <div className="h-full flex flex-col p-4 sm:p-6 overflow-y-auto">
+              <div className="mb-6">
+                <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-2">Meeting Complete</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{completedMeeting.title}</p>
+              </div>
+
+              {/* Notes Section */}
+              {completedMeeting.notes && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-3">Overview</h3>
+                  <div className="prose prose-slate dark:prose-invert max-w-none bg-white/50 dark:bg-graphite/50 rounded-lg p-4 border border-white/30 dark:border-white/10">
+                    <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{completedMeeting.notes.overview}</p>
+                  </div>
+                </div>
+              )}
+
+              {completedMeeting.notes?.notesMarkdown && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-3">Detailed Notes</h3>
+                  <div className="prose prose-slate dark:prose-invert max-w-none bg-white/50 dark:bg-graphite/50 rounded-lg p-4 border border-white/30 dark:border-white/10">
+                    <div
+                      className="text-sm"
+                      dangerouslySetInnerHTML={{
+                        __html: completedMeeting.notes.notesMarkdown.replace(/\n/g, '<br/>'),
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Transcript Section */}
+              {completedMeeting.transcript && completedMeeting.transcript.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-3">Transcript</h3>
+                  <div className="bg-white/50 dark:bg-graphite/50 rounded-lg p-4 border border-white/30 dark:border-white/10 space-y-3">
+                    {completedMeeting.transcript.map((segment, idx) => (
+                      <div key={idx} className="text-sm">
+                        <span className={`font-medium ${segment.source === 'mic' ? 'text-emerald-600 dark:text-emerald-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                          {segment.source === 'mic' ? 'You' : 'Other'}:
+                        </span>
+                        <span className="ml-2 text-slate-700 dark:text-slate-300">{segment.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : isRecording || isPaused ? (
             <div className="h-full flex flex-col p-4 sm:p-6">
               <div className="mb-4 flex items-center justify-between flex-shrink-0">
                 <div>
