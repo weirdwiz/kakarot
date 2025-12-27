@@ -1,20 +1,43 @@
 import React from 'react';
 import type { CalendarEvent } from '@shared/types';
-import { Calendar, Clock } from 'lucide-react';
+import { Calendar, Clock, Settings } from 'lucide-react';
 import { formatDateShort, formatTimeShort, isToday, isTomorrow } from '@renderer/lib/formatters';
 
 interface UpcomingMeetingsListProps {
   meetings: CalendarEvent[];
+  onNavigateSettings?: () => void;
 }
 
-export default function UpcomingMeetingsList({ meetings }: UpcomingMeetingsListProps) {
+interface MeetingSectionProps {
+  label: string;
+  meetings: CalendarEvent[];
+  emptyMessage?: string;
+  renderMeeting: (meeting: CalendarEvent) => JSX.Element;
+}
+
+function MeetingSection({ label, meetings, emptyMessage, renderMeeting }: MeetingSectionProps): JSX.Element {
+  return (
+    <div>
+      <h4 className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-2 px-1">{label}</h4>
+      {meetings.length === 0 && emptyMessage ? (
+        <p className="text-xs text-slate-500 dark:text-slate-500 italic px-1">{emptyMessage}</p>
+      ) : (
+        <div className="space-y-2">
+          {meetings.map((meeting) => renderMeeting(meeting))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function UpcomingMeetingsList({ meetings, onNavigateSettings }: UpcomingMeetingsListProps): JSX.Element {
   const todayMeetings = meetings.filter(m => isToday(m.start));
   const tomorrowMeetings = meetings.filter(m => isTomorrow(m.start));
   const laterMeetings = meetings.filter(m => !isToday(m.start) && !isTomorrow(m.start));
 
-  const renderMeeting = (meeting: CalendarEvent, idx: number) => (
+  const renderMeeting = (meeting: CalendarEvent): JSX.Element => (
     <div
-      key={idx}
+      key={meeting.id}
       className="px-3 py-2 rounded-lg bg-slate-50/50 dark:bg-slate-800/30 border border-slate-200/50 dark:border-slate-700/50 hover:bg-slate-100/50 dark:hover:bg-slate-700/40 transition-colors"
     >
       <div className="flex items-start gap-2.5">
@@ -23,7 +46,7 @@ export default function UpcomingMeetingsList({ meetings }: UpcomingMeetingsListP
             {formatDateShort(meeting.start)}
           </p>
         </div>
-        
+
         <div className="flex-1 min-w-0">
           <h4 className="text-sm font-semibold text-slate-900 dark:text-white truncate">
             {meeting.title}
@@ -44,45 +67,46 @@ export default function UpcomingMeetingsList({ meetings }: UpcomingMeetingsListP
       <h3 className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 mb-3 px-1">
         Upcoming Meetings
       </h3>
-      
+
       <div className="flex-1 overflow-y-auto space-y-3 pr-1">
         {meetings.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center py-8">
-            <Calendar className="w-8 h-8 text-slate-400 dark:text-slate-600 mb-2" />
-            <p className="text-sm text-slate-600 dark:text-slate-400">No upcoming meetings</p>
+          <div className="flex flex-col items-center justify-center h-full text-center py-8 px-4">
+            <Calendar className="w-8 h-8 text-slate-400 dark:text-slate-600 mb-3 opacity-50" />
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">No calendar connected</p>
+            <p className="text-xs text-slate-500 dark:text-slate-500 mb-3">Connect your calendar to see upcoming meetings</p>
+            {onNavigateSettings && (
+              <button
+                onClick={onNavigateSettings}
+                className="px-3 py-1.5 bg-[#8B5CF6] hover:bg-[#7C3AED] text-white text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors"
+              >
+                <Settings className="w-3 h-3" />
+                Connect Calendar
+              </button>
+            )}
           </div>
         ) : (
           <>
-            {/* Today */}
-            <div>
-              <h4 className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-2 px-1">TODAY</h4>
-              {todayMeetings.length === 0 ? (
-                <p className="text-xs text-slate-500 dark:text-slate-500 italic px-1">No meetings today</p>
-              ) : (
-                <div className="space-y-2">
-                  {todayMeetings.map((meeting, idx) => renderMeeting(meeting, idx))}
-                </div>
-              )}
-            </div>
+            <MeetingSection
+              label="TODAY"
+              meetings={todayMeetings}
+              emptyMessage="No meetings today"
+              renderMeeting={renderMeeting}
+            />
 
-            {/* Tomorrow */}
             {tomorrowMeetings.length > 0 && (
-              <div>
-                <h4 className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-2 px-1">TOMORROW</h4>
-                <div className="space-y-2">
-                  {tomorrowMeetings.map((meeting, idx) => renderMeeting(meeting, idx))}
-                </div>
-              </div>
+              <MeetingSection
+                label="TOMORROW"
+                meetings={tomorrowMeetings}
+                renderMeeting={renderMeeting}
+              />
             )}
 
-            {/* Later */}
             {laterMeetings.length > 0 && (
-              <div>
-                <h4 className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-2 px-1">LATER</h4>
-                <div className="space-y-2">
-                  {laterMeetings.map((meeting, idx) => renderMeeting(meeting, idx))}
-                </div>
-              </div>
+              <MeetingSection
+                label="LATER"
+                meetings={laterMeetings}
+                renderMeeting={renderMeeting}
+              />
             )}
           </>
         )}
