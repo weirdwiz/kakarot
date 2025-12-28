@@ -80,8 +80,10 @@ export default function App() {
                   // Back button always navigates to home/recording view with notes tab
                   useAppStore.getState().setView('recording');
                   setPillarTab('notes');
+                  // Clear any context/selection so bento home shows (search + upcoming/previous)
                   useAppStore.getState().setActiveCalendarContext(null);
                   useAppStore.getState().setCalendarContext(null);
+                  useAppStore.getState().setSelectedMeeting(null);
                 }}
               >
                 <span className="inline-flex items-center gap-1">
