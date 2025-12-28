@@ -152,8 +152,17 @@ export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab 
     onSelectTab?.('notes');
   };
 
-  // Previous meetings: only completed recorded meetings
+  // Previous meetings: only completed recorded meetings with transcripts
+  // Filter out any that might be upcoming calendar events
+  const now = Date.now();
   const allPreviousMeetings = previousMeetings
+    .filter((m) => {
+      // Only show if it has ended and has transcript
+      if (!m.endedAt || m.transcript.length === 0) return false;
+      // Only show if end time is in the past
+      const endTime = new Date(m.endedAt).getTime();
+      return endTime < now;
+    })
     .map((m) => ({
       id: m.id,
       title: m.title,

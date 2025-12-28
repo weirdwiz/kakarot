@@ -362,16 +362,22 @@ export class CalendarService {
     }
 
     const data = await response.json();
-    const events: CalendarEvent[] = (data.items || []).map((item: any) => ({
-      id: item.id,
-      title: item.summary || 'Untitled',
-      start: new Date(item.start?.dateTime || item.start?.date),
-      end: new Date(item.end?.dateTime || item.end?.date || item.start?.dateTime || item.start?.date),
-      provider: 'google',
-      location: item.location,
-      attendees: item.attendees?.map((a: any) => a.email) ?? [],
-      description: item.description,
-    }));
+    const events: CalendarEvent[] = (data.items || [])
+      .filter((item: any) => {
+        // Filter out birthday events by title pattern
+        const title = (item.summary || '').toLowerCase();
+        return !title.includes('birthday') && !title.includes('bday') && !title.includes('b-day');
+      })
+      .map((item: any) => ({
+        id: item.id,
+        title: item.summary || 'Untitled',
+        start: new Date(item.start?.dateTime || item.start?.date),
+        end: new Date(item.end?.dateTime || item.end?.date || item.start?.dateTime || item.start?.date),
+        provider: 'google',
+        location: item.location,
+        attendees: item.attendees?.map((a: any) => a.email) ?? [],
+        description: item.description,
+      }));
 
     return events;
   }
