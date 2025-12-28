@@ -473,9 +473,9 @@ export class CalendarService {
         return [];
       }
       const data = await resp.json();
-      return (data.items || [])
-        .filter((c: any) => !c.id.includes('@group.calendar.google.com'))
-        .map((c: any) => ({ id: c.id, name: c.summary }));
+      // Return all calendars from the user's CalendarList so Settings can show every
+      // calendar under "My calendars" (including Birthdays, Tasks, Family, etc.)
+      return (data.items || []).map((c: any) => ({ id: c.id, name: c.summary }));
     }
     if (provider === 'outlook' && settings.calendarConnections.outlook) {
       // Optional: implement in future
