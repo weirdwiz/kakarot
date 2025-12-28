@@ -7,7 +7,7 @@ import BentoDashboard from './bento/BentoDashboard';
 import AskNotesBar from './AskNotesBar';
 import ManualNotesView from './ManualNotesView';
 import MeetingContextPreview from './MeetingContextPreview';
-import { FileText, Square, Pause, Play, Search, Loader2, Calendar as CalendarIcon, Users, Folder } from 'lucide-react';
+import { Square, Pause, Play, Loader2, Calendar as CalendarIcon, Users, Folder } from 'lucide-react';
 import { formatDateTime } from '../lib/formatters';
 import type { CalendarEvent, AppSettings } from '@shared/types';
 
@@ -248,39 +248,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
       )}
 
       <div className="mx-auto w-full px-4 sm:px-6 py-4 flex flex-col gap-4">
-        {/* Greeting + Unified Action Row - Only show when truly idle (not viewing completed notes) */}
-        {isIdle && (
-          <div className="space-y-3">
-            {/* Greeting */}
-            <div>
-              <h1 className="text-3xl font-medium text-slate-900 dark:text-white">
-                {getGreeting()}
-              </h1>
-            </div>
-
-            {/* Unified Action Row (Search + Take Notes) */}
-            <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-white/30 dark:border-white/10 bg-transparent backdrop-blur-sm">
-              {/* Search Bar */}
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Search meetings or notes"
-                  className="w-full pl-10 pr-4 py-2 bg-white/70 dark:bg-graphite/80 border border-white/30 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/50 backdrop-blur-md transition"
-                />
-              </div>
-
-              {/* Take Notes Button */}
-              <button
-                onClick={() => handleStartRecording()}
-                className="px-4 py-2 bg-[#8B5CF6] text-white font-semibold rounded-lg flex items-center gap-2 shadow-soft-card transition hover:opacity-95 flex-shrink-0"
-              >
-                <FileText className="w-4 h-4" />
-                + Take Notes
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Greeting and quick actions removed per UX request to keep notes view focused */}
 
         {/* Recording controls and titles - Show when recording, paused, or generating notes */}
         {!isIdle && (
