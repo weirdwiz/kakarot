@@ -39,6 +39,7 @@ export const IPC_CHANNELS = {
   MEETING_NOTES_COMPLETE: 'meeting:notesComplete',
   MEETING_NOTES_SAVE_MANUAL: 'meeting:saveManualNotes',
   MEETING_ASK_NOTES: 'meeting:askNotes',
+  MEETING_UPDATE_TITLE: 'meeting:updateTitle',
 
   // Knowledge base
   KNOWLEDGE_INDEX: 'knowledge:index',

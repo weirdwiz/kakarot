@@ -25,6 +25,11 @@ export function registerMeetingHandlers(): void {
     return meetingRepo.search(query);
   });
 
+  ipcMain.handle(IPC_CHANNELS.MEETING_UPDATE_TITLE, (_, id: string, title: string) => {
+    meetingRepo.updateTitle(id, title);
+    return meetingRepo.findById(id);
+  });
+
   ipcMain.handle(IPC_CHANNELS.MEETING_SUMMARIZE, async (_, id: string) => {
     const meeting = meetingRepo.findById(id);
     if (!meeting) throw new Error('Meeting not found');

@@ -173,6 +173,13 @@ export class MeetingRepository {
     saveDatabase();
   }
 
+  updateTitle(id: string, title: string): void {
+    const db = getDatabase();
+    db.run('UPDATE meetings SET title = ? WHERE id = ?', [title, id]);
+    saveDatabase();
+    logger.info('Updated meeting title', { id, title });
+  }
+
   updateChapters(id: string, chapters: Meeting['chapters']): void {
     const db = getDatabase();
     db.run('UPDATE meetings SET chapters = ? WHERE id = ?', [JSON.stringify(chapters), id]);

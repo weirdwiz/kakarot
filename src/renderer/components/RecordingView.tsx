@@ -7,7 +7,7 @@ import BentoDashboard from './bento/BentoDashboard';
 import AskNotesBar from './AskNotesBar';
 import ManualNotesView from './ManualNotesView';
 import MeetingContextPreview from './MeetingContextPreview';
-import { Square, Pause, Play, Loader2, Calendar as CalendarIcon, Users, Folder } from 'lucide-react';
+import { FileText, Square, Pause, Play, Search, Loader2, Calendar as CalendarIcon, Users, Folder, Share2, Copy, Check } from 'lucide-react';
 import { formatDateTime } from '../lib/formatters';
 import type { CalendarEvent, AppSettings } from '@shared/types';
 
@@ -16,7 +16,7 @@ interface RecordingViewProps {
 }
 
 export default function RecordingView({ onSelectTab }: RecordingViewProps) {
-  const { recordingState, audioLevels, liveTranscript, currentPartials, clearLiveTranscript, calendarContext, setCalendarContext, activeCalendarContext, setActiveCalendarContext, setLastCompletedNoteId, setSelectedMeeting, setView } = useAppStore();
+  const { recordingState, audioLevels, liveTranscript, currentPartials, clearLiveTranscript, calendarContext, setCalendarContext, activeCalendarContext, setActiveCalendarContext, setLastCompletedNoteId, setSelectedMeeting, setView, currentMeetingId, setCurrentMeetingId } = useAppStore();
   const { startCapture, stopCapture, pause, resume } = useAudioCapture();
   const [pillarTab, setPillarTab] = React.useState<'notes' | 'prep' | 'interact'>('notes');
   const [recordingTitle, setRecordingTitle] = React.useState<string>(''); // Title to display during recording
@@ -26,6 +26,11 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const [errorMessage, setErrorMessage] = React.useState<string>('');
   const [completedMeeting, setCompletedMeeting] = React.useState<any>(null);
   const [aiResponse, setAiResponse] = React.useState<string>('');
+  const [titleInput, setTitleInput] = React.useState<string>('');
+  const [isSavingTitle, setIsSavingTitle] = React.useState<boolean>(false);
+  const [showSharePopover, setShowSharePopover] = React.useState<boolean>(false);
+  const [shareCopied, setShareCopied] = React.useState<boolean>(false);
+  const shareRef = React.useRef<HTMLDivElement | null>(null);
   const isIdle = recordingState === 'idle';
 
   // Forward tab changes to parent if handler provided
@@ -158,7 +163,8 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
       } : undefined;
       
       console.log('[RecordingView] Calendar context being sent:', calendarContextData);
-      await window.kakarot.recording.start(calendarContextData);
+      const meetingId = await window.kakarot.recording.start(calendarContextData);
+      setCurrentMeetingId(meetingId);
       console.log('[RecordingView] recording.start() completed, calling startCapture()...');
       await startCapture();
       console.log('[RecordingView] startCapture() completed');
@@ -214,6 +220,8 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const isRecording = recordingState === 'recording';
   const isPaused = recordingState === 'paused';
   const isGenerating = phase === 'processing';
+  const isMeetingNotesScreen = phase === 'completed' && Boolean(completedMeeting);
+  const showHomeHero = isIdle && !isMeetingNotesScreen && phase === 'recording';
 
   // Display title: use recordingTitle which is set from calendar context or timestamp at start
   // For completed meetings, prefer the stored title which should be calendar title if it existed
@@ -223,6 +231,52 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const displayDate = activeCalendarContext?.start || (completedMeeting ? new Date(completedMeeting.createdAt) : new Date());
   const displayAttendees: string[] = (activeCalendarContext?.attendees as any) || completedMeeting?.participants || [];
   const displayLocation = activeCalendarContext?.location;
+
+  React.useEffect(() => {
+    setTitleInput(displayTitle || '');
+  }, [displayTitle]);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (shareRef.current && !shareRef.current.contains(event.target as Node)) {
+        setShowSharePopover(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const persistTitle = async (nextTitleRaw: string) => {
+    const nextTitle = nextTitleRaw.trim() || 'Untitled Meeting';
+    setTitleInput(nextTitle);
+    setRecordingTitle(nextTitle);
+    setCompletedMeeting((prev: any) => (prev ? { ...prev, title: nextTitle } : prev));
+
+    const targetMeetingId = completedMeeting?.id || currentMeetingId || upcomingMeetingId;
+    if (!targetMeetingId) return;
+
+    setIsSavingTitle(true);
+    try {
+      await window.kakarot.meetings.updateTitle(targetMeetingId, nextTitle);
+    } catch (err) {
+      console.error('Failed to update meeting title', err);
+    } finally {
+      setIsSavingTitle(false);
+    }
+  };
+
+  const shareLink = completedMeeting ? `kakarot://meeting/${completedMeeting.id}` : '';
+
+  const handleCopyShareLink = async () => {
+    if (!shareLink) return;
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 1500);
+    } catch (err) {
+      console.error('Failed to copy share link', err);
+    }
+  };
 
   return (
     <>
@@ -248,7 +302,39 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
       )}
 
       <div className="mx-auto w-full px-4 sm:px-6 py-4 flex flex-col gap-4">
-        {/* Greeting and quick actions removed per UX request to keep notes view focused */}
+        {/* Greeting + Unified Action Row - Only show when truly idle (not viewing completed notes) */}
+        {showHomeHero && (
+          <div className="space-y-3">
+            {/* Greeting */}
+            <div>
+              <h1 className="text-3xl font-medium text-slate-900 dark:text-white">
+                {getGreeting()}
+              </h1>
+            </div>
+
+            {/* Unified Action Row (Search + Take Notes) */}
+            <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-white/30 dark:border-white/10 bg-transparent backdrop-blur-sm">
+              {/* Search Bar */}
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Search meetings or notes"
+                  className="w-full pl-10 pr-4 py-2 bg-white/70 dark:bg-graphite/80 border border-white/30 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/50 backdrop-blur-md transition"
+                />
+              </div>
+
+              {/* Take Notes Button */}
+              <button
+                onClick={() => handleStartRecording()}
+                className="px-4 py-2 bg-[#8B5CF6] text-white font-semibold rounded-lg flex items-center gap-2 shadow-soft-card transition hover:opacity-95 flex-shrink-0"
+              >
+                <FileText className="w-4 h-4" />
+                + Take Notes
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Recording controls and titles - Show when recording, paused, or generating notes */}
         {!isIdle && (
@@ -259,11 +345,21 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                 {isRecording && 'Recording in progress... keep the conversation flowing'}
                 {isPaused && 'Recording paused — resume when ready'}
               </p>
-              {displayTitle && (
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white truncate">
-                  {displayTitle}
-                </h2>
-              )}
+              <div className="flex items-center gap-2">
+                <input
+                  value={titleInput}
+                  onChange={(e) => setTitleInput(e.target.value)}
+                  onBlur={() => persistTitle(titleInput)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.currentTarget.blur();
+                    }
+                  }}
+                  className="text-lg font-semibold text-slate-900 dark:text-white bg-transparent border-b border-transparent focus:border-[#8B5CF6] focus:outline-none truncate"
+                  placeholder="Untitled Meeting"
+                />
+                {isSavingTitle && <Loader2 className="w-4 h-4 animate-spin text-[#8B5CF6]" />}
+              </div>
             </div>
 
             {/* Recording Control Buttons */}
@@ -314,15 +410,43 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                     {phase === 'completed' ? 'Generated from your meeting' : 'Local audio is highlighted in Emerald Mist.'}
                   </p>
                 </div>
-                {(isRecording || isPaused) && (
-                  <div className="flex items-center gap-3">
-                    <div className="w-40">
-                      <AudioLevelMeter label="Mic" level={audioLevels.mic} />
-                    </div>
-                    <div className="w-40">
-                      <AudioLevelMeter label="System" level={audioLevels.system} />
-                    </div>
+                {phase === 'completed' && completedMeeting ? (
+                  <div className="relative" ref={shareRef}>
+                    <button
+                      onClick={() => setShowSharePopover((prev) => !prev)}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/30 dark:border-white/10 bg-white/70 dark:bg-slate-800/70 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-white/90 dark:hover:bg-slate-700/90 transition"
+                    >
+                      <Share2 className="w-4 h-4" />
+                      Share
+                    </button>
+                    {showSharePopover && (
+                      <div className="absolute right-0 mt-2 w-56 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-soft-card p-3 space-y-2">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Share your meeting notes</p>
+                        <button
+                          onClick={handleCopyShareLink}
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-md bg-slate-100 dark:bg-slate-700 text-sm font-medium text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-600 transition"
+                        >
+                          <span className="flex items-center gap-2">
+                            {shareCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                            {shareCopied ? 'Copied!' : 'Copy share link'}
+                          </span>
+                          <span className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Link</span>
+                        </button>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 break-all leading-tight bg-slate-50 dark:bg-slate-900/60 rounded-md px-2 py-1">{shareLink}</p>
+                      </div>
+                    )}
                   </div>
+                ) : (
+                  (isRecording || isPaused) && (
+                    <div className="flex items-center gap-3">
+                      <div className="w-40">
+                        <AudioLevelMeter label="Mic" level={audioLevels.mic} />
+                      </div>
+                      <div className="w-40">
+                        <AudioLevelMeter label="System" level={audioLevels.system} />
+                      </div>
+                    </div>
+                  )
                 )}
               </div>
               {isGenerating ? (
@@ -337,9 +461,21 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                 <div className="flex-1 overflow-y-auto pb-32 space-y-6">
                   {/* Title - Large and Primary */}
                   <div className="space-y-4">
-                    <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white leading-tight">
-                      {displayTitle || 'Meeting'}
-                    </h2>
+                    <div className="flex items-center gap-3">
+                      <input
+                        value={titleInput}
+                        onChange={(e) => setTitleInput(e.target.value)}
+                        onBlur={() => persistTitle(titleInput)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        className="flex-1 text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white leading-tight bg-transparent border-b border-transparent focus:border-[#8B5CF6] focus:outline-none"
+                        placeholder="Untitled Meeting"
+                      />
+                      {isSavingTitle && <Loader2 className="w-5 h-5 animate-spin text-[#8B5CF6]" />}
+                    </div>
 
                     {/* Metadata Blocks */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

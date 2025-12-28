@@ -84,6 +84,8 @@ contextBridge.exposeInMainWorld('kakarot', {
       ipcRenderer.invoke(IPC_CHANNELS.MEETING_NOTES_SAVE_MANUAL, id, content),
     askNotes: (id: string, query: string): Promise<string> =>
       ipcRenderer.invoke(IPC_CHANNELS.MEETING_ASK_NOTES, id, query),
+    updateTitle: (id: string, title: string): Promise<Meeting | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEETING_UPDATE_TITLE, id, title),
   },
 
   // Callout
@@ -183,6 +185,7 @@ declare global {
         export: (id: string, format: 'markdown' | 'pdf') => Promise<string>;
         saveManualNotes: (id: string, content: string) => Promise<void>;
         askNotes: (id: string, query: string) => Promise<string>;
+        updateTitle: (id: string, title: string) => Promise<Meeting | null>;
       };
       callout: {
         onShow: (callback: (callout: Callout) => void) => () => void;
