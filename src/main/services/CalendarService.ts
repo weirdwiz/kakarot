@@ -333,6 +333,11 @@ export class CalendarService {
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     if (!clientId || !clientSecret) return [];
 
+    // Perma-remove Birthdays calendar events
+    if (calendarId && calendarId.includes('addressbook#contacts@group.v.calendar.google.com')) {
+      return [];
+    }
+
     const freshTokens = await this.ensureFreshToken('google', tokens, {
       tokenUrl: 'https://oauth2.googleapis.com/token',
       clientId,
@@ -431,6 +436,8 @@ export class CalendarService {
         const visible = settings.visibleCalendars?.google;
         if (visible && visible.length > 0) {
           for (const calId of visible) {
+            // Skip Birthdays calendar entirely
+            if (calId.includes('addressbook#contacts@group.v.calendar.google.com')) continue;
             const events = await this.fetchGoogleEvents(settings.calendarConnections.google, now, oneWeekFromNow, calId);
             results.push(...events);
           }
@@ -485,11 +492,11 @@ export class CalendarService {
         const writable = role === 'owner' || role === 'writer';
         const isBirthdays = typeof c.id === 'string' && c.id.includes('addressbook#contacts@group.v.calendar.google.com');
 
+        // Perma-remove Birthdays calendar from listing
+        if (isBirthdays) return false;
+
         // Always include primary calendar
         if (isPrimary) return onlySelected ? !!c.selected : true;
-
-        // New rule: include Birthdays calendar even if read-only
-        if (isBirthdays) return onlySelected ? !!c.selected : true;
 
         // Include writable calendars only (exclude other read-only calendars)
         if (writable) return onlySelected ? !!c.selected : true;
@@ -513,9 +520,14 @@ export class CalendarService {
   async setVisibleCalendars(provider: Provider, ids: string[]): Promise<void> {
     const settings = this.settingsRepo.getSettings();
     const visible = settings.visibleCalendars || {};
-    const next = { ...visible, [provider]: ids } as typeof visible;
+    // Perma-remove Birthdays calendar from visibility selections
+    let filteredIds = ids;
+    if (provider === 'google') {
+      filteredIds = ids.filter((id) => !id.includes('addressbook#contacts@group.v.calendar.google.com'));
+    }
+    const next = { ...visible, [provider]: filteredIds } as typeof visible;
     this.settingsRepo.updateSettings({ visibleCalendars: next });
-    logger.info('Updated visible calendars', { provider, count: ids.length });
+    logger.info('Updated visible calendars', { provider, count: filteredIds.length });
   }
 
   /**
