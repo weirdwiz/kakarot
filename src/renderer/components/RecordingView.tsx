@@ -7,6 +7,7 @@ import BentoDashboard from './bento/BentoDashboard';
 import AskNotesBar from './AskNotesBar';
 import ManualNotesView from './ManualNotesView';
 import MeetingContextPreview from './MeetingContextPreview';
+import AttendeesList from './AttendeesList';
 import { FileText, Square, Pause, Play, Search, Loader2, Calendar as CalendarIcon, Users, Folder, Share2, Copy, Check } from 'lucide-react';
 import { formatDateTime } from '../lib/formatters';
 import type { CalendarEvent, AppSettings } from '@shared/types';
@@ -229,7 +230,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     ? completedMeeting.title 
     : recordingTitle;
   const displayDate = activeCalendarContext?.start || (completedMeeting ? new Date(completedMeeting.createdAt) : new Date());
-  const displayAttendees: string[] = (activeCalendarContext?.attendees as any) || completedMeeting?.participants || [];
+  const displayAttendees: string[] = (activeCalendarContext?.attendees as any) || completedMeeting?.attendeeEmails || completedMeeting?.participants || [];
   const displayLocation = activeCalendarContext?.location;
 
   React.useEffect(() => {
@@ -478,20 +479,26 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                     </div>
 
                     {/* Metadata Blocks */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 overflow-visible">
                       <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-2.5">
                         <CalendarIcon className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                         <div className="text-sm text-slate-800 dark:text-slate-200">{formatDateTime(displayDate)}</div>
                       </div>
 
-                      <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-2.5">
-                        <Users className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                        <div className="text-sm text-slate-800 dark:text-slate-200">
-                          {displayAttendees && displayAttendees.length > 0
-                            ? displayAttendees.slice(0, 2).join(', ') + (displayAttendees.length > 2 ? ` +${displayAttendees.length - 2}` : '')
-                            : 'Add attendees'}
+                      {displayAttendees && displayAttendees.length > 0 ? (
+                        <div className="overflow-visible">
+                          <AttendeesList 
+                            attendeeEmails={displayAttendees}
+                          />
                         </div>
-                      </div>
+                      ) : (
+                        <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-2.5">
+                          <Users className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                          <div className="text-sm text-slate-800 dark:text-slate-200">
+                            Add attendees
+                          </div>
+                        </div>
+                      )}
 
                       <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-2.5">
                         <Folder className="w-4 h-4 text-slate-500 dark:text-slate-400" />

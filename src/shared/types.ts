@@ -8,6 +8,16 @@ export interface NoteEntry {
   source?: 'upcoming' | 'live'; // where it was created
 }
 
+export interface Person {
+  email: string; // Primary identifier
+  name?: string; // Extracted from calendar or user input
+  lastMeetingAt: Date;
+  meetingCount: number;
+  totalDuration: number; // Total minutes met
+  notes?: string; // User-added context about this person
+  organization?: string;
+}
+
 export interface Meeting {
   id: string;
   title: string;
@@ -17,7 +27,8 @@ export interface Meeting {
   transcript: TranscriptSegment[];
   summary?: string | null;
   actionItems: string[];
-  participants: string[];
+  participants: string[]; // Deprecated: use attendeeEmails
+  attendeeEmails: string[]; // Email addresses from calendar
   // Note entries (accumulated with timestamps)
   noteEntries: NoteEntry[];
   // Optional generated notes fields (legacy, for backward compatibility)

@@ -9,6 +9,7 @@ import type {
   Callout,
   CalendarEvent,
   CalendarConnections,
+  Person,
 } from '@shared/types';
 
 // Expose protected methods to the renderer process
@@ -114,6 +115,26 @@ contextBridge.exposeInMainWorld('kakarot', {
       ipcRenderer.invoke(IPC_CHANNELS.KNOWLEDGE_SEARCH, query),
   },
 
+  // People
+  people: {
+    list: (): Promise<Person[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_LIST),
+    search: (query: string): Promise<Person[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_SEARCH, query),
+    get: (email: string): Promise<Person | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_GET, email),
+    updateNotes: (email: string, notes: string): Promise<Person | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_UPDATE_NOTES, email, notes),
+    updateName: (email: string, name: string): Promise<Person | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_UPDATE_NAME, email, name),
+    updateOrganization: (email: string, organization: string): Promise<Person | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_UPDATE_ORGANIZATION, email, organization),
+    getByMeeting: (meetingId: string): Promise<Person[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_GET_BY_MEETING, meetingId),
+    getStats: (): Promise<{ totalPeople: number; totalMeetings: number; avgMeetingsPerPerson: number }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_STATS),
+  },
+
   // Calendar
   calendar: {
     connect: (
@@ -198,6 +219,16 @@ declare global {
       knowledge: {
         index: (path: string) => Promise<void>;
         search: (query: string) => Promise<unknown[]>;
+      };
+      people: {
+        list: () => Promise<Person[]>;
+        search: (query: string) => Promise<Person[]>;
+        get: (email: string) => Promise<Person | null>;
+        updateNotes: (email: string, notes: string) => Promise<Person | null>;
+        updateName: (email: string, name: string) => Promise<Person | null>;
+        updateOrganization: (email: string, organization: string) => Promise<Person | null>;
+        getByMeeting: (meetingId: string) => Promise<Person[]>;
+        getStats: () => Promise<{ totalPeople: number; totalMeetings: number; avgMeetingsPerPerson: number }>;
       };
       calendar: {
         connect: (

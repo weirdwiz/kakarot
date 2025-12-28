@@ -9,6 +9,25 @@ export default function HistoryView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
+  const getAvatarColor = (email: string) => {
+    const colors = [
+      'bg-blue-500',
+      'bg-green-500',
+      'bg-purple-500',
+      'bg-pink-500',
+      'bg-indigo-500',
+      'bg-yellow-500',
+      'bg-red-500',
+      'bg-teal-500',
+    ];
+    const hash = email.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return colors[hash % colors.length];
+  };
+
+  const getInitials = (email: string) => {
+    return email[0].toUpperCase();
+  };
+
   const loadMeetings = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -102,6 +121,28 @@ export default function HistoryView() {
                     <p className="text-xs text-gray-500 mt-1">
                       {formatDuration(meeting.duration)}
                     </p>
+                    {/* Attendee avatars */}
+                    {meeting.attendeeEmails && meeting.attendeeEmails.length > 0 && (
+                      <div className="flex items-center gap-1 mt-2">
+                        <Users className="w-3 h-3 text-gray-400" />
+                        <div className="flex -space-x-1">
+                          {meeting.attendeeEmails.slice(0, 3).map((email, idx) => (
+                            <div
+                              key={idx}
+                              className={`w-5 h-5 rounded-full ${getAvatarColor(email)} flex items-center justify-center text-white text-[10px] font-medium border border-white`}
+                              title={email}
+                            >
+                              {getInitials(email)}
+                            </div>
+                          ))}
+                          {meeting.attendeeEmails.length > 3 && (
+                            <div className="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-[9px] font-medium border border-white">
+                              +{meeting.attendeeEmails.length - 3}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={(e) => handleDeleteMeeting(meeting.id, e)}

@@ -5,6 +5,7 @@ import RecordingView from './components/RecordingView';
 import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
 import PrepView from './components/PrepView';
+import PeopleView from './components/PeopleView';
 import Sidebar from './components/Sidebar';
 import OnboardingFlow from './components/onboarding/OnboardingFlow';
 import type { AudioLevels } from '../shared/types';
@@ -135,6 +136,7 @@ export default function App() {
                   )
                 )}
                 {view === 'history' && <HistoryView />}
+                {view === 'people' && <PeopleView />}
                 {view === 'settings' && <SettingsView />}
               </div>
             </div>

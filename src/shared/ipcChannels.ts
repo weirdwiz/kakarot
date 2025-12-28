@@ -45,6 +45,16 @@ export const IPC_CHANNELS = {
   KNOWLEDGE_INDEX: 'knowledge:index',
   KNOWLEDGE_SEARCH: 'knowledge:search',
 
+  // People/Contacts
+  PEOPLE_LIST: 'people:list',
+  PEOPLE_SEARCH: 'people:search',
+  PEOPLE_GET: 'people:get',
+  PEOPLE_UPDATE_NOTES: 'people:updateNotes',
+  PEOPLE_UPDATE_NAME: 'people:updateName',
+  PEOPLE_UPDATE_ORGANIZATION: 'people:updateOrganization',
+  PEOPLE_GET_BY_MEETING: 'people:getByMeeting',
+  PEOPLE_STATS: 'people:stats',
+
   // Calendar
   CALENDAR_CONNECT: 'calendar:connect',
   CALENDAR_DISCONNECT: 'calendar:disconnect',

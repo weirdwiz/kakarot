@@ -1,4 +1,4 @@
-import { MeetingRepository, CalloutRepository, SettingsRepository } from '../data/repositories';
+import { MeetingRepository, CalloutRepository, SettingsRepository, PeopleRepository } from '../data/repositories';
 import { OpenAIProvider } from '../providers/OpenAIProvider';
 import { createLogger } from './logger';
 import { CalendarService } from '../services/CalendarService';
@@ -10,6 +10,7 @@ export interface AppContainer {
   meetingRepo: MeetingRepository;
   calloutRepo: CalloutRepository;
   settingsRepo: SettingsRepository;
+  peopleRepo: PeopleRepository;
   aiProvider: OpenAIProvider | null;
   calendarService: CalendarService;
   noteGenerationService: NoteGenerationService;
@@ -22,6 +23,7 @@ export function initializeContainer(): AppContainer {
   const meetingRepo = new MeetingRepository();
   const calloutRepo = new CalloutRepository();
   const settingsRepo = new SettingsRepository();
+  const peopleRepo = new PeopleRepository();
   const calendarService = new CalendarService(settingsRepo);
 
   // Initialize default settings
@@ -74,6 +76,7 @@ export function initializeContainer(): AppContainer {
     meetingRepo,
     calloutRepo,
     settingsRepo,
+    peopleRepo,
     aiProvider,
     calendarService,
     noteGenerationService,

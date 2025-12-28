@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { Mic, History, Settings } from 'lucide-react';
+import { Mic, History, Settings, Users } from 'lucide-react';
 
 export default function Sidebar() {
   const { view, setView, recordingState } = useAppStore();
@@ -48,6 +48,7 @@ export default function Sidebar() {
   const navItems = [
     { id: 'recording' as const, label: 'Record', icon: Mic },
     { id: 'history' as const, label: 'History', icon: History },
+    { id: 'people' as const, label: 'People', icon: Users },
     { id: 'settings' as const, label: 'Settings', icon: Settings },
   ];
 

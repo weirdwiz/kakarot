@@ -10,7 +10,7 @@ let currentMeetingId: string | null = null;
 let meetingStartTime: number | null = null;
 
 export class MeetingRepository {
-  async startNewMeeting(title?: string): Promise<string> {
+  async startNewMeeting(title?: string, attendeeEmails?: string[]): Promise<string> {
     const db = getDatabase();
     const id = uuidv4();
     const now = Date.now();
@@ -22,12 +22,18 @@ export class MeetingRepository {
       minute: '2-digit',
     });
 
-    db.run('INSERT INTO meetings (id, title, created_at) VALUES (?, ?, ?)', [id, meetingTitle, now]);
+    const attendeesJson = JSON.stringify(attendeeEmails || []);
+    db.run('INSERT INTO meetings (id, title, created_at, attendee_emails) VALUES (?, ?, ?, ?)', [
+      id,
+      meetingTitle,
+      now,
+      attendeesJson,
+    ]);
     currentMeetingId = id;
     meetingStartTime = now;
     saveDatabase();
 
-    logger.info('Started new meeting', { id, title: meetingTitle });
+    logger.info('Started new meeting', { id, title: meetingTitle, attendeeCount: attendeeEmails?.length || 0 });
     return id;
   }
 
@@ -54,7 +60,41 @@ export class MeetingRepository {
     meetingStartTime = null;
     saveDatabase();
 
-    logger.info('Ended meeting', { id: endedId, duration });
+    // Update people table with attendee information
+    if (meeting && meeting.attendeeEmails && meeting.attendeeEmails.length > 0) {
+      const durationMinutes = Math.floor(duration / 60);
+      for (const email of meeting.attendeeEmails) {
+        if (!email) continue;
+        try {
+          // Check if person exists
+          const existing = db.exec('SELECT * FROM people WHERE email = ?', [email]);
+          if (existing.length > 0 && existing[0].values.length > 0) {
+            // Update existing person
+            db.run(
+              `UPDATE people SET 
+                last_meeting_at = ?,
+                meeting_count = meeting_count + 1,
+                total_duration = total_duration + ?,
+                updated_at = ?
+              WHERE email = ?`,
+              [now, durationMinutes, now, email]
+            );
+          } else {
+            // Insert new person
+            db.run(
+              `INSERT INTO people (email, last_meeting_at, meeting_count, total_duration, created_at, updated_at)
+              VALUES (?, ?, 1, ?, ?, ?)`,
+              [email, now, durationMinutes, now, now]
+            );
+          }
+        } catch (err) {
+          logger.error('Failed to update person record', { email, error: (err as Error).message });
+        }
+      }
+      saveDatabase();
+    }
+
+    logger.info('Ended meeting', { id: endedId, duration, attendeeCount: meeting?.attendeeEmails?.length || 0 });
     return meeting;
   }
 
@@ -225,6 +265,7 @@ export class MeetingRepository {
       people: JSON.parse((row.people as string) || '[]'),
       actionItems: JSON.parse((row.action_items as string) || '[]'),
       participants: JSON.parse((row.participants as string) || '[]'),
+      attendeeEmails: JSON.parse((row.attendee_emails as string) || '[]'),
     };
   }
 }

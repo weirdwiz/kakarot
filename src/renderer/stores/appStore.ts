@@ -34,7 +34,7 @@ interface AppState {
   settings: AppSettings | null;
 
   // UI state
-  view: 'recording' | 'history' | 'settings';
+  view: 'recording' | 'history' | 'people' | 'settings';
 
   // Actions
   setRecordingState: (state: RecordingState) => void;
@@ -49,7 +49,7 @@ interface AppState {
   setActiveCalendarContext: (event: CalendarEvent | null) => void;
   setLastCompletedNoteId: (id: string | null) => void;
   setSettings: (settings: AppSettings) => void;
-  setView: (view: 'recording' | 'history' | 'settings') => void;
+  setView: (view: 'recording' | 'history' | 'people' | 'settings') => void;
   setCurrentMeetingId: (id: string | null) => void;
 }
 

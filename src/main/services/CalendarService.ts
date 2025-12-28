@@ -349,6 +349,7 @@ export class CalendarService {
     url.searchParams.set('timeMax', end.toISOString());
     url.searchParams.set('singleEvents', 'true');
     url.searchParams.set('orderBy', 'startTime');
+    url.searchParams.set('conferenceDataVersion', '1');
 
     const response = await fetch(url, {
       headers: {
@@ -372,16 +373,29 @@ export class CalendarService {
           creatorEmail.includes('addressbook#contacts@group.v.calendar.google.com');
         return !isBirthdaysCalendar;
       })
-      .map((item: any) => ({
-        id: item.id,
-        title: item.summary || 'Untitled',
-        start: new Date(item.start?.dateTime || item.start?.date),
-        end: new Date(item.end?.dateTime || item.end?.date || item.start?.dateTime || item.start?.date),
-        provider: 'google',
-        location: item.location,
-        attendees: item.attendees?.map((a: any) => a.email) ?? [],
-        description: item.description,
-      }));
+      .map((item: any) => {
+        // Extract meeting link from conferenceData.entryPoints
+        let meetingLink = item.location;
+        if (item.conferenceData?.entryPoints) {
+          const videoEntry = item.conferenceData.entryPoints.find(
+            (entry: any) => entry.entryPointType === 'video'
+          );
+          if (videoEntry?.uri) {
+            meetingLink = videoEntry.uri;
+          }
+        }
+        
+        return {
+          id: item.id,
+          title: item.summary || 'Untitled',
+          start: new Date(item.start?.dateTime || item.start?.date),
+          end: new Date(item.end?.dateTime || item.end?.date || item.start?.dateTime || item.start?.date),
+          provider: 'google',
+          location: meetingLink,
+          attendees: item.attendees?.map((a: any) => a.email) ?? [],
+          description: item.description,
+        };
+      });
 
     return events;
   }
@@ -415,16 +429,26 @@ export class CalendarService {
     }
 
     const data = await response.json();
-    const events: CalendarEvent[] = (data.value || []).map((item: any) => ({
-      id: item.id,
-      title: item.subject || 'Untitled',
-      start: new Date(item.start?.dateTime || item.start),
-      end: new Date(item.end?.dateTime || item.end),
-      provider: 'outlook',
-      location: item.location?.displayName,
-      attendees: item.attendees?.map((a: any) => a.emailAddress?.address) ?? [],
-      description: item.bodyPreview,
-    }));
+    const events: CalendarEvent[] = (data.value || []).map((item: any) => {
+      // Extract meeting link from onlineMeeting or location
+      let meetingLink = item.location?.displayName;
+      if (item.onlineMeeting?.joinUrl) {
+        meetingLink = item.onlineMeeting.joinUrl;
+      } else if (item.isOnlineMeeting && item.onlineMeetingUrl) {
+        meetingLink = item.onlineMeetingUrl;
+      }
+      
+      return {
+        id: item.id,
+        title: item.subject || 'Untitled',
+        start: new Date(item.start?.dateTime || item.start),
+        end: new Date(item.end?.dateTime || item.end),
+        provider: 'outlook',
+        location: meetingLink,
+        attendees: item.attendees?.map((a: any) => a.emailAddress?.address) ?? [],
+        description: item.bodyPreview,
+      };
+    });
 
     return events;
   }

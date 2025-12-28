@@ -43,13 +43,15 @@ export function registerRecordingHandlers(
       });
     }
 
-    // Start meeting with calendar title if available
+    // Start meeting with calendar title and attendees if available
     const meetingTitle = calendarContext?.calendarEventTitle;
-    const meetingId = await meetingRepo.startNewMeeting(meetingTitle);
+    const attendeeEmails = calendarContext?.calendarEventAttendees;
+    const meetingId = await meetingRepo.startNewMeeting(meetingTitle, attendeeEmails);
     logger.info('Meeting started', { 
       meetingId,
       meetingTitle, 
       hadCalendarContext: !!calendarContext,
+      attendeeCount: attendeeEmails?.length || 0,
       actualTitle: meetingTitle || 'will use default timestamp'
     });
 
