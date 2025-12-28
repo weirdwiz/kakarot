@@ -193,6 +193,7 @@ export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab 
           onNavigateSettings={handleNavigateSettings}
           onSelectMeeting={handleSelectUpcomingMeeting}
           onTakeNotes={handleTakeManualNotes}
+          onNavigateInteract={() => onSelectTab?.('interact')}
         />
         <PreviousMeetingsList
           meetings={allPreviousMeetings}

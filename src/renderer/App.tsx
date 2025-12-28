@@ -77,19 +77,11 @@ export default function App() {
               <button
                 className="px-3 py-1.5 rounded-md text-sm text-slate-700 dark:text-slate-300 hover:bg-white/60 hover:dark:bg-white/5"
                 onClick={() => {
-                  // Back button navigates using app-level state stack
-                  // If viewing notes/history/settings, return to recording (home)
-                  // If in recording and have calendar context, clear it (go to start screen)
-                  const currentView = useAppStore.getState().view;
-                  if (currentView !== 'recording') {
-                    useAppStore.getState().setView('recording');
-                  } else {
-                    // Already in recording; if there's a pillar tab selected other than 'notes', reset to notes
-                    if (pillarTab !== 'notes') {
-                      setPillarTab('notes');
-                    }
-                    // Otherwise, stay in recording/home
-                  }
+                  // Back button always navigates to home/recording view with notes tab
+                  useAppStore.getState().setView('recording');
+                  setPillarTab('notes');
+                  useAppStore.getState().setActiveCalendarContext(null);
+                  useAppStore.getState().setCalendarContext(null);
                 }}
               >
                 <span className="inline-flex items-center gap-1">
