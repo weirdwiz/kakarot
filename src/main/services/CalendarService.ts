@@ -480,19 +480,21 @@ export class CalendarService {
       // - Optional: respect user's sidebar selection when env flag is set
       const onlySelected = process.env.GOOGLE_CALENDAR_ONLY_SELECTED === 'true';
       const filtered = (data.items || []).filter((c: any) => {
-        const role = c.accessRole as string | undefined;
+        const role = (c.accessRole as string | undefined) || '';
         const isPrimary = !!c.primary;
         const writable = role === 'owner' || role === 'writer';
-        const readOnly = role === 'reader' || role === 'freeBusyReader';
+        const isBirthdays = typeof c.id === 'string' && c.id.includes('addressbook#contacts@group.v.calendar.google.com');
 
-        // Always include the primary calendar
+        // Always include primary calendar
         if (isPrimary) return onlySelected ? !!c.selected : true;
 
-        // Include writable calendars, exclude read-only ones
-        if (!writable || readOnly) return false;
+        // New rule: include Birthdays calendar even if read-only
+        if (isBirthdays) return onlySelected ? !!c.selected : true;
 
-        // Optionally match the user's sidebar selection state
-        return onlySelected ? !!c.selected : true;
+        // Include writable calendars only (exclude other read-only calendars)
+        if (writable) return onlySelected ? !!c.selected : true;
+
+        return false;
       });
 
       return filtered.map((c: any) => ({ id: c.id, name: c.summary }));
