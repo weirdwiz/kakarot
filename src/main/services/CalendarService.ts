@@ -364,9 +364,13 @@ export class CalendarService {
     const data = await response.json();
     const events: CalendarEvent[] = (data.items || [])
       .filter((item: any) => {
-        // Filter out birthday events by title pattern
-        const title = (item.summary || '').toLowerCase();
-        return !title.includes('birthday') && !title.includes('bday') && !title.includes('b-day');
+        // Filter out events from the Birthdays calendar by checking organizer
+        const organizerEmail = item.organizer?.email || '';
+        const creatorEmail = item.creator?.email || '';
+        const isBirthdaysCalendar = 
+          organizerEmail.includes('addressbook#contacts@group.v.calendar.google.com') ||
+          creatorEmail.includes('addressbook#contacts@group.v.calendar.google.com');
+        return !isBirthdaysCalendar;
       })
       .map((item: any) => ({
         id: item.id,
