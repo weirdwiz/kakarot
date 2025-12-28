@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { Clock, User, FolderPlus } from 'lucide-react';
+import { Clock, User, FolderPlus, BookOpen } from 'lucide-react';
 import { formatDateTime } from '../lib/formatters';
 
 interface ManualNotesViewProps {
@@ -94,6 +94,13 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes }:
         </div>
         
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => onSelectTab?.('prep')}
+            className="px-4 py-2 rounded-lg bg-slate-200/60 dark:bg-slate-700/60 hover:bg-slate-300/60 dark:hover:bg-slate-600/60 text-slate-700 dark:text-slate-300 font-medium transition-colors flex items-center gap-2"
+          >
+            <BookOpen className="w-4 h-4" />
+            Prep
+          </button>
           <button
             onClick={handleSaveNotes}
             disabled={isSaving || !notes.trim()}
