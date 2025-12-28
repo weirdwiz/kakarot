@@ -473,9 +473,29 @@ export class CalendarService {
         return [];
       }
       const data = await resp.json();
-      // Return all calendars from the user's CalendarList so Settings can show every
-      // calendar under "My calendars" (including Birthdays, Tasks, Family, etc.)
-      return (data.items || []).map((c: any) => ({ id: c.id, name: c.summary }));
+      // Filter to show only "My calendars" according to Google Calendar rules:
+      // - Include if primary
+      // - Include if accessRole is 'owner' or 'writer'
+      // - Exclude read-only roles ('reader', 'freeBusyReader')
+      // - Optional: respect user's sidebar selection when env flag is set
+      const onlySelected = process.env.GOOGLE_CALENDAR_ONLY_SELECTED === 'true';
+      const filtered = (data.items || []).filter((c: any) => {
+        const role = c.accessRole as string | undefined;
+        const isPrimary = !!c.primary;
+        const writable = role === 'owner' || role === 'writer';
+        const readOnly = role === 'reader' || role === 'freeBusyReader';
+
+        // Always include the primary calendar
+        if (isPrimary) return onlySelected ? !!c.selected : true;
+
+        // Include writable calendars, exclude read-only ones
+        if (!writable || readOnly) return false;
+
+        // Optionally match the user's sidebar selection state
+        return onlySelected ? !!c.selected : true;
+      });
+
+      return filtered.map((c: any) => ({ id: c.id, name: c.summary }));
     }
     if (provider === 'outlook' && settings.calendarConnections.outlook) {
       // Optional: implement in future
