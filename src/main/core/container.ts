@@ -30,6 +30,22 @@ export function initializeContainer(): AppContainer {
   // Create AI provider if API key is available
   let settings = settingsRepo.getSettings();
 
+  // Sanitize: perma-remove Birthdays calendar from visible calendars if previously stored
+  try {
+    const BIRTHDAYS_ID = 'addressbook#contacts@group.v.calendar.google.com';
+    const googleVisible = settings.visibleCalendars?.google || [];
+    const hasBirthdays = googleVisible.some((id) => typeof id === 'string' && id.includes(BIRTHDAYS_ID));
+    if (hasBirthdays) {
+      const filtered = googleVisible.filter((id) => !id.includes(BIRTHDAYS_ID));
+      const nextVisible = { ...(settings.visibleCalendars || {}), google: filtered };
+      settingsRepo.updateSettings({ visibleCalendars: nextVisible });
+      settings = settingsRepo.getSettings();
+      logger.info('Sanitized visible calendars: removed Birthdays calendar');
+    }
+  } catch (err) {
+    logger.warn('Failed to sanitize visible calendars', { error: (err as Error).message });
+  }
+
   // Force OpenAI API base URL if still pointing to RouteLLM
   if (settings.openAiBaseUrl && /routellm\.abacus\.ai/i.test(settings.openAiBaseUrl)) {
     settingsRepo.updateSettings({
