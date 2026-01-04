@@ -42,14 +42,50 @@ export class CalendarService {
           tokenUrl: 'https://oauth2.googleapis.com/token',
           clientId,
           clientSecret,
-          scope: 'https://www.googleapis.com/auth/calendar.readonly',
+          scope: 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
           extraAuthParams: {
             access_type: 'offline',
             prompt: 'consent',
           },
         });
 
+        // Fetch user profile from Google
+        try {
+          const axios = (await import('axios')).default;
+          const profileResponse = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
+            headers: { Authorization: `Bearer ${tokens.accessToken}` },
+          });
+          tokens.userName = profileResponse.data.name;
+          tokens.userEmail = profileResponse.data.email;
+          tokens.userPhoto = profileResponse.data.picture;
+          
+          // Store in settings
+          const settings = this.settingsRepo.getSettings();
+          this.settingsRepo.updateSettings({
+            userProfile: {
+              name: profileResponse.data.name,
+              email: profileResponse.data.email,
+              photo: profileResponse.data.picture,
+              provider: 'google',
+            },
+          });
+        } catch (err) {
+          logger.warn('Failed to fetch Google user profile', { error: (err as Error).message });
+        }
+
         const updated = this.persistConnection('google', tokens);
+
+        // Auto-populate visible calendars on first connection (after persistence)
+        try {
+          const calendarList = await this.listCalendars('google');
+          if (calendarList.length > 0) {
+            await this.setVisibleCalendars('google', calendarList.map(cal => cal.id));
+            logger.info('Auto-populated visible Google calendars', { count: calendarList.length });
+          }
+        } catch (err) {
+          logger.warn('Failed to auto-populate visible Google calendars', { error: (err as Error).message });
+        }
+
         logger.info('Google calendar connected');
         return updated;
       }
@@ -66,8 +102,39 @@ export class CalendarService {
           tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
           clientId,
           clientSecret,
-          scope: 'offline_access Calendars.Read',
+          scope: 'offline_access Calendars.Read User.Read',
         });
+
+        // Fetch user profile from Microsoft Graph
+        try {
+          const axios = (await import('axios')).default;
+          const profileResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
+            headers: { Authorization: `Bearer ${tokens.accessToken}` },
+          });
+          const photoResponse = await axios.get('https://graph.microsoft.com/v1.0/me/photo/$value', {
+            headers: { Authorization: `Bearer ${tokens.accessToken}` },
+            responseType: 'arraybuffer',
+          }).catch(() => null);
+          
+          tokens.userName = profileResponse.data.displayName;
+          tokens.userEmail = profileResponse.data.mail || profileResponse.data.userPrincipalName;
+          if (photoResponse) {
+            const base64Photo = Buffer.from(photoResponse.data).toString('base64');
+            tokens.userPhoto = `data:image/jpeg;base64,${base64Photo}`;
+          }
+          
+          // Store in settings
+          this.settingsRepo.updateSettings({
+            userProfile: {
+              name: tokens.userName,
+              email: tokens.userEmail,
+              photo: tokens.userPhoto,
+              provider: 'outlook',
+            },
+          });
+        } catch (err) {
+          logger.warn('Failed to fetch Outlook user profile', { error: (err as Error).message });
+        }
 
         const updated = this.persistConnection('outlook', tokens);
         logger.info('Outlook calendar connected');
@@ -371,7 +438,13 @@ export class CalendarService {
         const isBirthdaysCalendar = 
           organizerEmail.includes('addressbook#contacts@group.v.calendar.google.com') ||
           creatorEmail.includes('addressbook#contacts@group.v.calendar.google.com');
-        return !isBirthdaysCalendar;
+        
+        // Filter out non-standard event types (outOfOffice, workingLocation, focusTime)
+        // Only include events with eventType 'default'
+        const eventType = item.eventType || 'default';
+        const isStandardEvent = eventType === 'default';
+        
+        return !isBirthdaysCalendar && isStandardEvent;
       })
       .map((item: any) => {
         // Extract meeting link from conferenceData.entryPoints
@@ -429,26 +502,34 @@ export class CalendarService {
     }
 
     const data = await response.json();
-    const events: CalendarEvent[] = (data.value || []).map((item: any) => {
-      // Extract meeting link from onlineMeeting or location
-      let meetingLink = item.location?.displayName;
-      if (item.onlineMeeting?.joinUrl) {
-        meetingLink = item.onlineMeeting.joinUrl;
-      } else if (item.isOnlineMeeting && item.onlineMeetingUrl) {
-        meetingLink = item.onlineMeetingUrl;
-      }
-      
-      return {
-        id: item.id,
-        title: item.subject || 'Untitled',
-        start: new Date(item.start?.dateTime || item.start),
-        end: new Date(item.end?.dateTime || item.end),
-        provider: 'outlook',
-        location: meetingLink,
-        attendees: item.attendees?.map((a: any) => a.emailAddress?.address) ?? [],
-        description: item.bodyPreview,
-      };
-    });
+    const events: CalendarEvent[] = (data.value || [])
+      .filter((item: any) => {
+        // Filter out non-standard event types (outOfOffice, workingLocation, focusTime)
+        // Only include events with type 'default'
+        const eventType = item.type || 'default';
+        const isStandardEvent = eventType === 'default';
+        return isStandardEvent;
+      })
+      .map((item: any) => {
+        // Extract meeting link from onlineMeeting or location
+        let meetingLink = item.location?.displayName;
+        if (item.onlineMeeting?.joinUrl) {
+          meetingLink = item.onlineMeeting.joinUrl;
+        } else if (item.isOnlineMeeting && item.onlineMeetingUrl) {
+          meetingLink = item.onlineMeetingUrl;
+        }
+        
+        return {
+          id: item.id,
+          title: item.subject || 'Untitled',
+          start: new Date(item.start?.dateTime || item.start),
+          end: new Date(item.end?.dateTime || item.end),
+          provider: 'outlook',
+          location: meetingLink,
+          attendees: item.attendees?.map((a: any) => a.emailAddress?.address) ?? [],
+          description: item.bodyPreview,
+        };
+      });
 
     return events;
   }

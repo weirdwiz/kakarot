@@ -2,9 +2,8 @@ import React, { useState, useEffect } from 'react';
 import WelcomeStep from './WelcomeStep';
 import SignInStep from './SignInStep';
 import AudioPermissionsStep from './AudioPermissionsStep';
-import CompletionStep from './CompletionStep';
 
-export type OnboardingStep = 'welcome' | 'signin' | 'audio' | 'complete';
+export type OnboardingStep = 'welcome' | 'signin' | 'audio';
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -19,7 +18,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     provider?: 'google' | 'microsoft' | 'apple';
   } | null>(null);
 
-  const steps: OnboardingStep[] = ['welcome', 'signin', 'audio', 'complete'];
+  const steps: OnboardingStep[] = ['welcome', 'signin', 'audio'];
   const currentStepIndex = steps.indexOf(currentStep);
 
   const goToStep = (step: OnboardingStep) => {
@@ -39,9 +38,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     <div className="fixed inset-0 bg-gray-950 flex items-center justify-center z-50">
       <div className="w-full max-w-2xl mx-auto px-6">
         {/* Progress indicator */}
-        {currentStep !== 'welcome' && currentStep !== 'complete' && (
+        {currentStep !== 'welcome' && (
           <div className="flex items-center justify-center gap-2 mb-8">
-            {steps.slice(1, -1).map((step, index) => (
+            {steps.slice(1).map((step, index) => (
               <div
                 key={step}
                 className={`h-2 rounded-full transition-all ${
@@ -68,10 +67,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             />
           )}
           {currentStep === 'audio' && (
-            <AudioPermissionsStep onSuccess={nextStep} />
-          )}
-          {currentStep === 'complete' && (
-            <CompletionStep userName={userData?.name} onFinish={onComplete} />
+            <AudioPermissionsStep onSuccess={onComplete} />
           )}
         </div>
       </div>

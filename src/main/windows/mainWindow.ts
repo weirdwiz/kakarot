@@ -55,7 +55,7 @@ export function createMainWindow(): BrowserWindow {
   if (isDev) {
     // In development, load from vite dev server
     // Use environment variable if available (set by vite-plugin-electron), fallback to 5173
-    const port = process.env.VITE_DEV_SERVER_PORT || '5174';
+    const port = process.env.VITE_DEV_SERVER_PORT || '5173';
     const host = process.env.VITE_DEV_SERVER_HOST || 'localhost';
     const url = `http://${host}:${port}`;
     console.log('[mainWindow] Loading dev server URL:', url);

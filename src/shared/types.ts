@@ -95,6 +95,10 @@ export interface OAuthTokens {
   tokenType?: string;
   idToken?: string;
   email?: string;
+  // User profile info
+  userName?: string;
+  userEmail?: string;
+  userPhoto?: string;
 }
 
 export interface ICloudCredentials {
@@ -111,6 +115,29 @@ export interface CalendarConnections {
 
 export type TranscriptionProvider = 'assemblyai' | 'deepgram';
 
+export type CRMProvider = 'salesforce' | 'hubspot';
+export type CRMNotesBehavior = 'always' | 'ask';
+
+export interface SalesforceOAuthToken {
+  accessToken: string;
+  refreshToken: string;
+  instanceUrl: string;
+  expiresAt: number;
+  connectedAt: number;
+}
+
+export interface HubSpotOAuthToken {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  connectedAt: number;
+}
+
+export interface CRMConnections {
+  salesforce?: SalesforceOAuthToken;
+  hubspot?: HubSpotOAuthToken;
+}
+
 export interface AppSettings {
   assemblyAiApiKey: string;
   deepgramApiKey: string;
@@ -126,6 +153,13 @@ export interface AppSettings {
   useHostedTokens: boolean;
   authApiBaseUrl: string;
   hostedAuthToken: string;
+  // User profile
+  userProfile?: {
+    name?: string;
+    email?: string;
+    photo?: string;
+    provider?: 'google' | 'outlook' | 'icloud';
+  };
   // Calendar connections and optional OAuth config
   calendarConnections: CalendarConnections;
   googleCalendarClientId?: string;
@@ -142,6 +176,14 @@ export interface AppSettings {
     outlook?: string[];
     icloud?: string[];
   };
+  // CRM Integration
+  crmConnections?: CRMConnections;
+  crmNotesBehavior?: CRMNotesBehavior;
+  // CRM OAuth credentials
+  crmOAuthSalesforceClientId?: string;
+  crmOAuthSalesforceClientSecret?: string;
+  crmOAuthHubSpotClientId?: string;
+  crmOAuthHubSpotClientSecret?: string;
 }
 
 // IPC payloads

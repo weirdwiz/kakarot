@@ -3,6 +3,9 @@ import { OpenAIProvider } from '../providers/OpenAIProvider';
 import { createLogger } from './logger';
 import { CalendarService } from '../services/CalendarService';
 import { NoteGenerationService } from '../services/NoteGenerationService';
+import { HubSpotService } from '../services/HubSpotService';
+import { SalesforceService } from '../services/SalesforceService';
+import { MeetingNotificationService } from '../services/MeetingNotificationService';
 
 const logger = createLogger('Container');
 
@@ -14,6 +17,9 @@ export interface AppContainer {
   aiProvider: OpenAIProvider | null;
   calendarService: CalendarService;
   noteGenerationService: NoteGenerationService;
+  hubSpotService: HubSpotService;
+  salesforceService: SalesforceService;
+  meetingNotificationService: MeetingNotificationService;
 }
 
 let container: AppContainer | null = null;
@@ -72,6 +78,13 @@ export function initializeContainer(): AppContainer {
   const noteGenerationService = new NoteGenerationService();
   noteGenerationService.initialize(settings);
 
+  // Initialize CRM services
+  const hubSpotService = new HubSpotService();
+  const salesforceService = new SalesforceService();
+
+  // Initialize meeting notification service
+  const meetingNotificationService = new MeetingNotificationService(calendarService);
+
   container = {
     meetingRepo,
     calloutRepo,
@@ -80,6 +93,9 @@ export function initializeContainer(): AppContainer {
     aiProvider,
     calendarService,
     noteGenerationService,
+    hubSpotService,
+    salesforceService,
+    meetingNotificationService,
   };
 
   logger.info('Container initialized');

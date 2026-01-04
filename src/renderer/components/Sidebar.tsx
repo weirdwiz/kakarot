@@ -6,8 +6,19 @@ export default function Sidebar() {
   const { view, setView, recordingState } = useAppStore();
   const [showUserMenu, setShowUserMenu] = React.useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+  const [userProfile, setUserProfile] = React.useState<{ name?: string; photo?: string } | null>(null);
+  const [imageLoadError, setImageLoadError] = React.useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+
+  React.useEffect(() => {
+    window.kakarot.settings.get().then((settings) => {
+      if (settings.userProfile) {
+        setUserProfile(settings.userProfile);
+        setImageLoadError(false); // Reset error state when profile changes
+      }
+    });
+  }, []);
 
   // Calculate menu position to keep it within viewport
   useEffect(() => {
@@ -82,10 +93,19 @@ export default function Sidebar() {
         <button
           ref={buttonRef}
           onClick={() => setShowUserMenu(!showUserMenu)}
-          className="relative w-12 h-12 rounded-full bg-slate-300 dark:bg-[#7C3AED] flex items-center justify-center font-bold text-lg text-slate-600 dark:text-white hover:opacity-90 active:opacity-75 transition"
+          className="relative w-12 h-12 rounded-full bg-slate-300 dark:bg-[#7C3AED] flex items-center justify-center font-bold text-lg text-slate-600 dark:text-white hover:opacity-90 active:opacity-75 transition overflow-hidden"
           title="User Settings"
         >
-          K
+          {userProfile?.photo && !imageLoadError ? (
+            <img 
+              src={userProfile.photo} 
+              alt="User" 
+              className="w-full h-full object-cover" 
+              onError={() => setImageLoadError(true)}
+            />
+          ) : (
+            <span>{userProfile?.name?.[0]?.toUpperCase() || 'K'}</span>
+          )}
         </button>
         {showUserMenu && (
           <div

@@ -14,9 +14,11 @@
   },
   "dependencies": {
     "@deepgram/sdk": "^4.11.3",
+    "@types/jsforce": "^1.11.6",
     "assemblyai": "^4.8.0",
     "audiotee": "^0.0.7",
     "dotenv": "^17.2.3",
+    "jsforce": "^3.10.10",
     "lucide-react": "^0.562.0",
     "openai": "^4.70.0",
     "sql.js": "^1.11.0",

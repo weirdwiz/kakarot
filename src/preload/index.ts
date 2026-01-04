@@ -37,6 +37,11 @@ contextBridge.exposeInMainWorld('kakarot', {
       ipcRenderer.on(IPC_CHANNELS.MEETING_NOTES_COMPLETE, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.MEETING_NOTES_COMPLETE, handler);
     },
+    onNotificationStartRecording: (callback: (context: any) => void) => {
+      const handler = (_: unknown, context: any) => callback(context);
+      ipcRenderer.on('notification:start-recording', handler);
+      return () => ipcRenderer.removeListener('notification:start-recording', handler);
+    },
   },
 
   // Audio
@@ -87,6 +92,8 @@ contextBridge.exposeInMainWorld('kakarot', {
       ipcRenderer.invoke(IPC_CHANNELS.MEETING_ASK_NOTES, id, query),
     updateTitle: (id: string, title: string): Promise<Meeting | null> =>
       ipcRenderer.invoke(IPC_CHANNELS.MEETING_UPDATE_TITLE, id, title),
+    createDismissed: (title: string, attendeeEmails?: string[]): Promise<string> =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEETINGS_CREATE_DISMISSED, title, attendeeEmails),
   },
 
   // Callout
@@ -159,6 +166,21 @@ contextBridge.exposeInMainWorld('kakarot', {
       ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_SET_VISIBLE_CALENDARS, provider, ids),
   },
 
+  // CRM
+  crm: {
+    connect: (provider: 'salesforce' | 'hubspot'): Promise<any> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CRM_CONNECT, provider),
+    disconnect: (provider: 'salesforce' | 'hubspot'): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CRM_DISCONNECT, provider),
+    pushNotes: (meetingId: string): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CRM_PUSH_NOTES, meetingId),
+    onMeetingComplete: (callback: (data: { meetingId: string; shouldPrompt: boolean; provider?: string }) => void) => {
+      const handler = (_: unknown, data: { meetingId: string; shouldPrompt: boolean; provider?: string }) => callback(data);
+      ipcRenderer.on(IPC_CHANNELS.CRM_MEETING_COMPLETE, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.CRM_MEETING_COMPLETE, handler);
+    },
+  },
+
   // Dev utilities
   dev: {
     onResetOnboarding: (callback: () => void) => {
@@ -187,6 +209,7 @@ declare global {
         resume: () => Promise<void>;
         onStateChange: (callback: (state: RecordingState) => void) => () => void;
         onNotesComplete: (callback: (data: { meetingId: string; title: string; overview: string }) => void) => () => void;
+        onNotificationStartRecording: (callback: (context: any) => void) => () => void;
       };
       audio: {
         onLevels: (callback: (levels: AudioLevels) => void) => () => void;
@@ -207,6 +230,7 @@ declare global {
         saveManualNotes: (id: string, content: string) => Promise<void>;
         askNotes: (id: string, query: string) => Promise<string>;
         updateTitle: (id: string, title: string) => Promise<Meeting | null>;
+        createDismissed: (title: string, attendeeEmails?: string[]) => Promise<string>;
       };
       callout: {
         onShow: (callback: (callout: Callout) => void) => () => void;
@@ -243,6 +267,12 @@ declare global {
         linkNotes: (calendarEventId: string, notesId: string, provider: 'google' | 'outlook' | 'icloud') => Promise<void>;
         listCalendars: (provider: 'google' | 'outlook' | 'icloud') => Promise<Array<{ id: string; name: string }>>;
         setVisibleCalendars: (provider: 'google' | 'outlook' | 'icloud', ids: string[]) => Promise<void>;
+      };
+      crm: {
+        connect: (provider: 'salesforce' | 'hubspot') => Promise<any>;
+        disconnect: (provider: 'salesforce' | 'hubspot') => Promise<void>;
+        pushNotes: (meetingId: string) => Promise<void>;
+        onMeetingComplete: (callback: (data: { meetingId: string; shouldPrompt: boolean; provider?: string }) => void) => () => void;
       };
       dev: {
         onResetOnboarding: (callback: () => void) => () => void;

@@ -15,7 +15,15 @@ type CompletedMeeting = Meeting & { endedAt: Date };
 
 export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab }: BentoDashboardProps): JSX.Element {
   const { setView, setSelectedMeeting, setCalendarContext, setActiveCalendarContext } = useAppStore();
-  const [upcomingEvent, setUpcomingEvent] = useState<CalendarEvent | null>(null);
+  const [liveEvents, setLiveEvents] = useState<CalendarEvent[]>([]);
+  const [dismissedEventIds, setDismissedEventIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('dismissedEventIds');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
   const [upcomingEventsWithoutNotes, setUpcomingEventsWithoutNotes] = useState<CalendarEvent[]>([]);
   const [previousMeetings, setPreviousMeetings] = useState<CompletedMeeting[]>([]);
   const [calendarMappings, setCalendarMappings] = useState<Record<string, any>>({});
@@ -24,7 +32,7 @@ export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab 
     try {
       const meetings = await window.kakarot.meetings.list();
       const completed = meetings
-        .filter((m): m is CompletedMeeting => m.endedAt !== null && m.transcript.length > 0)
+        .filter((m): m is CompletedMeeting => m.endedAt !== null)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .slice(0, 5);
       setPreviousMeetings(completed);
@@ -65,17 +73,17 @@ export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab 
       const upcoming = events.filter((e) => new Date(e.start).getTime() - now > oneMinute);
       setUpcomingEventsWithoutNotes(upcoming);
 
-      // Live bar: first event currently between start and end
-      const live = events.find((e) => {
+      // Live bar: ALL events currently between start and end (not dismissed)
+      const live = events.filter((e) => {
         const startMs = new Date(e.start).getTime();
         const endMs = new Date(e.end).getTime();
-        return now >= startMs && now <= endMs;
-      }) || null;
-      setUpcomingEvent(live);
+        return now >= startMs && now <= endMs && !dismissedEventIds.has(e.id);
+      });
+      setLiveEvents(live);
     } catch (err) {
       console.error('Failed to load calendar events:', err);
     }
-  }, []);
+  }, [dismissedEventIds]);
 
   useEffect(() => {
     loadUpcomingMeetings();
@@ -152,13 +160,66 @@ export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab 
     onSelectTab?.('notes');
   };
 
-  // Previous meetings: only completed recorded meetings with transcripts
+  /**
+   * Handle dismissing a live meeting
+   * Creates a completed meeting record and moves it to Previous Meetings
+   */
+  const handleDismissLiveMeeting = async (eventId: string) => {
+    console.log('[BentoDashboard] handleDismissLiveMeeting called', { eventId });
+    try {
+      // Find the event
+      const event = liveEvents.find(e => e.id === eventId);
+      console.log('[BentoDashboard] Found event:', event);
+      if (!event) {
+        console.warn('[BentoDashboard] Event not found:', eventId);
+        return;
+      }
+
+      // Dismiss from live bar immediately (optimistic update)
+      setDismissedEventIds(prev => {
+        const updated = new Set([...prev, eventId]);
+        // Persist to localStorage
+        localStorage.setItem('dismissedEventIds', JSON.stringify([...updated]));
+        return updated;
+      });
+
+      console.log('[BentoDashboard] Creating dismissed meeting:', { 
+        title: event.title, 
+        attendees: event.attendees 
+      });
+
+      // Create a dismissed meeting record without starting recording
+      const meetingId = await window.kakarot.meetings.createDismissed(
+        event.title,
+        event.attendees
+      );
+
+      console.log('[BentoDashboard] Created dismissed meeting:', meetingId);
+
+      // Refresh previous meetings to show the dismissed meeting
+      await loadPreviousMeetings();
+
+      console.log('[BentoDashboard] Dismissed live meeting moved to previous', { eventId, meetingId });
+    } catch (err) {
+      console.error('[BentoDashboard] Failed to dismiss live meeting:', err);
+      // Revert optimistic update on error
+      setDismissedEventIds(prev => {
+        const next = new Set(prev);
+        next.delete(eventId);
+        // Update localStorage
+        localStorage.setItem('dismissedEventIds', JSON.stringify([...next]));
+        return next;
+      });
+    }
+  };
+
+  // Previous meetings: completed recorded meetings OR dismissed meetings
   // Filter out any that might be upcoming calendar events
   const now = Date.now();
   const allPreviousMeetings = previousMeetings
     .filter((m) => {
-      // Only show if it has ended and has transcript
-      if (!m.endedAt || m.transcript.length === 0) return false;
+      // Show if it has ended (with or without transcript)
+      if (!m.endedAt) return false;
       // Only show if end time is in the past
       const endTime = new Date(m.endedAt).getTime();
       return endTime < now;
@@ -179,10 +240,11 @@ export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab 
       {/* Compact meeting bar at top */}
       <div className="flex-shrink-0">
         <CompactMeetingBar
-          event={upcomingEvent}
+          events={liveEvents}
           isRecording={isRecording}
           onStartNotes={onStartNotes}
           onPrep={() => onSelectTab?.('prep')}
+          onDismiss={handleDismissLiveMeeting}
         />
       </div>
 

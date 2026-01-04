@@ -8,7 +8,7 @@ import AskNotesBar from './AskNotesBar';
 import ManualNotesView from './ManualNotesView';
 import MeetingContextPreview from './MeetingContextPreview';
 import AttendeesList from './AttendeesList';
-import { FileText, Square, Pause, Play, Search, Loader2, Calendar as CalendarIcon, Users, Folder, Share2, Copy, Check } from 'lucide-react';
+import { FileText, Square, Pause, Play, Search, Loader2, Calendar as CalendarIcon, Users, Folder, Share2, Copy, Check, X } from 'lucide-react';
 import { formatDateTime } from '../lib/formatters';
 import type { CalendarEvent, AppSettings } from '@shared/types';
 
@@ -32,6 +32,10 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const [showSharePopover, setShowSharePopover] = React.useState<boolean>(false);
   const [shareCopied, setShareCopied] = React.useState<boolean>(false);
   const shareRef = React.useRef<HTMLDivElement | null>(null);
+  const [showCRMPrompt, setShowCRMPrompt] = React.useState<boolean>(false);
+  const [pendingCRMMeetingId, setPendingCRMMeetingId] = React.useState<string | null>(null);
+  const [crmProvider, setCRMProvider] = React.useState<'salesforce' | 'hubspot' | null>(null);
+  const [isPushingNotes, setIsPushingNotes] = React.useState<boolean>(false);
   const isIdle = recordingState === 'idle';
 
   // Forward tab changes to parent if handler provided
@@ -83,6 +87,18 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     }
   }, [isIdle, pillarTab, activeCalendarContext, calendarContext, upcomingMeetingId]);
 
+  const [userFirstName, setUserFirstName] = React.useState('User');
+
+  // Fetch user name from settings
+  React.useEffect(() => {
+    window.kakarot.settings.get().then((settings) => {
+      if (settings.userProfile?.name) {
+        const firstName = settings.userProfile.name.split(' ')[0];
+        setUserFirstName(firstName);
+      }
+    });
+  }, []);
+
   // Hook into meeting notes completion event
   React.useEffect(() => {
     const unsubscribe = window.kakarot.recording.onNotesComplete?.((data: { meetingId: string; title: string; overview: string }) => {
@@ -116,12 +132,36 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     };
   }, [setLastCompletedNoteId]);
 
+  // Hook into native notification click event for starting recording
+  React.useEffect(() => {
+    console.log('[RecordingView] Setting up notification listener');
+    const unsubscribe = window.kakarot.recording.onNotificationStartRecording?.((context) => {
+      console.log('[RecordingView] Notification triggered recording start with context:', context);
+      // Convert notification context to CalendarEvent format
+      const calendarEvent: CalendarEvent = {
+        id: context.calendarEventId,
+        title: context.calendarEventTitle,
+        attendees: context.calendarEventAttendees || [],
+        start: new Date(context.calendarEventStart),
+        end: new Date(context.calendarEventEnd),
+        location: '', // Will be set from the meeting link
+        provider: context.calendarProvider as 'google' | 'outlook' | 'icloud',
+      };
+      console.log('[RecordingView] Calling handleStartRecording with:', calendarEvent);
+      // Start recording with the calendar event context from the notification
+      handleStartRecording(calendarEvent);
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
   const getGreeting = () => {
     const hour = new Date().getHours();
-    const userName = 'User'; // TODO: Get from user settings
-    if (hour < 12) return `Good Morning, ${userName}`;
-    if (hour < 18) return `Good Afternoon, ${userName}`;
-    return `Good Evening, ${userName}`;
+    if (hour < 12) return `Good Morning, ${userFirstName}`;
+    if (hour < 18) return `Good Afternoon, ${userFirstName}`;
+    return `Good Evening, ${userFirstName}`;
   };
 
   const handleStartRecording = async (calendarEvent?: CalendarEvent) => {
@@ -205,6 +245,25 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
       }
     }
     
+    // Check CRM settings and trigger prompt if needed
+    try {
+      const settings = await window.kakarot.settings.get() as AppSettings;
+      if (settings.crmNotesBehavior === 'ask' && settings.crmConnections) {
+        // Find first connected CRM provider
+        const connectedProvider = (Object.keys(settings.crmConnections) as Array<'salesforce' | 'hubspot'>).find(
+          (provider) => settings.crmConnections?.[provider]?.accessToken
+        );
+        
+        if (connectedProvider && meeting) {
+          setPendingCRMMeetingId(meeting.id);
+          setCRMProvider(connectedProvider);
+          setShowCRMPrompt(true);
+        }
+      }
+    } catch (err) {
+      console.error('[RecordingView] Failed to check CRM settings:', err);
+    }
+    
     // Keep active calendar context until notes render so metadata can be surfaced
   };
 
@@ -277,6 +336,29 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     } catch (err) {
       console.error('Failed to copy share link', err);
     }
+  };
+
+  const handleCRMPromptYes = async () => {
+    if (!pendingCRMMeetingId) return;
+    
+    setIsPushingNotes(true);
+    try {
+      await window.kakarot.crm.pushNotes(pendingCRMMeetingId);
+      console.log('[RecordingView] Notes pushed to CRM successfully');
+    } catch (err) {
+      console.error('[RecordingView] Failed to push notes to CRM:', err);
+    } finally {
+      setShowCRMPrompt(false);
+      setPendingCRMMeetingId(null);
+      setCRMProvider(null);
+      setIsPushingNotes(false);
+    }
+  };
+
+  const handleCRMPromptNo = () => {
+    setShowCRMPrompt(false);
+    setPendingCRMMeetingId(null);
+    setCRMProvider(null);
   };
 
   return (
@@ -608,6 +690,51 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
               >
                 ✕
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CRM Meeting Complete Prompt Modal */}
+      {showCRMPrompt && crmProvider && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg max-w-sm w-full border border-slate-200 dark:border-slate-700">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                  Send to {crmProvider === 'salesforce' ? 'Salesforce' : 'HubSpot'}?
+                </h3>
+                <button
+                  onClick={handleCRMPromptNo}
+                  disabled={isPushingNotes}
+                  className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400 disabled:opacity-50"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <p className="text-sm text-slate-600 dark:text-slate-300 mb-6">
+                Would you like to send these meeting notes to {crmProvider === 'salesforce' ? 'Salesforce' : 'HubSpot'}? 
+                {crmProvider === 'salesforce' ? ' Notes will be added as tasks.' : ' Notes will be created as contact notes.'}
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleCRMPromptNo}
+                  disabled={isPushingNotes}
+                  className="flex-1 px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-medium hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-50 transition"
+                >
+                  No
+                </button>
+                <button
+                  onClick={handleCRMPromptYes}
+                  disabled={isPushingNotes}
+                  className="flex-1 px-4 py-2 rounded-lg bg-[#8B5CF6] text-white font-medium hover:bg-[#7C3AED] disabled:opacity-50 transition flex items-center justify-center gap-2"
+                >
+                  {isPushingNotes && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Yes
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { Clock, Users, FolderPlus, BookOpen, ChevronDown, X, Video, Calendar as CalendarIcon } from 'lucide-react';
+import googleMeetPng from '../assets/google-meet.png';
+import googleCalendarPng from '../assets/google-calendar.png';
 import { formatDateTime } from '../lib/formatters';
 import AttendeesList from './AttendeesList';
 
@@ -117,11 +119,11 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes }:
     switch (type) {
       case 'google-meet':
         return (
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M19 3H5C3.89543 3 3 3.89543 3 5V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V5C21 3.89543 20.1046 3 19 3Z" fill="#00897B"/>
-            <path d="M15 9L21 6V18L15 15V9Z" fill="#00796B"/>
-            <path d="M15 9H5V15H15V9Z" fill="#4DB6AC"/>
-          </svg>
+          <img
+            src={googleMeetPng}
+            alt="Google Meet"
+            className="w-7 h-7 object-contain"
+          />
         );
       case 'teams':
         return (
@@ -148,14 +150,11 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes }:
     switch (type) {
       case 'google':
         return (
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <rect x="2" y="2" width="20" height="20" rx="2" fill="white"/>
-            <rect x="2" y="2" width="20" height="6" rx="2" fill="#4285F4"/>
-            <text x="12" y="16" textAnchor="middle" fill="#4285F4" fontSize="11" fontWeight="700" fontFamily="Arial, sans-serif">31</text>
-            <rect x="2" y="19" width="20" height="3" fill="#34A853"/>
-            <rect x="2" y="19" width="6.67" height="3" fill="#EA4335"/>
-            <rect x="15.33" y="19" width="6.67" height="3" fill="#FBBC04"/>
-          </svg>
+          <img
+            src={googleCalendarPng}
+            alt="Google Calendar"
+            className="w-7 h-7 object-contain"
+          />
         );
       case 'outlook':
         return (
@@ -285,9 +284,9 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes }:
                     <div className="pt-2 border-t border-slate-800">
                       <button
                         onClick={handleJoinMeeting}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-sm font-medium rounded-lg transition"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-xs font-medium rounded-lg transition"
                       >
-                        <div className="w-6 h-6 flex items-center justify-center">
+                        <div className="w-7 h-7 flex items-center justify-center">
                           {renderPlatformLogo(meetingPlatform.type)}
                         </div>
                         Join {meetingPlatform.name}
@@ -299,12 +298,12 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes }:
                   <div className="pt-2 border-t border-slate-800">
                     <button 
                       onClick={handleOpenCalendar}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium rounded-lg transition"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition"
                       style={calendarProvider.type !== 'default' ? { backgroundColor: `${calendarProvider.color}20`, borderColor: calendarProvider.color } : undefined}
                     >
-                      <div className="w-6 h-6 flex items-center justify-center">
+                      <div className="w-7 h-7 flex items-center justify-center">
                         {calendarProvider.type === 'default' ? (
-                          <Calendar className="w-4 h-4" />
+                          <CalendarIcon className="w-4 h-4" />
                         ) : (
                           renderCalendarLogo(calendarProvider.type)
                         )}

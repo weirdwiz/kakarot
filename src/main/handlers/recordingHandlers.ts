@@ -256,6 +256,11 @@ export function registerRecordingHandlers(
   ipcMain.on(IPC_CHANNELS.AUDIO_DATA, (_, audioData: ArrayBuffer, source: 'mic' | 'system') => {
     if (source !== 'mic') return;
 
+    // Only process if actively recording
+    if (!transcriptionProvider) {
+      return;
+    }
+
     micAudioDataCount++;
     if (micAudioDataCount % AUDIO_CONFIG.PACKET_LOG_INTERVAL === 1) {
       logger.debug('Mic audio data received', {
@@ -264,10 +269,6 @@ export function registerRecordingHandlers(
       });
     }
 
-    if (transcriptionProvider) {
-      transcriptionProvider.sendAudio(audioData, 'mic');
-    } else if (micAudioDataCount === 1) {
-      logger.warn('Mic audio data received but no transcription provider active');
-    }
+    transcriptionProvider.sendAudio(audioData, 'mic');
   });
 }

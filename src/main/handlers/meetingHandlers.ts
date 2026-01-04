@@ -3,6 +3,9 @@ import { IPC_CHANNELS } from '@shared/ipcChannels';
 import { getContainer } from '../core/container';
 import { CalloutService } from '../services/CalloutService';
 import { ExportService } from '../services/ExportService';
+import { createLogger } from '../core/logger';
+
+const logger = createLogger('MeetingHandlers');
 
 export function registerMeetingHandlers(): void {
   const { meetingRepo } = getContainer();
@@ -24,6 +27,24 @@ export function registerMeetingHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.MEETINGS_SEARCH, (_, query: string) => {
     return meetingRepo.search(query);
   });
+
+  ipcMain.handle(
+    IPC_CHANNELS.MEETINGS_CREATE_DISMISSED,
+    (_, title: string, attendeeEmails?: string[]) => {
+      logger.info('Creating dismissed meeting', { title, attendeeEmails });
+      try {
+        const meetingId = meetingRepo.startNewMeeting(title, attendeeEmails);
+        logger.info('Started new meeting', { meetingId });
+        // Immediately end it to mark as completed
+        const meeting = meetingRepo.endCurrentMeeting();
+        logger.info('Ended meeting immediately', { meetingId, meeting });
+        return meetingId;
+      } catch (error) {
+        logger.error('Failed to create dismissed meeting', { error, title, attendeeEmails });
+        throw error;
+      }
+    }
+  );
 
   ipcMain.handle(IPC_CHANNELS.MEETING_UPDATE_TITLE, (_, id: string, title: string) => {
     meetingRepo.updateTitle(id, title);

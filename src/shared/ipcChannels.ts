@@ -22,6 +22,7 @@ export const IPC_CHANNELS = {
   MEETINGS_GET: 'meetings:get',
   MEETINGS_DELETE: 'meetings:delete',
   MEETINGS_SEARCH: 'meetings:search',
+  MEETINGS_CREATE_DISMISSED: 'meetings:createDismissed',
 
   // Callout
   CALLOUT_SHOW: 'callout:show',
@@ -65,6 +66,12 @@ export const IPC_CHANNELS = {
   CALENDAR_LINK_NOTES: 'calendar:linkNotes',
   CALENDAR_LIST_CALENDARS: 'calendar:listCalendars',
   CALENDAR_SET_VISIBLE_CALENDARS: 'calendar:setVisibleCalendars',
+
+  // CRM
+  CRM_CONNECT: 'crm:connect',
+  CRM_DISCONNECT: 'crm:disconnect',
+  CRM_PUSH_NOTES: 'crm:pushNotes',
+  CRM_MEETING_COMPLETE: 'crm:meetingComplete',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
