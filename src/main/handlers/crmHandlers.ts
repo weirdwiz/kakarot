@@ -6,7 +6,6 @@ import { SalesforceOAuthProvider } from '../providers/SalesforceOAuthProvider';
 import { HubSpotOAuthProvider } from '../providers/HubSpotOAuthProvider';
 import { CRMEmailMatcher } from '../services/CRMEmailMatcher';
 import { CRMNoteSyncService } from '../services/CRMNoteSyncService';
-import type { AppSettings } from '@shared/types';
 
 const logger = createLogger('CRMHandlers');
 

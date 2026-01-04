@@ -130,7 +130,7 @@ Provide a concise, helpful answer based on the meeting notes and transcript.`;
       // Update meeting with new note entries
       meetingRepo.updateNoteEntries(meetingId, noteEntries);
       
-      console.log('Saved manual notes for meeting:', { meetingId, entryId: newEntry.id, contentLength: content.length });
+      logger.info('Saved manual notes for meeting', { meetingId, entryId: newEntry.id, contentLength: content.length });
     }
   );
 

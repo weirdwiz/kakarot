@@ -35,6 +35,7 @@ interface AppState {
 
   // UI state
   view: 'recording' | 'history' | 'people' | 'settings';
+  showRecordingHome: boolean;
 
   // Actions
   setRecordingState: (state: RecordingState) => void;
@@ -51,6 +52,7 @@ interface AppState {
   setSettings: (settings: AppSettings) => void;
   setView: (view: 'recording' | 'history' | 'people' | 'settings') => void;
   setCurrentMeetingId: (id: string | null) => void;
+  setShowRecordingHome: (value: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -67,6 +69,7 @@ export const useAppStore = create<AppState>((set) => ({
   lastCompletedNoteId: null,
   settings: null,
   view: 'recording',
+  showRecordingHome: false,
 
   // Actions
   setRecordingState: (recordingState) => set({ recordingState }),
@@ -120,4 +123,6 @@ export const useAppStore = create<AppState>((set) => ({
   setView: (view) => set({ view }),
 
   setCurrentMeetingId: (currentMeetingId) => set({ currentMeetingId }),
+
+  setShowRecordingHome: (showRecordingHome) => set({ showRecordingHome }),
 }));

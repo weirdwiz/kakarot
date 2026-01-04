@@ -16,6 +16,7 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
   private startTime: number = 0;
   private micConnected: boolean = false;
   private systemConnected: boolean = false;
+  private isDisconnected: boolean = false;
 
   constructor(apiKey: string) {
     logger.debug('Initializing', { keyPresent: !!apiKey });
@@ -69,6 +70,7 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
     });
 
     transcriber.on('turn', (turn) => {
+      if (this.isDisconnected) return;
       if (!this.transcriptCallback) return;
       if (!turn.transcript || turn.transcript.trim() === '') return;
 
@@ -137,6 +139,7 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
 
   async disconnect(): Promise<void> {
     logger.info('Disconnecting');
+    this.isDisconnected = true;
     const closePromises: Promise<void>[] = [];
 
     this.micConnected = false;

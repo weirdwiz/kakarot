@@ -101,7 +101,7 @@ export class TokenStorageService {
 
       logger.debug('Retrieved tokens', { provider });
       return data;
-    } catch (error) {
+    } catch {
       // Likely no tokens stored yet, not an error
       logger.debug('No tokens found for provider', { provider });
       return null;

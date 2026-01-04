@@ -78,13 +78,15 @@ export default function App() {
               <button
                 className="px-3 py-1.5 rounded-md text-sm text-slate-700 dark:text-slate-300 hover:bg-white/60 hover:dark:bg-white/5"
                 onClick={() => {
-                  // Back button always navigates to home/recording view with notes tab
-                  useAppStore.getState().setView('recording');
+                  const state = useAppStore.getState();
+                  const isLive = state.recordingState === 'recording' || state.recordingState === 'paused' || state.recordingState === 'processing';
+                  // Navigate to home/bento view; if live, keep recording running but swap to home shell
+                  state.setView('recording');
                   setPillarTab('notes');
-                  // Clear any context/selection so bento home shows (search + upcoming/previous)
-                  useAppStore.getState().setActiveCalendarContext(null);
-                  useAppStore.getState().setCalendarContext(null);
-                  useAppStore.getState().setSelectedMeeting(null);
+                  state.setActiveCalendarContext(null);
+                  state.setCalendarContext(null);
+                  state.setSelectedMeeting(null);
+                  state.setShowRecordingHome(isLive);
                 }}
               >
                 <span className="inline-flex items-center gap-1">

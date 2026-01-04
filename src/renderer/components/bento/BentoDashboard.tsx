@@ -7,13 +7,14 @@ import PreviousMeetingsList from './PreviousMeetingsList';
 
 interface BentoDashboardProps {
   isRecording: boolean;
+  hideCompactBarWhenNoEvents?: boolean;
   onStartNotes: (event?: CalendarEvent) => void;
   onSelectTab?: (tab: 'notes' | 'prep' | 'interact') => void;
 }
 
 type CompletedMeeting = Meeting & { endedAt: Date };
 
-export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab }: BentoDashboardProps): JSX.Element {
+export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents, onStartNotes, onSelectTab }: BentoDashboardProps): JSX.Element {
   const { setView, setSelectedMeeting, setCalendarContext, setActiveCalendarContext } = useAppStore();
   const [liveEvents, setLiveEvents] = useState<CalendarEvent[]>([]);
   const [dismissedEventIds, setDismissedEventIds] = useState<Set<string>>(() => {
@@ -242,6 +243,7 @@ export default function BentoDashboard({ isRecording, onStartNotes, onSelectTab 
         <CompactMeetingBar
           events={liveEvents}
           isRecording={isRecording}
+          hideWhenNoEvents={hideCompactBarWhenNoEvents}
           onStartNotes={onStartNotes}
           onPrep={() => onSelectTab?.('prep')}
           onDismiss={handleDismissLiveMeeting}

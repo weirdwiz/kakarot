@@ -53,16 +53,36 @@ export function createMainWindow(): BrowserWindow {
   const isDev = !app.isPackaged;
 
   if (isDev) {
-    // In development, load from vite dev server
-    // Use environment variable if available (set by vite-plugin-electron), fallback to 5173
-    const port = process.env.VITE_DEV_SERVER_PORT || '5173';
+    // In development, try multiple candidate URLs to avoid white screens when Vite auto-bumps the port
+    const explicitUrl = process.env.VITE_DEV_SERVER_URL || process.env.ELECTRON_RENDERER_URL;
     const host = process.env.VITE_DEV_SERVER_HOST || 'localhost';
-    const url = `http://${host}:${port}`;
-    console.log('[mainWindow] Loading dev server URL:', url);
-    mainWindow.loadURL(url).catch((err) => {
-      console.error('[mainWindow] Failed to load dev server:', err);
+    const port = process.env.VITE_DEV_SERVER_PORT || '5173';
+    const candidates = [
+      explicitUrl,
+      `http://${host}:${port}`,
+      port !== '5173' ? `http://${host}:5173` : null,
+      `http://${host}:5174`,
+    ].filter(Boolean) as string[];
+
+    const loadFirstAvailable = async () => {
+      for (const target of candidates) {
+        try {
+          console.log('[mainWindow] Loading dev server URL:', target);
+          await mainWindow.loadURL(target);
+          return true;
+        } catch (err) {
+          console.warn('[mainWindow] Failed to load dev server candidate:', target, err);
+        }
+      }
+      console.error('[mainWindow] All dev server candidates failed', { candidates });
+      return false;
+    };
+
+    loadFirstAvailable().then((loaded) => {
+      if (loaded) {
+        mainWindow.webContents.openDevTools();
+      }
     });
-    mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }

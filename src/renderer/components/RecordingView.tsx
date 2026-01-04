@@ -8,7 +8,7 @@ import AskNotesBar from './AskNotesBar';
 import ManualNotesView from './ManualNotesView';
 import MeetingContextPreview from './MeetingContextPreview';
 import AttendeesList from './AttendeesList';
-import { FileText, Square, Pause, Play, Search, Loader2, Calendar as CalendarIcon, Users, Folder, Share2, Copy, Check, X } from 'lucide-react';
+import { FileText, Square, Search, Loader2, Calendar as CalendarIcon, Users, Folder, Share2, Copy, Check, X, ScrollText, MessageSquare, Clock3, Clock, ChevronDown } from 'lucide-react';
 import { formatDateTime } from '../lib/formatters';
 import type { CalendarEvent, AppSettings } from '@shared/types';
 
@@ -16,9 +16,18 @@ interface RecordingViewProps {
   onSelectTab?: (tab: 'notes' | 'prep' | 'interact') => void;
 }
 
+type LiveCalloutEntry = {
+  id: string;
+  type: 'question' | 'mention';
+  text: string;
+  context: string;
+  source: 'mic' | 'system';
+  timestampMs: number;
+};
+
 export default function RecordingView({ onSelectTab }: RecordingViewProps) {
-  const { recordingState, audioLevels, liveTranscript, currentPartials, clearLiveTranscript, calendarContext, setCalendarContext, activeCalendarContext, setActiveCalendarContext, setLastCompletedNoteId, setSelectedMeeting, setView, currentMeetingId, setCurrentMeetingId } = useAppStore();
-  const { startCapture, stopCapture, pause, resume } = useAudioCapture();
+  const { recordingState, audioLevels, liveTranscript, currentPartials, clearLiveTranscript, calendarContext, setCalendarContext, activeCalendarContext, setActiveCalendarContext, setLastCompletedNoteId, setSelectedMeeting, setView, currentMeetingId, setCurrentMeetingId, showRecordingHome, setShowRecordingHome } = useAppStore();
+  const { startCapture, stopCapture } = useAudioCapture();
   const [pillarTab, setPillarTab] = React.useState<'notes' | 'prep' | 'interact'>('notes');
   const [recordingTitle, setRecordingTitle] = React.useState<string>(''); // Title to display during recording
   const [upcomingMeetingId, setUpcomingMeetingId] = React.useState<string | null>(null); // Meeting ID for upcoming notes
@@ -36,13 +45,75 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const [pendingCRMMeetingId, setPendingCRMMeetingId] = React.useState<string | null>(null);
   const [crmProvider, setCRMProvider] = React.useState<'salesforce' | 'hubspot' | null>(null);
   const [isPushingNotes, setIsPushingNotes] = React.useState<boolean>(false);
+  const [showManualNotes, setShowManualNotes] = React.useState<boolean>(false);
+  const [notes, setNotes] = React.useState<string>('');
+  const [showTranscriptPopover, setShowTranscriptPopover] = React.useState<boolean>(false);
+  const [calloutTimeline, setCalloutTimeline] = React.useState<LiveCalloutEntry[]>([]);
+  const [showTimePopover, setShowTimePopover] = React.useState<boolean>(false);
+  const [showParticipantsPopover, setShowParticipantsPopover] = React.useState<boolean>(false);
+  const timeButtonRef = React.useRef<HTMLButtonElement>(null);
+  const timePopoverRef = React.useRef<HTMLDivElement>(null);
+  const participantsButtonRef = React.useRef<HTMLButtonElement>(null);
+  const participantsPopoverRef = React.useRef<HTMLDivElement>(null);
+  const processedSegmentsRef = React.useRef<Set<string>>(new Set());
+  const saveTimerRef = React.useRef<NodeJS.Timeout | null>(null);
   const isIdle = recordingState === 'idle';
+  const isRecording = recordingState === 'recording';
+  const isPaused = recordingState === 'paused';
+  const isGenerating = phase === 'processing';
 
   // Forward tab changes to parent if handler provided
   const handleSelectTab = (tab: 'notes' | 'prep' | 'interact') => {
     setPillarTab(tab);
     onSelectTab?.(tab);
   };
+
+  // Load existing manual notes when showing split view
+  React.useEffect(() => {
+    const loadNotes = async () => {
+      if (showManualNotes && upcomingMeetingId) {
+        try {
+          const meetingData = await window.kakarot.meetings.get(upcomingMeetingId);
+          if (meetingData?.noteEntries) {
+            const manualNotes = meetingData.noteEntries
+              .filter(entry => entry.type === 'manual')
+              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            
+            if (manualNotes.length > 0) {
+              setNotes(manualNotes[0].content);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to load existing notes:', error);
+        }
+      }
+    };
+    
+    loadNotes();
+  }, [showManualNotes, upcomingMeetingId]);
+
+  // Autosave notes when typing
+  React.useEffect(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+
+    if (notes.trim() && upcomingMeetingId && showManualNotes) {
+      saveTimerRef.current = setTimeout(async () => {
+        try {
+          await window.kakarot.meetings.saveManualNotes(upcomingMeetingId, notes);
+        } catch (error) {
+          console.error('Failed to autosave notes:', error);
+        }
+      }, 1000);
+    }
+
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+    };
+  }, [notes, upcomingMeetingId, showManualNotes]);
 
   // Initialize meeting when entering manual notes view for upcoming meetings
   React.useEffect(() => {
@@ -98,6 +169,56 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
       }
     });
   }, []);
+
+  // Lightweight inline callout detection until the Python classifier is wired up
+  React.useEffect(() => {
+    if (!(isRecording || isPaused)) return;
+
+    const nameLower = userFirstName?.toLowerCase();
+    const newSegments = liveTranscript.filter(
+      (segment) => segment.isFinal && !processedSegmentsRef.current.has(segment.id)
+    );
+
+    if (!newSegments.length) return;
+
+    newSegments.forEach((segment) => {
+      processedSegmentsRef.current.add(segment.id);
+      const text = segment.text.trim();
+      if (!text) return;
+
+      const lower = text.toLowerCase();
+      const mentionsName = nameLower ? lower.includes(nameLower) : false;
+      const isQuestionLike =
+        text.includes('?') ||
+        lower.startsWith('can you') ||
+        lower.startsWith('could you') ||
+        lower.startsWith('would you') ||
+        lower.includes('please') ||
+        lower.includes('action item');
+
+      if (!(isQuestionLike || mentionsName)) return;
+
+      const contextWindow = liveTranscript.slice(-4).map((s) => s.text).join(' ');
+      const context = contextWindow.length > 400
+        ? contextWindow.slice(contextWindow.length - 400)
+        : contextWindow;
+
+      setCalloutTimeline((prev) => {
+        const next: LiveCalloutEntry[] = [
+          ...prev,
+          {
+            id: segment.id,
+            type: isQuestionLike ? 'question' : 'mention',
+            text,
+            context,
+            source: segment.source,
+            timestampMs: segment.timestamp,
+          },
+        ];
+        return next.slice(-25);
+      });
+    });
+  }, [liveTranscript, isRecording, isPaused, userFirstName]);
 
   // Hook into meeting notes completion event
   React.useEffect(() => {
@@ -172,9 +293,11 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     if (calendarEvent) {
       console.log('[RecordingView] Setting active calendar context from event:', calendarEvent.title);
       setActiveCalendarContext(calendarEvent);
+      setShowManualNotes(true); // Show manual notes when recording from calendar context
     } else {
       console.log('[RecordingView] Manual recording - clearing active calendar context');
       setActiveCalendarContext(null);
+      setShowManualNotes(false);
     }
     
     // Use only the passed event, not any previously stored context
@@ -267,21 +390,9 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     // Keep active calendar context until notes render so metadata can be surfaced
   };
 
-  const handlePauseRecording = async () => {
-    pause();
-    await window.kakarot.recording.pause();
-  };
-
-  const handleResumeRecording = async () => {
-    resume();
-    await window.kakarot.recording.resume();
-  };
-
-  const isRecording = recordingState === 'recording';
-  const isPaused = recordingState === 'paused';
-  const isGenerating = phase === 'processing';
   const isMeetingNotesScreen = phase === 'completed' && Boolean(completedMeeting);
-  const showHomeHero = isIdle && !isMeetingNotesScreen && phase === 'recording';
+  const showBentoWhileLive = showRecordingHome && (isRecording || isPaused || isGenerating);
+  const showHomeHero = (isIdle || showBentoWhileLive) && !isMeetingNotesScreen;
 
   // Display title: use recordingTitle which is set from calendar context or timestamp at start
   // For completed meetings, prefer the stored title which should be calendar title if it existed
@@ -300,6 +411,18 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     const handleClickOutside = (event: MouseEvent) => {
       if (shareRef.current && !shareRef.current.contains(event.target as Node)) {
         setShowSharePopover(false);
+      }
+      if (
+        timePopoverRef.current && !timePopoverRef.current.contains(event.target as Node) &&
+        timeButtonRef.current && !timeButtonRef.current.contains(event.target as Node)
+      ) {
+        setShowTimePopover(false);
+      }
+      if (
+        participantsPopoverRef.current && !participantsPopoverRef.current.contains(event.target as Node) &&
+        participantsButtonRef.current && !participantsButtonRef.current.contains(event.target as Node)
+      ) {
+        setShowParticipantsPopover(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -373,9 +496,16 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
           setPillarTab('notes');
           setActiveCalendarContext(null);
         }}
+        onStartRecording={() => {
+          // Start recording from manual notes view
+          const calEvent = activeCalendarContext || calendarContext;
+          if (calEvent) {
+            handleStartRecording(calEvent);
+          }
+        }}
       />
     ) : (
-    <div className="h-full bg-studio text-slate-ink dark:bg-onyx dark:text-gray-100">
+    <div className="flex-1 min-h-0 bg-studio text-slate-ink dark:bg-onyx dark:text-gray-100 flex flex-col overflow-hidden">
       {/* Meeting Context Preview Modal */}
       {calendarContext && isIdle && (
         <MeetingContextPreview
@@ -384,7 +514,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
         />
       )}
 
-      <div className="mx-auto w-full px-4 sm:px-6 py-4 flex flex-col gap-4">
+      <div className="mx-auto w-full px-4 sm:px-6 py-4 flex flex-col gap-4 flex-1 min-h-0 overflow-hidden">
         {/* Greeting + Unified Action Row - Only show when truly idle (not viewing completed notes) */}
         {showHomeHero && (
           <div className="space-y-3">
@@ -410,7 +540,8 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
               {/* Take Notes Button */}
               <button
                 onClick={() => handleStartRecording()}
-                className="px-4 py-2 bg-[#8B5CF6] text-white font-semibold rounded-lg flex items-center gap-2 shadow-soft-card transition hover:opacity-95 flex-shrink-0"
+                disabled={isRecording || isPaused || isGenerating}
+                className="px-4 py-2 bg-[#8B5CF6] text-white font-semibold rounded-lg flex items-center gap-2 shadow-soft-card transition hover:opacity-95 disabled:opacity-60 disabled:cursor-not-allowed flex-shrink-0"
               >
                 <FileText className="w-4 h-4" />
                 + Take Notes
@@ -420,10 +551,10 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
         )}
 
         {/* Recording controls and titles - Show when recording, paused, or generating notes */}
-        {!isIdle && (
+        {!isIdle && !showBentoWhileLive && (
           <div className="space-y-3">
             {/* Recording Title */}
-            <div className="space-y-1">
+            <div className="space-y-2">
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {isRecording && 'Recording in progress... keep the conversation flowing'}
                 {isPaused && 'Recording paused — resume when ready'}
@@ -443,36 +574,106 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                 />
                 {isSavingTitle && <Loader2 className="w-4 h-4 animate-spin text-[#8B5CF6]" />}
               </div>
+
+              {/* Meta row */}
+              <div className="flex items-center gap-3 text-sm flex-wrap relative">
+                {/* Time Button */}
+                <div className="relative">
+                  <button
+                    ref={timeButtonRef}
+                    onClick={() => setShowTimePopover(!showTimePopover)}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 hover:bg-white/80 dark:hover:bg-slate-700/80 transition text-slate-600 dark:text-slate-400"
+                  >
+                    <Clock className="w-4 h-4" />
+                    <span>{displayDate.toLocaleDateString('en-US', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                    <ChevronDown className="w-4 h-4 opacity-50" />
+                  </button>
+
+                  {showTimePopover && (
+                    <div
+                      ref={timePopoverRef}
+                      className="absolute top-full left-0 mt-2 bg-slate-900 dark:bg-slate-950 rounded-xl border border-slate-800 dark:border-slate-700 shadow-2xl z-50 overflow-hidden min-w-max"
+                    >
+                      <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+                        <h3 className="text-base font-semibold text-white">Meeting Time</h3>
+                        <button
+                          onClick={() => setShowTimePopover(false)}
+                          className="p-1 text-slate-400 hover:text-slate-200 transition rounded hover:bg-slate-800/50"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="p-4 space-y-3">
+                        <div>
+                          <p className="text-xs text-slate-400 uppercase font-medium mb-1">Date</p>
+                          <p className="text-sm text-white font-medium">{displayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-400 uppercase font-medium mb-1">Time</p>
+                          <p className="text-sm text-white font-medium">{displayDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Participants Button */}
+                <div className="relative">
+                  <button
+                    ref={participantsButtonRef}
+                    onClick={() => setShowParticipantsPopover(!showParticipantsPopover)}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 hover:bg-white/80 dark:hover:bg-slate-700/80 transition text-slate-600 dark:text-slate-400"
+                  >
+                    <Users className="w-4 h-4" />
+                    <span>{displayAttendees && displayAttendees.length > 0 ? displayAttendees.length : '0'} Participant{(displayAttendees?.length || 0) !== 1 ? 's' : ''}</span>
+                    <ChevronDown className="w-4 h-4 opacity-50" />
+                  </button>
+
+                  {showParticipantsPopover && (
+                    <div
+                      ref={participantsPopoverRef}
+                      className="absolute top-full left-0 mt-2 bg-slate-900 dark:bg-slate-950 rounded-xl border border-slate-800 dark:border-slate-700 shadow-2xl z-50 overflow-hidden min-w-[320px]"
+                    >
+                      <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+                        <h3 className="text-base font-semibold text-white">Participants</h3>
+                        <button
+                          onClick={() => setShowParticipantsPopover(false)}
+                          className="p-1 text-slate-400 hover:text-slate-200 transition rounded hover:bg-slate-800/50"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="p-4">
+                        {displayAttendees && displayAttendees.length > 0 ? (
+                          <div className="space-y-2">
+                            {displayAttendees.map((email, idx) => (
+                              <div key={idx} className="flex items-center gap-3 text-sm">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white font-semibold text-sm">
+                                  {email.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="text-slate-200 truncate">{email}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-slate-400 text-sm">No participants added</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Recording Control Buttons */}
-            <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-white/30 dark:border-white/10 bg-transparent backdrop-blur-sm">
-              {isPaused ? (
-                <button
-                  onClick={handleResumeRecording}
-                  disabled={isGenerating}
-                  className={`px-4 py-2 bg-[#8B5CF6] text-white font-semibold rounded-lg flex items-center gap-2 transition ${isGenerating ? 'opacity-60 cursor-not-allowed' : 'hover:opacity-95'}`}
-                >
-                  <Play className="w-4 h-4" />
-                  Resume
-                </button>
-              ) : (
-                <button
-                  onClick={handlePauseRecording}
-                  disabled={isGenerating}
-                  className={`px-4 py-2 bg-slate-100 text-slate-ink font-semibold rounded-lg flex items-center gap-2 transition dark:bg-slate-800/80 dark:text-gray-100 ${isGenerating ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-200 dark:hover:bg-slate-700'}`}
-                >
-                  <Pause className="w-4 h-4" />
-                  Pause
-                </button>
-              )}
+            <div className="flex items-center gap-3 px-3 py-2 rounded-xl border border-white/20 dark:border-white/10 bg-transparent backdrop-blur-sm">
               <button
                 onClick={handleStopRecording}
                 disabled={isGenerating}
-                className={`px-4 py-2 bg-red-600 text-white font-semibold rounded-lg flex items-center gap-2 transition ${isGenerating ? 'opacity-60 cursor-not-allowed' : 'hover:bg-red-700'}`}
+                className={`px-3 py-2 rounded-lg bg-red-500/90 text-white text-sm font-medium flex items-center gap-2 transition ${isGenerating ? 'opacity-60 cursor-not-allowed' : 'hover:bg-red-600'}`}
               >
                 <Square className="w-4 h-4" />
-                Stop
+                Stop recording
               </button>
             </div>
           </div>
@@ -480,195 +681,266 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
 
         {/* Compact audio meters moved into transcript header */}
 
-        {/* Dashboard or meeting content - full height, no scroll */}
-        <div className="flex-1 rounded-2xl bg-white/70 dark:bg-graphite/80 border border-white/30 dark:border-white/10 shadow-soft-card backdrop-blur-md overflow-hidden flex flex-col">
-          {isRecording || isPaused || isGenerating || phase === 'completed' || phase === 'error' ? (
-            <div className="h-full flex flex-col p-4 sm:p-6">
-              <div className="mb-4 flex items-center justify-between flex-shrink-0">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                    {phase === 'completed' ? 'Meeting Notes' : 'Live Transcript'}
-                  </p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {phase === 'completed' ? 'Generated from your meeting' : 'Local audio is highlighted in Emerald Mist.'}
-                  </p>
-                </div>
-                {phase === 'completed' && completedMeeting ? (
-                  <div className="relative" ref={shareRef}>
+        {/* Dashboard or meeting content; transcript now lives in floating pill popover */}
+        <div className="flex gap-4 items-stretch flex-1 min-h-0 h-full overflow-hidden">
+          <div className="flex-1 min-w-0 h-full rounded-2xl bg-white/70 dark:bg-graphite/80 border border-white/30 dark:border-white/10 shadow-soft-card backdrop-blur-md overflow-hidden flex flex-col min-h-0">
+            {showBentoWhileLive ? (
+              <div className="h-full flex flex-col overflow-hidden">
+                {/* Amber banner with back button */}
+                <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-2">
+                  <div className="flex items-center justify-between p-3 rounded-xl border border-amber-200/60 dark:border-amber-500/40 bg-amber-50/70 dark:bg-amber-900/30 text-amber-800 dark:text-amber-100">
+                    <div className="text-sm font-medium">{recordingTitle || 'Meeting'} - Transcription in Progress</div>
                     <button
-                      onClick={() => setShowSharePopover((prev) => !prev)}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/30 dark:border-white/10 bg-white/70 dark:bg-slate-800/70 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-white/90 dark:hover:bg-slate-700/90 transition"
+                      className="text-xs px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800"
+                      onClick={() => setShowRecordingHome(false)}
                     >
-                      <Share2 className="w-4 h-4" />
-                      Share
+                      Back to the meeting
                     </button>
-                    {showSharePopover && (
-                      <div className="absolute right-0 mt-2 w-56 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-soft-card p-3 space-y-2">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Share your meeting notes</p>
-                        <button
-                          onClick={handleCopyShareLink}
-                          className="w-full flex items-center justify-between px-3 py-2 rounded-md bg-slate-100 dark:bg-slate-700 text-sm font-medium text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-600 transition"
-                        >
-                          <span className="flex items-center gap-2">
-                            {shareCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                            {shareCopied ? 'Copied!' : 'Copy share link'}
-                          </span>
-                          <span className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Link</span>
-                        </button>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 break-all leading-tight bg-slate-50 dark:bg-slate-900/60 rounded-md px-2 py-1">{shareLink}</p>
+                  </div>
+                </div>
+                {/* BentoDashboard below the banner */}
+                <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6 pb-4 sm:pb-6">
+                  <BentoDashboard isRecording={isRecording || isPaused} hideCompactBarWhenNoEvents={true} onStartNotes={handleStartRecording} onSelectTab={handleSelectTab} />
+                </div>
+              </div>
+            ) : isRecording || isPaused || isGenerating || phase === 'completed' || phase === 'error' ? (
+              <div className="h-full flex flex-col">
+                {showManualNotes && (isRecording || isPaused) && !isGenerating ? (
+                  <div className="h-full flex flex-col p-6 flex-1 min-h-0 gap-4 overflow-hidden">
+                    <LiveCalloutTracker
+                      entries={calloutTimeline}
+                      onClear={() => setCalloutTimeline([])}
+                    />
+                    <div className="flex items-center justify-between flex-shrink-0">
+                      <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Your Notes</h3>
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      <div className="h-full flex flex-col border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+                        <textarea
+                          value={notes}
+                          onChange={(e) => setNotes(e.target.value)}
+                          placeholder="Your prep notes..."
+                          className="w-full h-full flex-1 min-h-0 resize-none bg-transparent text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none leading-relaxed px-4 py-3 overflow-auto"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-full flex flex-col p-4 sm:p-6 flex-1 min-h-0 gap-4">
+                    <div className="mb-4 flex items-center justify-between flex-shrink-0">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                          {phase === 'completed' ? 'Meeting Notes' : 'Recording'}
+                        </p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">
+                          {phase === 'completed' ? 'Generated from your meeting' : 'Transcript is available in the floating pill below.'}
+                        </p>
+                      </div>
+                      {phase === 'completed' && completedMeeting ? (
+                        <div className="relative" ref={shareRef}>
+                          <button
+                            onClick={() => setShowSharePopover((prev) => !prev)}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/30 dark:border-white/10 bg-white/70 dark:bg-slate-800/70 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-white/90 dark:hover:bg-slate-700/90 transition"
+                          >
+                            <Share2 className="w-4 h-4" />
+                            Share
+                          </button>
+                          {showSharePopover && (
+                            <div className="absolute right-0 mt-2 w-56 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-soft-card p-3 space-y-2">
+                              <p className="text-xs text-slate-500 dark:text-slate-400">Share your meeting notes</p>
+                              <button
+                                onClick={handleCopyShareLink}
+                                className="w-full flex items-center justify-between px-3 py-2 rounded-md bg-slate-100 dark:bg-slate-700 text-sm font-medium text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-600 transition"
+                              >
+                                <span className="flex items-center gap-2">
+                                  {shareCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                                  {shareCopied ? 'Copied!' : 'Copy share link'}
+                                </span>
+                                <span className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Link</span>
+                              </button>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 break-all leading-tight bg-slate-50 dark:bg-slate-900/60 rounded-md px-2 py-1">{shareLink}</p>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        (isRecording || isPaused) && (
+                          <div className="flex items-center gap-3">
+                            <div className="w-40">
+                              <AudioLevelMeter label="Mic" level={audioLevels.mic} />
+                            </div>
+                            <div className="w-40">
+                              <AudioLevelMeter label="System" level={audioLevels.system} />
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                    {isGenerating ? (
+                      <div className="flex-1 flex items-center justify-center">
+                        <div className="text-center">
+                          <Loader2 className="w-10 h-10 animate-spin mx-auto text-[#8B5CF6]" />
+                          <p className="mt-3 text-base font-medium text-slate-900 dark:text-white">Generating Notes…</p>
+                          <p className="text-sm text-slate-600 dark:text-slate-300">This usually takes a few seconds.</p>
+                        </div>
+                      </div>
+                    ) : phase === 'completed' && completedMeeting ? (
+                      <div className="flex-1 overflow-y-auto pb-32 space-y-6">
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-3">
+                            <input
+                              value={titleInput}
+                              onChange={(e) => setTitleInput(e.target.value)}
+                              onBlur={() => persistTitle(titleInput)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              className="flex-1 text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white leading-tight bg-transparent border-b border-transparent focus:border-[#8B5CF6] focus:outline-none"
+                              placeholder="Untitled Meeting"
+                            />
+                            {isSavingTitle && <Loader2 className="w-5 h-5 animate-spin text-[#8B5CF6]" />}
+                          </div>
+
+                          <div className="flex gap-3 overflow-visible">
+                            <div className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-1.5">
+                              <CalendarIcon className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                              <div className="text-sm text-slate-800 dark:text-slate-200">{formatDateTime(displayDate)}</div>
+                            </div>
+
+                            {displayAttendees && displayAttendees.length > 0 ? (
+                              <div className="overflow-visible">
+                                <AttendeesList attendeeEmails={displayAttendees} />
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-1.5">
+                                <Users className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                                <div className="text-sm text-slate-800 dark:text-slate-200">Add attendees</div>
+                              </div>
+                            )}
+
+                            <div className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-1.5">
+                              <Folder className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                              <div className="text-sm text-slate-800 dark:text-slate-200">{displayLocation || 'No folder'}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {completedMeeting.overview && (
+                          <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-5 border border-slate-200 dark:border-slate-800">
+                            <p className="text-base leading-relaxed text-slate-800 dark:text-slate-100">{completedMeeting.overview}</p>
+                          </div>
+                        )}
+
+                        {completedMeeting.notesMarkdown && (
+                          <div className="prose prose-sm max-w-none dark:prose-invert text-slate-800 dark:text-slate-200">
+                            <div dangerouslySetInnerHTML={{ __html: (completedMeeting.notesMarkdown as string).replace(/\n/g, '<br/>') }} />
+                          </div>
+                        )}
+
+                        {liveTranscript.length > 0 && (
+                          <div className="border-t border-slate-200 dark:border-slate-800 pt-6">
+                            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Transcript</h3>
+                            <div className="space-y-3">
+                              {liveTranscript.map((segment) => (
+                                <div key={segment.id} className={`flex ${segment.source === 'mic' ? 'justify-end' : 'justify-start'}`}>
+                                  <div
+                                    className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
+                                      segment.source === 'mic'
+                                        ? 'bg-slate-900 dark:bg-slate-700 text-white'
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
+                                    }`}
+                                  >
+                                    <p>{segment.text}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex flex-col">
+                        <div className="flex-1 min-h-0 rounded-xl border border-slate-200/60 dark:border-slate-700/60 bg-white/5 dark:bg-slate-900/20 px-4 py-3">
+                          <textarea
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            placeholder="Your prep notes..."
+                            className="w-full h-full resize-none bg-transparent text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none leading-relaxed"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {phase === 'error' && (
+                      <div className="mt-3 rounded-lg border border-red-300/40 bg-red-50/20 text-red-600 dark:text-red-400 px-3 py-2 text-sm">
+                        {errorMessage || 'Notes generation failed.'}
+                        <div className="mt-2">
+                          <button
+                            className="px-3 py-1.5 bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-gray-100 rounded-md text-xs"
+                            onClick={async () => {
+                              try {
+                                const meetingsList = await window.kakarot.meetings.list();
+                                const last = meetingsList[0];
+                                if (last) {
+                                  const full = await window.kakarot.meetings.get(last.id);
+                                  setSelectedMeeting(full);
+                                  setView('history');
+                                }
+                              } catch (e) {
+                                console.error('Failed to navigate to transcript after error', e);
+                              }
+                            }}
+                          >
+                            View Transcript
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
-                ) : (
-                  (isRecording || isPaused) && (
-                    <div className="flex items-center gap-3">
-                      <div className="w-40">
-                        <AudioLevelMeter label="Mic" level={audioLevels.mic} />
-                      </div>
-                      <div className="w-40">
-                        <AudioLevelMeter label="System" level={audioLevels.system} />
-                      </div>
-                    </div>
-                  )
                 )}
               </div>
-              {isGenerating ? (
-                <div className="flex-1 flex items-center justify-center">
-                  <div className="text-center">
-                    <Loader2 className="w-10 h-10 animate-spin mx-auto text-[#8B5CF6]" />
-                    <p className="mt-3 text-base font-medium text-slate-900 dark:text-white">Generating Notes…</p>
-                    <p className="text-sm text-slate-600 dark:text-slate-300">This usually takes a few seconds.</p>
-                  </div>
-                </div>
-              ) : phase === 'completed' && completedMeeting ? (
-                <div className="flex-1 overflow-y-auto pb-32 space-y-6">
-                  {/* Title - Large and Primary */}
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <input
-                        value={titleInput}
-                        onChange={(e) => setTitleInput(e.target.value)}
-                        onBlur={() => persistTitle(titleInput)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.currentTarget.blur();
-                          }
-                        }}
-                        className="flex-1 text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white leading-tight bg-transparent border-b border-transparent focus:border-[#8B5CF6] focus:outline-none"
-                        placeholder="Untitled Meeting"
-                      />
-                      {isSavingTitle && <Loader2 className="w-5 h-5 animate-spin text-[#8B5CF6]" />}
-                    </div>
+            ) : (
+              <BentoDashboard isRecording={isRecording || isPaused} onStartNotes={handleStartRecording} onSelectTab={handleSelectTab} />
+            )}
+          </div>
 
-                    {/* Metadata Blocks */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 overflow-visible">
-                      <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-2.5">
-                        <CalendarIcon className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                        <div className="text-sm text-slate-800 dark:text-slate-200">{formatDateTime(displayDate)}</div>
-                      </div>
-
-                      {displayAttendees && displayAttendees.length > 0 ? (
-                        <div className="overflow-visible">
-                          <AttendeesList 
-                            attendeeEmails={displayAttendees}
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-2.5">
-                          <Users className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                          <div className="text-sm text-slate-800 dark:text-slate-200">
-                            Add attendees
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-2.5">
-                        <Folder className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                        <div className="text-sm text-slate-800 dark:text-slate-200">
-                          {displayLocation || 'No folder'}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Overview Card */}
-                  {completedMeeting.overview && (
-                    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-5 border border-slate-200 dark:border-slate-800">
-                      <p className="text-base leading-relaxed text-slate-800 dark:text-slate-100">
-                        {completedMeeting.overview}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Notes Section */}
-                  {completedMeeting.notesMarkdown && (
-                    <div className="prose prose-sm max-w-none dark:prose-invert text-slate-800 dark:text-slate-200">
-                      <div dangerouslySetInnerHTML={{ __html: (completedMeeting.notesMarkdown as string).replace(/\n/g, '<br/>') }} />
-                    </div>
-                  )}
-
-                  {/* Transcript Section */}
-                  {liveTranscript.length > 0 && (
-                    <div className="border-t border-slate-200 dark:border-slate-800 pt-6">
-                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Transcript</h3>
-                      <div className="space-y-3">
-                        {liveTranscript.map((segment) => (
-                          <div
-                            key={segment.id}
-                            className={`flex ${segment.source === 'mic' ? 'justify-end' : 'justify-start'}`}
-                          >
-                            <div
-                              className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
-                                segment.source === 'mic'
-                                  ? 'bg-slate-900 dark:bg-slate-700 text-white'
-                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
-                              }`}
-                            >
-                              <p>{segment.text}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex-1 overflow-y-auto">
-                  <LiveTranscript segments={liveTranscript} currentPartials={currentPartials} />
-                </div>
-              )}
-              {phase === 'error' && (
-                <div className="mt-3 rounded-lg border border-red-300/40 bg-red-50/20 text-red-600 dark:text-red-400 px-3 py-2 text-sm">
-                  {errorMessage || 'Notes generation failed.'}
-                  <div className="mt-2">
-                    <button
-                      className="px-3 py-1.5 bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-gray-100 rounded-md text-xs"
-                      onClick={async () => {
-                        // Load latest meeting list and navigate to transcript view
-                        try {
-                          const meetingsList = await window.kakarot.meetings.list();
-                          const last = meetingsList[0];
-                          if (last) {
-                            const full = await window.kakarot.meetings.get(last.id);
-                            setSelectedMeeting(full);
-                            setView('history');
-                          }
-                        } catch (e) {
-                          console.error('Failed to navigate to transcript after error', e);
-                        }
-                      }}
-                    >
-                      View Transcript
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <BentoDashboard isRecording={isRecording || isPaused} onStartNotes={handleStartRecording} onSelectTab={handleSelectTab} />
-          )}
         </div>
       </div>
+
+      {/* Floating transcript pill + popover */}
+      {(isRecording || isPaused) && !isGenerating && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30">
+          <button
+            onClick={() => setShowTranscriptPopover((open) => !open)}
+            className="flex items-center gap-2 rounded-full px-4 py-2 bg-slate-900 text-white shadow-lg shadow-slate-900/30 hover:shadow-slate-900/40 transition dark:bg-slate-800"
+            aria-label="Toggle live transcript"
+          >
+            <ScrollText className="w-4 h-4" />
+            <span className="text-sm font-medium">Live Transcript</span>
+          </button>
+          {showTranscriptPopover && (
+            <div className="mt-3 w-[380px] max-h-[420px] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 shadow-2xl backdrop-blur-md overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Live Transcript</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Auto-scroll while recording.</p>
+                </div>
+                <button
+                  onClick={() => setShowTranscriptPopover(false)}
+                  className="h-8 w-8 inline-flex items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-700/80 transition"
+                  aria-label="Close transcript"
+                >
+                  <X className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                </button>
+              </div>
+              <div className="h-[340px] overflow-y-auto px-4 pb-4 pt-3">
+                <LiveTranscript segments={liveTranscript} currentPartials={currentPartials} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* "Ask your notes" bar - only in completed phase */}
       {phase === 'completed' && completedMeeting && (
@@ -742,5 +1014,66 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     </div>
     )}
     </>
+  );
+}
+
+function LiveCalloutTracker({ entries, onClear }: { entries: LiveCalloutEntry[]; onClear: () => void }) {
+  const formatRelativeTime = (timestampMs: number) => {
+    const totalSeconds = Math.max(0, Math.floor(timestampMs / 1000));
+    const minutes = Math.floor(totalSeconds / 60)
+      .toString()
+      .padStart(2, '0');
+    const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${minutes}:${seconds}`;
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/40 backdrop-blur p-4 shadow-soft-card flex flex-col gap-3 min-h-[120px] max-h-56">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+          <MessageSquare className="w-4 h-4 text-[#8B5CF6]" />
+          <span>Live Callout Tracker</span>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <Clock3 className="w-3.5 h-3.5" />
+          <span>Watching transcript</span>
+          {entries.length > 0 && (
+            <button
+              onClick={onClear}
+              className="ml-2 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] text-slate-600 dark:text-slate-300"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
+        {entries.length === 0 ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">Listening for questions or mentions...</p>
+        ) : (
+          entries.map((entry) => (
+            <div
+              key={entry.id}
+              className="border border-slate-200/70 dark:border-slate-700/70 rounded-lg bg-white/70 dark:bg-slate-800/70 p-3"
+            >
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+                <span className="uppercase tracking-wide font-semibold text-[11px] text-[#8B5CF6]">
+                  {entry.type === 'question' ? 'Question' : 'Mention'}
+                </span>
+                <span>{formatRelativeTime(entry.timestampMs)}</span>
+              </div>
+              <p className="text-sm text-slate-900 dark:text-white leading-snug">{entry.text}</p>
+              {entry.context && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                  <span className="font-semibold text-slate-600 dark:text-slate-300">Context: </span>
+                  {entry.context}
+                </p>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   );
 }

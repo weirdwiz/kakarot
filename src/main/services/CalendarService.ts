@@ -60,7 +60,6 @@ export class CalendarService {
           tokens.userPhoto = profileResponse.data.picture;
           
           // Store in settings
-          const settings = this.settingsRepo.getSettings();
           this.settingsRepo.updateSettings({
             userProfile: {
               name: profileResponse.data.name,
@@ -239,8 +238,8 @@ export class CalendarService {
 
     // Dev logging
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[OAuth ${config.provider}] Starting OAuth flow`);
-      console.log(`[OAuth ${config.provider}] Redirect URI: ${redirectUri}`);
+      logger.info(`[OAuth ${config.provider}] Starting OAuth flow`);
+      logger.info(`[OAuth ${config.provider}] Redirect URI: ${redirectUri}`);
     }
 
     await shell.openExternal(authUrl.toString());
@@ -251,7 +250,7 @@ export class CalendarService {
 
     // Dev logging
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[OAuth ${config.provider}] Received authorization code`);
+      logger.info(`[OAuth ${config.provider}] Received authorization code`);
     }
 
     const body = new URLSearchParams({
@@ -291,8 +290,8 @@ export class CalendarService {
 
     // Dev logging
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[OAuth ${config.provider}] ✓ Tokens received successfully`);
-      console.log(`[OAuth ${config.provider}] Expires in: ${tokenJson.expires_in}s`);
+      logger.info(`[OAuth ${config.provider}] ✓ Tokens received successfully`);
+      logger.info(`[OAuth ${config.provider}] Expires in: ${tokenJson.expires_in}s`);
     }
 
     return tokens;

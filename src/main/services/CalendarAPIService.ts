@@ -118,17 +118,14 @@ export class CalendarAPIService {
    */
   async fetchICloudEvents(
     username: string,
-    appPassword: string,
-    timeMin?: Date,
-    timeMax?: Date
+    _appPassword: string,
+    _timeMin?: Date,
+    _timeMax?: Date
   ): Promise<CalendarEvent[]> {
     try {
-      // iCloud CalDAV endpoint
-      const caldavUrl = `https://caldav.icloud.com/${username}/calendars/`;
-
       // For now, return empty array
       // Full CalDAV implementation requires XML parsing and PROPFIND requests
-      logger.warn('iCloud CalDAV integration not fully implemented');
+      logger.warn('iCloud CalDAV integration not fully implemented', { username });
       
       // TODO: Implement full CalDAV support
       // - Discover calendar collections via PROPFIND
@@ -148,7 +145,7 @@ export class CalendarAPIService {
   private async refreshAccessTokenIfNeeded(
     provider: 'google' | 'outlook',
     tokens: CalendarTokens,
-    refreshCallback: (newTokens: CalendarTokens) => Promise<void>
+    _refreshCallback: (newTokens: CalendarTokens) => Promise<void>
   ): Promise<CalendarTokens> {
     // Check if token is expired (with 5 minute buffer)
     if (Date.now() >= tokens.expiresAt - (5 * 60 * 1000)) {

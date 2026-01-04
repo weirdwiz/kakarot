@@ -21,6 +21,7 @@ let activeCalendarContext: {
   calendarEventEnd: string;
   calendarProvider: string;
 } | null = null;
+let isPaused = false;
 
 export function registerRecordingHandlers(
   mainWindow: BrowserWindow,
@@ -151,6 +152,8 @@ export function registerRecordingHandlers(
       logger.info('Transcription provider disconnected');
     }
 
+    isPaused = false;
+
     // Wait for any remaining finals to arrive and be stored
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
@@ -244,10 +247,18 @@ export function registerRecordingHandlers(
   });
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_PAUSE, async () => {
+    isPaused = true;
+    if (systemAudioService) {
+      systemAudioService.pause();
+    }
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'paused');
   });
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_RESUME, async () => {
+    isPaused = false;
+    if (systemAudioService) {
+      systemAudioService.resume();
+    }
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'recording');
   });
 
@@ -257,7 +268,7 @@ export function registerRecordingHandlers(
     if (source !== 'mic') return;
 
     // Only process if actively recording
-    if (!transcriptionProvider) {
+    if (!transcriptionProvider || isPaused) {
       return;
     }
 

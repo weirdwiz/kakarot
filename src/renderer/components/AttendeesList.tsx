@@ -110,7 +110,7 @@ export default function AttendeesList({ attendeeEmails, organizationName }: Atte
   };
 
   return (
-    <div className="relative w-full">
+    <div className="relative">
       <button
         ref={buttonRef}
         onClick={(e) => {
@@ -119,12 +119,12 @@ export default function AttendeesList({ attendeeEmails, organizationName }: Atte
           e.stopPropagation();
           setIsOpen(!isOpen);
         }}
-        className="w-full flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-2.5 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition cursor-pointer active:opacity-80"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 hover:bg-white/80 dark:hover:bg-slate-700/80 transition text-slate-600 dark:text-slate-400 whitespace-nowrap"
       >
-        <Users className="w-4 h-4 text-slate-500 dark:text-slate-400 flex-shrink-0" />
-        <div className="text-sm text-slate-800 dark:text-slate-200 font-medium text-left">
+        <Users className="w-4 h-4 flex-shrink-0" />
+        <span className="text-sm">
           {attendeeEmails.length} {attendeeEmails.length === 1 ? 'Participant' : 'Participants'}
-        </div>
+        </span>
       </button>
 
       {isOpen && (

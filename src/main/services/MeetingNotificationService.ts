@@ -1,4 +1,4 @@
-import { Notification, shell, ipcMain } from 'electron';
+import { Notification, shell } from 'electron';
 import { CalendarService } from './CalendarService';
 import { createLogger } from '../core/logger';
 
@@ -13,7 +13,6 @@ export class MeetingNotificationService {
   private calendarService: CalendarService;
   private pendingNotifications: Map<string, PendingNotification> = new Map();
   private checkInterval: NodeJS.Timeout | null = null;
-  private lastCheckedTime = 0;
 
   constructor(calendarService: CalendarService) {
     this.calendarService = calendarService;
@@ -260,15 +259,4 @@ export class MeetingNotificationService {
       logger.error('Main window not available for IPC', { mainWindowExists: !!global.mainWindow });
     }
   }
-}
-
-// Export for use in handlers
-export function registerMeetingNotificationHandlers(notificationService: MeetingNotificationService): void {
-  ipcMain.on('notification:dismissed', (_event, meetingId: string) => {
-    const notification = notificationService['pendingNotifications'].get(meetingId);
-    if (notification) {
-      clearTimeout(notification.timeout);
-      notificationService['pendingNotifications'].delete(meetingId);
-    }
-  });
 }

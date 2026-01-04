@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { Clock, Users, FolderPlus, BookOpen, ChevronDown, X, Video, Calendar as CalendarIcon } from 'lucide-react';
 import googleMeetPng from '../assets/google-meet.png';
@@ -10,26 +10,48 @@ interface ManualNotesViewProps {
   meetingId?: string;
   onSelectTab?: (tab: 'notes' | 'prep' | 'interact') => void;
   onSaveNotes?: () => void;
+  onStartRecording?: () => void;
 }
 
-export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes }: ManualNotesViewProps) {
+export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, onStartRecording }: ManualNotesViewProps) {
   const { activeCalendarContext, calendarContext } = useAppStore();
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [showTimePopover, setShowTimePopover] = useState(false);
   const timeButtonRef = useRef<HTMLButtonElement>(null);
   const timePopoverRef = useRef<HTMLDivElement>(null);
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const initialLoadRef = useRef(false);
 
   const meeting = activeCalendarContext || calendarContext;
   
-  // Debug meeting object
+  // Load existing notes on mount
   useEffect(() => {
-    if (meeting) {
-      console.log('[ManualNotesView] Meeting object:', JSON.stringify(meeting, null, 2));
-      console.log('[ManualNotesView] Meeting location:', meeting.location);
-      console.log('[ManualNotesView] Meeting provider:', meeting.provider);
-    }
-  }, [meeting]);
+    const loadNotes = async () => {
+      if (!meetingId || initialLoadRef.current) return;
+      
+      try {
+        const meetingData = await window.kakarot.meetings.get(meetingId);
+        if (meetingData?.noteEntries) {
+          // Find the most recent manual note
+          const manualNotes = meetingData.noteEntries
+            .filter(entry => entry.type === 'manual')
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          
+          if (manualNotes.length > 0) {
+            setNotes(manualNotes[0].content);
+            setLastSaved(new Date(manualNotes[0].createdAt));
+          }
+        }
+        initialLoadRef.current = true;
+      } catch (error) {
+        console.error('Failed to load existing notes:', error);
+      }
+    };
+    
+    loadNotes();
+  }, [meetingId]);
   
   const meetingTitle = meeting?.title || 'Untitled Meeting';
   const meetingTime = meeting ? new Date(meeting.start).toLocaleString([], { 
@@ -176,32 +198,46 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes }:
     }
   };
 
-  const handleSaveNotes = async () => {
-    if (!notes.trim()) {
-      console.warn('Notes are empty, nothing to save');
-      return;
-    }
+  // Autosave function
+  const saveNotes = useCallback(async (content: string) => {
+    if (!content.trim() || !meetingId) return;
 
     setIsSaving(true);
     try {
-      // For upcoming meetings, we create a meeting entry without audio recording
-      // This will be saved as a manual note entry
-      if (meetingId) {
-        await window.kakarot.meetings.saveManualNotes(meetingId, notes);
-        console.log('Manual notes saved for meeting:', meetingId);
-      } else {
-        console.warn('No meeting ID provided, cannot save notes');
-      }
-      
-      // Notify parent that notes were saved
+      await window.kakarot.meetings.saveManualNotes(meetingId, content);
+      setLastSaved(new Date());
       onSaveNotes?.();
-      setNotes('');
     } catch (error) {
-      console.error('Failed to save manual notes:', error);
+      console.error('Failed to autosave notes:', error);
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [meetingId, onSaveNotes]);
+
+  // Debounced autosave on notes change
+  useEffect(() => {
+    // Clear existing timer
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+
+    // Don't save on initial load
+    if (!initialLoadRef.current) return;
+
+    // Set new timer for 1 second debounce
+    if (notes.trim()) {
+      saveTimerRef.current = setTimeout(() => {
+        saveNotes(notes);
+      }, 1000);
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+    };
+  }, [notes, saveNotes]);
 
   // Close time popover when clicking outside
   React.useEffect(() => {
@@ -227,7 +263,7 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes }:
   const endTime = meeting ? new Date(meeting.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
   return (
-    <div className="h-full bg-studio text-slate-ink dark:bg-onyx dark:text-gray-100 flex flex-col">
+    <div className="h-[calc(100vh-12rem)] bg-studio text-slate-ink dark:bg-onyx dark:text-gray-100 flex flex-col">
       {/* Header Section */}
       <div className="flex-shrink-0 px-6 py-4 border-b border-slate-200 dark:border-slate-700">
         {/* Meeting Title */}
@@ -317,11 +353,9 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes }:
           </div>
           
           {meeting?.attendees && meeting.attendees.length > 0 ? (
-            <div className="min-w-0 flex-1">
-              <AttendeesList attendeeEmails={meeting.attendees} />
-            </div>
+            <AttendeesList attendeeEmails={meeting.attendees} />
           ) : (
-            <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 hover:bg-white/80 dark:hover:bg-slate-700/80 transition text-slate-600 dark:text-slate-400">
+            <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 hover:bg-white/80 dark:hover:bg-slate-700/80 transition text-slate-600 dark:text-slate-400 whitespace-nowrap">
               <Users className="w-4 h-4" />
               Add attendees
             </button>
@@ -335,35 +369,44 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes }:
       </div>
 
       {/* Notes Editor */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      <div className="flex-1 min-h-0 px-6 py-4 overflow-y-auto">
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Write notes..."
-          className="w-full h-full resize-none bg-transparent text-lg text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none"
+          className="w-full min-h-full resize-none bg-transparent text-lg text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none leading-relaxed"
         />
       </div>
 
       {/* Bottom Bar */}
       <div className="flex-shrink-0 px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm flex items-center justify-between">
-        <div className="text-xs text-slate-500 dark:text-slate-400">
-          {notes.length} characters
+        <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+          <span>{notes.length} characters</span>
+          {isSaving && (
+            <span className="text-amber-600 dark:text-amber-400">Saving...</span>
+          )}
+          {!isSaving && lastSaved && (
+            <span className="text-emerald-600 dark:text-emerald-400">
+              Saved {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {onStartRecording && (
+            <button
+              onClick={onStartRecording}
+              className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium transition-colors"
+            >
+              Transcribe Now
+            </button>
+          )}
           <button
             onClick={() => onSelectTab?.('prep')}
-            className="px-4 py-2 rounded-lg bg-slate-200/60 dark:bg-slate-700/60 hover:bg-slate-300/60 dark:hover:bg-slate-600/60 text-slate-700 dark:text-slate-300 font-medium transition-colors flex items-center gap-2"
+            className="px-4 py-2 rounded-lg bg-emerald-mist hover:bg-emerald-mist/90 text-onyx font-medium transition-colors flex items-center gap-2"
           >
             <BookOpen className="w-4 h-4" />
             Prep
-          </button>
-          <button
-            onClick={handleSaveNotes}
-            disabled={isSaving || !notes.trim()}
-            className="px-4 py-2 rounded-lg bg-emerald-mist hover:bg-emerald-mist/90 text-onyx font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {isSaving ? 'Saving...' : 'Save Notes'}
           </button>
         </div>
       </div>

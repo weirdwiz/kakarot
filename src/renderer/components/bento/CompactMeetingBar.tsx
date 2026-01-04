@@ -5,6 +5,7 @@ import { Calendar, FileText, Clipboard, Trash2 } from 'lucide-react';
 interface CompactMeetingBarProps {
   events: CalendarEvent[];
   isRecording: boolean;
+  hideWhenNoEvents?: boolean;
   onStartNotes: (event?: CalendarEvent) => void;
   onPrep?: () => void;
   onDismiss?: (eventId: string) => void;
@@ -13,6 +14,7 @@ interface CompactMeetingBarProps {
 export default function CompactMeetingBar({
   events,
   isRecording,
+  hideWhenNoEvents,
   onStartNotes,
   onPrep,
   onDismiss,
@@ -34,7 +36,10 @@ export default function CompactMeetingBar({
     return null;
   };
 
-  if (!events || events.length === 0) {
+  if (!events || events.length === 0) {    // If hideWhenNoEvents is true (e.g., during background recording), don't show the "No Meeting Going on" message
+    if (hideWhenNoEvents) {
+      return null;
+    }
     return (
       <div className="w-full rounded-xl border border-white/30 dark:border-white/10 bg-white/70 dark:bg-graphite/80 backdrop-blur-md shadow-soft-card px-4 py-2 flex items-center justify-start">
         <div className="flex items-center gap-3">
