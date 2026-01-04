@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, Zap } from 'lucide-react';
 
 export default function PrepSnapshotTile() {
   const prepItems = [

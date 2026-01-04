@@ -1,16 +1,20 @@
 import React, { useEffect, useCallback, useState } from 'react';
 import { useAppStore } from './stores/appStore';
+import { useOnboardingStore } from './stores/onboardingStore';
 import RecordingView from './components/RecordingView';
 import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
 import PrepView from './components/PrepView';
+import PeopleView from './components/PeopleView';
 import Sidebar from './components/Sidebar';
+import OnboardingFlow from './components/onboarding/OnboardingFlow';
 import type { AudioLevels } from '../shared/types';
 import ThemeToggle from './components/ThemeToggle';
 
 export default function App() {
   const { view, setRecordingState, setAudioLevels, setPartialSegment, addTranscriptSegment, setSettings } =
     useAppStore();
+  const { isCompleted: onboardingCompleted, completeOnboarding, resetOnboarding } = useOnboardingStore();
   const [pillarTab, setPillarTab] = useState<'notes' | 'prep' | 'interact'>('notes');
 
   // Handler that merges incoming audio levels with existing state
@@ -26,6 +30,12 @@ export default function App() {
   useEffect(() => {
     // Load initial settings
     window.kakarot.settings.get().then(setSettings);
+
+    // Dev-only: Listen for onboarding reset shortcut (Cmd/Ctrl+Shift+O)
+    const unsubDevReset = window.kakarot.dev.onResetOnboarding(() => {
+      console.log('[DEV] Resetting onboarding via keyboard shortcut');
+      resetOnboarding();
+    });
 
     // Subscribe to recording state changes
     const unsubState = window.kakarot.recording.onStateChange(setRecordingState);
@@ -43,12 +53,18 @@ export default function App() {
     });
 
     return () => {
+      unsubDevReset();
       unsubState();
       unsubLevels();
       unsubTranscript();
       unsubFinal();
     };
-  }, [setRecordingState, handleAudioLevels, setPartialSegment, addTranscriptSegment, setSettings]);
+  }, [setRecordingState, handleAudioLevels, setPartialSegment, addTranscriptSegment, setSettings, resetOnboarding]);
+
+  // Show onboarding if not completed
+  if (!onboardingCompleted) {
+    return <OnboardingFlow onComplete={completeOnboarding} />;
+  }
 
   return (
     <div className="flex h-screen bg-[#F3F4F6] dark:bg-[#050505]">
@@ -56,7 +72,26 @@ export default function App() {
       <div className="flex-1 flex flex-col">
         {/* Fixed Header */}
         <header className="sticky top-0 z-30 backdrop-blur-md bg-white/70 dark:bg-[#0C0C0C]/80 border-b border-slate-200 dark:border-[#1A1A1A] drag-region">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-[48px] flex items-center justify-center">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-[48px] flex items-center justify-between">
+            {/* Back button (left, next to traffic lights area) */}
+            <div className="w-32 flex items-center no-drag">
+              <button
+                className="px-3 py-1.5 rounded-md text-sm text-slate-700 dark:text-slate-300 hover:bg-white/60 hover:dark:bg-white/5"
+                onClick={() => {
+                  // Back button always navigates to home/recording view with notes tab
+                  useAppStore.getState().setView('recording');
+                  setPillarTab('notes');
+                  // Clear any context/selection so bento home shows (search + upcoming/previous)
+                  useAppStore.getState().setActiveCalendarContext(null);
+                  useAppStore.getState().setCalendarContext(null);
+                  useAppStore.getState().setSelectedMeeting(null);
+                }}
+              >
+                <span className="inline-flex items-center gap-1">
+                  ← Back
+                </span>
+              </button>
+            </div>
             {/* Navigation Pills (Center) */}
             <div className="flex-1 flex justify-center no-drag">
               <div className="flex items-center gap-2 px-2 py-2 rounded-full border border-white/30 dark:border-white/10 bg-white/70 dark:bg-[#0C0C0C]/70">
@@ -77,7 +112,7 @@ export default function App() {
             </div>
 
             {/* Theme Toggle (Right) */}
-            <div className="ml-4 no-drag"><ThemeToggle /></div>
+            <div className="w-32 flex justify-end no-drag"><ThemeToggle /></div>
           </div>
         </header>
 
@@ -101,6 +136,7 @@ export default function App() {
                   )
                 )}
                 {view === 'history' && <HistoryView />}
+                {view === 'people' && <PeopleView />}
                 {view === 'settings' && <SettingsView />}
               </div>
             </div>

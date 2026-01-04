@@ -1,17 +1,21 @@
 // Meeting and transcript types
 
-export interface MeetingChapter {
+export interface NoteEntry {
   id: string;
-  title: string;
-  startTime: number; // ms from meeting start
-  endTime: number;
+  content: string;
+  type: 'manual' | 'generated'; // manual = typed by user, generated = from AI
+  createdAt: Date;
+  source?: 'upcoming' | 'live'; // where it was created
 }
 
-export interface MeetingPerson {
-  email: string;
-  displayName?: string;
-  avatar?: string;
-  source: 'mic' | 'system';
+export interface Person {
+  email: string; // Primary identifier
+  name?: string; // Extracted from calendar or user input
+  lastMeetingAt: Date;
+  meetingCount: number;
+  totalDuration: number; // Total minutes met
+  notes?: string; // User-added context about this person
+  organization?: string;
 }
 
 export interface Meeting {
@@ -21,15 +25,19 @@ export interface Meeting {
   endedAt: Date | null;
   duration: number; // in seconds
   transcript: TranscriptSegment[];
-  notes: unknown | null;
-  notesPlain: string | null;
-  notesMarkdown: string | null;
-  overview: string | null;
-  summary: string | null;
-  chapters: MeetingChapter[];
-  people: MeetingPerson[];
+  summary?: string | null;
   actionItems: string[];
-  participants: string[];
+  participants: string[]; // Deprecated: use attendeeEmails
+  attendeeEmails: string[]; // Email addresses from calendar
+  // Note entries (accumulated with timestamps)
+  noteEntries: NoteEntry[];
+  // Optional generated notes fields (legacy, for backward compatibility)
+  overview: string | null;
+  notesMarkdown: string | null;
+  notesPlain: string | null;
+  notes: unknown | null;
+  chapters: unknown[];
+  people: unknown[];
 }
 
 export interface TranscriptWord {
@@ -79,7 +87,56 @@ export interface AudioLevels {
 }
 
 // Settings
+export interface OAuthTokens {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number; // epoch ms
+  scope?: string;
+  tokenType?: string;
+  idToken?: string;
+  email?: string;
+  // User profile info
+  userName?: string;
+  userEmail?: string;
+  userPhoto?: string;
+}
+
+export interface ICloudCredentials {
+  appleId: string;
+  appPassword: string;
+  calendarHomeUrl?: string;
+}
+
+export interface CalendarConnections {
+  google?: OAuthTokens;
+  outlook?: OAuthTokens;
+  icloud?: ICloudCredentials;
+}
+
 export type TranscriptionProvider = 'assemblyai' | 'deepgram';
+
+export type CRMProvider = 'salesforce' | 'hubspot';
+export type CRMNotesBehavior = 'always' | 'ask';
+
+export interface SalesforceOAuthToken {
+  accessToken: string;
+  refreshToken: string;
+  instanceUrl: string;
+  expiresAt: number;
+  connectedAt: number;
+}
+
+export interface HubSpotOAuthToken {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  connectedAt: number;
+}
+
+export interface CRMConnections {
+  salesforce?: SalesforceOAuthToken;
+  hubspot?: HubSpotOAuthToken;
+}
 
 export interface AppSettings {
   assemblyAiApiKey: string;
@@ -92,13 +149,41 @@ export interface AppSettings {
   showFloatingCallout: boolean;
   transcriptionLanguage: string;
   transcriptionProvider: TranscriptionProvider;
-  // Calendar OAuth credentials
+  // Hosted token support
+  useHostedTokens: boolean;
+  authApiBaseUrl: string;
+  hostedAuthToken: string;
+  // User profile
+  userProfile?: {
+    name?: string;
+    email?: string;
+    photo?: string;
+    provider?: 'google' | 'outlook' | 'icloud';
+  };
+  // Calendar connections and optional OAuth config
+  calendarConnections: CalendarConnections;
   googleCalendarClientId?: string;
   googleCalendarClientSecret?: string;
   outlookCalendarClientId?: string;
   outlookCalendarClientSecret?: string;
   icloudCalendarUsername?: string;
   icloudCalendarPassword?: string; // App-specific password
+  // Calendar event mappings
+  calendarEventMappings?: Record<string, CalendarEventMapping>;
+  // Visible calendars per provider
+  visibleCalendars?: {
+    google?: string[];
+    outlook?: string[];
+    icloud?: string[];
+  };
+  // CRM Integration
+  crmConnections?: CRMConnections;
+  crmNotesBehavior?: CRMNotesBehavior;
+  // CRM OAuth credentials
+  crmOAuthSalesforceClientId?: string;
+  crmOAuthSalesforceClientSecret?: string;
+  crmOAuthHubSpotClientId?: string;
+  crmOAuthHubSpotClientSecret?: string;
 }
 
 // IPC payloads
@@ -112,69 +197,28 @@ export interface CalloutTrigger {
 }
 
 // Calendar
-export type CalendarProvider = 'google' | 'outlook' | 'icloud';
-
 export interface CalendarEvent {
   id: string;
   title: string;
   start: Date;
   end: Date;
-  provider: CalendarProvider;
+  provider: 'google' | 'outlook' | 'icloud' | 'unknown';
   location?: string;
   attendees?: string[];
   description?: string;
 }
 
-// Calendar API response types (for type-safe API parsing)
-export interface GoogleCalendarItem {
-  id: string;
-  summary?: string;
-  start: { dateTime?: string; date?: string };
-  end: { dateTime?: string; date?: string };
-  location?: string;
-  attendees?: { email: string }[];
-  description?: string;
+// Enhanced calendar meeting with notes linking
+export interface CalendarMeeting extends CalendarEvent {
+  notesId?: string; // Links to recording/notes if available
+  hasNotes: boolean; // Computed: true if notesId exists
 }
 
-export interface GoogleCalendarResponse {
-  items?: GoogleCalendarItem[];
-}
-
-export interface OutlookCalendarItem {
-  id: string;
-  subject?: string;
-  start: { dateTime: string };
-  end: { dateTime: string };
-  location?: { displayName?: string };
-  attendees?: { emailAddress: { address: string } }[];
-  bodyPreview?: string;
-}
-
-export interface OutlookCalendarResponse {
-  value?: OutlookCalendarItem[];
-}
-
-// Calendar fetch result with error handling
-export interface CalendarFetchResult {
-  events: CalendarEvent[];
-  error?: string;
-}
-
-// Calendar list result with errors from multiple providers
-export interface CalendarListResult {
-  events: CalendarEvent[];
-  errors: string[];
-}
-
-export interface CalendarTokens {
-  accessToken: string;
-  refreshToken?: string;
-  expiresAt: number; // Unix timestamp in milliseconds
-  scope?: string;
-}
-
-export interface CalendarConnectionStatus {
-  google: boolean;
-  outlook: boolean;
-  icloud: boolean;
+// Mapping between calendar events and notes/recordings
+export interface CalendarEventMapping {
+  calendarEventId: string;
+  meetingId?: string; // Our internal recording ID
+  notesId?: string;
+  linkedAt: number; // epoch ms
+  provider: 'google' | 'outlook' | 'icloud';
 }

@@ -32,7 +32,7 @@ export function createCalloutWindow(): BrowserWindow {
   });
 
   if (process.env.NODE_ENV === 'development' || process.env.VITE_DEV_SERVER_URL) {
-    const baseUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
+    const baseUrl = process.env.VITE_DEV_SERVER_URL || `http://${process.env.VITE_DEV_SERVER_HOST || 'localhost'}:${process.env.VITE_DEV_SERVER_PORT || '5173'}`;
     calloutWindow.loadURL(`${baseUrl}/callout.html`);
   } else {
     calloutWindow.loadFile(join(__dirname, '../renderer/callout.html'));

@@ -6,6 +6,9 @@ import { createLogger } from '../../core/logger';
 const logger = createLogger('SettingsRepository');
 
 export class SettingsRepository {
+  /**
+   * Ensure default settings exist in database
+   */
   initializeDefaults(): void {
     const db = getDatabase();
     const result = db.exec('SELECT COUNT(*) as count FROM settings');
@@ -64,28 +67,5 @@ export class SettingsRepository {
     }
     saveDatabase();
     logger.info('Updated settings', { keys: Object.keys(updates) });
-  }
-
-  async get(key: string): Promise<string | null> {
-    const db = getDatabase();
-    const result = db.exec('SELECT value FROM settings WHERE key = ?', [key]);
-    if (result.length === 0 || result[0].values.length === 0) {
-      return null;
-    }
-    return result[0].values[0][0] as string;
-  }
-
-  async set(key: string, value: string): Promise<void> {
-    const db = getDatabase();
-    db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
-    saveDatabase();
-    logger.debug('Set setting', { key });
-  }
-
-  async delete(key: string): Promise<void> {
-    const db = getDatabase();
-    db.run('DELETE FROM settings WHERE key = ?', [key]);
-    saveDatabase();
-    logger.debug('Deleted setting', { key });
   }
 }

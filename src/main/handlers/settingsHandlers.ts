@@ -13,13 +13,13 @@ export function registerSettingsHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, (_, settings: Partial<AppSettings>) => {
     settingsRepo.updateSettings(settings);
 
-    // Refresh AI provider if API key or related settings changed
-    if (settings.openAiApiKey !== undefined || settings.openAiBaseUrl !== undefined || settings.openAiModel !== undefined) {
+    // Refresh AI provider if API key changed
+    if (settings.openAiApiKey !== undefined) {
       const currentSettings = settingsRepo.getSettings();
       refreshAIProvider({
-        openAiApiKey: currentSettings.openAiApiKey,
-        openAiBaseUrl: currentSettings.openAiBaseUrl,
-        openAiModel: currentSettings.openAiModel,
+        apiKey: currentSettings.openAiApiKey,
+        baseURL: currentSettings.openAiBaseUrl || undefined,
+        defaultModel: currentSettings.openAiModel || undefined,
       });
     }
   });
