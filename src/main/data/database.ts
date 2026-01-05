@@ -93,6 +93,8 @@ function createTables(): void {
     { name: 'overview', def: 'TEXT' },
     { name: 'chapters', def: "TEXT DEFAULT '[]'" },
     { name: 'people', def: "TEXT DEFAULT '[]'" },
+    { name: 'note_entries', def: "TEXT DEFAULT '[]'" },
+    { name: 'attendee_emails', def: "TEXT DEFAULT '[]'" },
   ];
   for (const col of newCols) {
     if (!existingCols.includes(col.name)) {
@@ -112,6 +114,20 @@ function createTables(): void {
       is_final INTEGER NOT NULL,
       speaker_id TEXT,
       FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS people (
+      email TEXT PRIMARY KEY,
+      name TEXT,
+      last_meeting_at INTEGER NOT NULL,
+      meeting_count INTEGER DEFAULT 1,
+      total_duration INTEGER DEFAULT 0,
+      notes TEXT,
+      organization TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
     )
   `);
 

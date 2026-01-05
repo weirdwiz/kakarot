@@ -4,6 +4,8 @@ import { registerMeetingHandlers } from './meetingHandlers';
 import { registerSettingsHandlers } from './settingsHandlers';
 import { registerCalloutHandlers } from './calloutHandlers';
 import { registerCalendarHandlers } from './calendarHandlers';
+import { registerPeopleHandlers } from './peopleHandlers';
+import { registerCRMHandlers, setCRMHandlersMainWindow } from './crmHandlers';
 import { createLogger } from '../core/logger';
 
 const logger = createLogger('Handlers');
@@ -17,6 +19,9 @@ export function registerAllHandlers(
   registerSettingsHandlers();
   registerCalloutHandlers(calloutWindow);
   registerCalendarHandlers();
+  registerPeopleHandlers();
+  setCRMHandlersMainWindow(mainWindow);
+  registerCRMHandlers();
 
   logger.info('All IPC handlers registered');
 }

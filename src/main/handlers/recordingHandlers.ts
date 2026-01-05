@@ -13,6 +13,15 @@ const logger = createLogger('RecordingHandlers');
 
 let transcriptionProvider: ITranscriptionProvider | null = null;
 let systemAudioService: SystemAudioService | null = null;
+let activeCalendarContext: {
+  calendarEventId: string;
+  calendarEventTitle: string;
+  calendarEventAttendees?: string[];
+  calendarEventStart: string;
+  calendarEventEnd: string;
+  calendarProvider: string;
+} | null = null;
+let isPaused = false;
 
 export function registerRecordingHandlers(
   mainWindow: BrowserWindow,
@@ -20,21 +29,41 @@ export function registerRecordingHandlers(
 ): void {
   const calloutService = new CalloutService();
 
-  ipcMain.handle(IPC_CHANNELS.RECORDING_START, async () => {
-    logger.info('Recording start requested');
+  ipcMain.handle(IPC_CHANNELS.RECORDING_START, async (_, calendarContext?: any) => {
+    logger.info('Recording start requested', { hasCalendarContext: !!calendarContext });
     const { meetingRepo, settingsRepo } = getContainer();
     const settings = settingsRepo.getSettings();
     logger.debug('Transcription provider', { provider: settings.transcriptionProvider });
 
-    await meetingRepo.startNewMeeting();
-    logger.info('Meeting started');
+    // Store calendar context for later linking
+    if (calendarContext) {
+      activeCalendarContext = calendarContext;
+      logger.info('Calendar context attached to recording', {
+        eventId: calendarContext.calendarEventId,
+        title: calendarContext.calendarEventTitle,
+      });
+    }
+
+    // Start meeting with calendar title and attendees if available
+    const meetingTitle = calendarContext?.calendarEventTitle;
+    const attendeeEmails = calendarContext?.calendarEventAttendees;
+    const meetingId = await meetingRepo.startNewMeeting(meetingTitle, attendeeEmails);
+    logger.info('Meeting started', { 
+      meetingId,
+      meetingTitle, 
+      hadCalendarContext: !!calendarContext,
+      attendeeCount: attendeeEmails?.length || 0,
+      actualTitle: meetingTitle || 'will use default timestamp'
+    });
 
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'recording');
 
     transcriptionProvider = createTranscriptionProvider(
       settings.transcriptionProvider,
       settings.assemblyAiApiKey,
-      settings.deepgramApiKey
+      settings.deepgramApiKey,
+      undefined,
+      settings.useHostedTokens
     );
     logger.info('Using transcription provider', { name: transcriptionProvider.name });
 
@@ -94,12 +123,16 @@ export function registerRecordingHandlers(
       .catch((error) => {
         logger.error('Transcription provider connection failed', error);
       });
+
+    return meetingId;
   });
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_STOP, async () => {
     logger.info('Recording stop requested');
-    const { meetingRepo, noteService } = getContainer();
+    const { meetingRepo, noteGenerationService, calendarService } = getContainer();
     const meetingId = meetingRepo.getCurrentMeetingId();
+    const calendContext = activeCalendarContext;
+    activeCalendarContext = null;
 
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'processing');
 
@@ -119,6 +152,8 @@ export function registerRecordingHandlers(
       logger.info('Transcription provider disconnected');
     }
 
+    isPaused = false;
+
     // Wait for any remaining finals to arrive and be stored
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
@@ -132,31 +167,79 @@ export function registerRecordingHandlers(
       // Re-fetch meeting to get all transcript segments
       const fullMeeting = meetingRepo.findById(meeting.id);
       if (fullMeeting && fullMeeting.transcript.length > 0) {
-        noteService.generateNotes(fullMeeting).then((notes) => {
+        // Generate notes safely with try/catch
+        try {
+          logger.info('Notes generation started', { meetingId: meeting.id });
+          const notes = await noteGenerationService.generateNotes(fullMeeting);
+          
           if (notes) {
+            logger.info('Notes generated successfully', { meetingId: meeting.id });
             meetingRepo.updateNotes(meeting.id, null, notes.notesMarkdown, notes.notesMarkdown);
             meetingRepo.updateOverview(meeting.id, notes.overview);
-            const db = getDatabase();
-            db.run('UPDATE meetings SET title = ? WHERE id = ?', [notes.title, meeting.id]);
-            saveDatabase();
+
+            // Preserve calendar-derived titles; only override when we don't have a calendar context
+            if (!calendContext) {
+              logger.info('Updating meeting title with AI-generated title (no calendar context)', {
+                meetingId: meeting.id,
+                aiTitle: notes.title
+              });
+              const db = getDatabase();
+              db.run('UPDATE meetings SET title = ? WHERE id = ?', [notes.title, meeting.id]);
+              saveDatabase();
+            } else {
+              logger.info('Preserving calendar-derived title (calendar context exists)', {
+                meetingId: meeting.id,
+                calendarTitle: fullMeeting.title,
+                aiTitleNotUsed: notes.title
+              });
+            }
+
+            // Link notes back to calendar event if context exists
+            if (calendContext) {
+              calendarService.linkNotesToEvent(
+                calendContext.calendarEventId,
+                meeting.id,
+                calendContext.calendarProvider as 'google' | 'outlook' | 'icloud'
+              ).catch((err) => {
+                logger.error('Failed to link notes to calendar event', {
+                  calendarEventId: calendContext.calendarEventId,
+                  error: (err as Error).message,
+                });
+              });
+            }
 
             mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
               meetingId: meeting.id,
               title: notes.title,
               overview: notes.overview,
             });
-            logger.info('Notes generated and saved', { meetingId: meeting.id, title: notes.title });
+          } else {
+            logger.info('Notes generation skipped (no notes returned)', { meetingId: meeting.id });
+            mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
+              meetingId: meeting.id,
+              title: fullMeeting.title || 'Untitled Meeting',
+              overview: '',
+            });
           }
-          mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
-        }).catch((error) => {
-          logger.error('Note generation failed', error);
-          mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
-        });
+        } catch (error) {
+          logger.error('Notes generation failed', { 
+            meetingId: meeting.id, 
+            error: (error as Error).message 
+          });
+          // Still emit completion event so renderer can navigate
+          mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
+            meetingId: meeting.id,
+            title: fullMeeting.title || 'Untitled Meeting',
+            overview: '',
+          });
+        }
+        mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
       } else {
         logger.warn('No transcript segments to generate notes from');
         mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
       }
     } else {
+      logger.warn('No meeting or meetingId available for notes generation');
       mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
     }
 
@@ -164,10 +247,18 @@ export function registerRecordingHandlers(
   });
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_PAUSE, async () => {
+    isPaused = true;
+    if (systemAudioService) {
+      systemAudioService.pause();
+    }
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'paused');
   });
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_RESUME, async () => {
+    isPaused = false;
+    if (systemAudioService) {
+      systemAudioService.resume();
+    }
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'recording');
   });
 
@@ -175,6 +266,11 @@ export function registerRecordingHandlers(
   let micAudioDataCount = 0;
   ipcMain.on(IPC_CHANNELS.AUDIO_DATA, (_, audioData: ArrayBuffer, source: 'mic' | 'system') => {
     if (source !== 'mic') return;
+
+    // Only process if actively recording
+    if (!transcriptionProvider || isPaused) {
+      return;
+    }
 
     micAudioDataCount++;
     if (micAudioDataCount % AUDIO_CONFIG.PACKET_LOG_INTERVAL === 1) {
@@ -184,10 +280,6 @@ export function registerRecordingHandlers(
       });
     }
 
-    if (transcriptionProvider) {
-      transcriptionProvider.sendAudio(audioData, 'mic');
-    } else if (micAudioDataCount === 1) {
-      logger.warn('Mic audio data received but no transcription provider active');
-    }
+    transcriptionProvider.sendAudio(audioData, 'mic');
   });
 }

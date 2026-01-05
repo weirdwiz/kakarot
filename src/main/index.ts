@@ -1,10 +1,10 @@
 import { config } from 'dotenv';
 import { resolve } from 'path';
-import { app, BrowserWindow, systemPreferences } from 'electron';
+import { app, BrowserWindow, systemPreferences, globalShortcut } from 'electron';
 import { createMainWindow } from './windows/mainWindow';
 import { createCalloutWindow } from './windows/calloutWindow';
 import { initializeDatabase, closeDatabase } from './data/database';
-import { initializeContainer } from './core/container';
+import { initializeContainer, getContainer } from './core/container';
 import { registerAllHandlers } from './handlers';
 import { createLogger } from './core/logger';
 
@@ -15,6 +15,12 @@ const logger = createLogger('Main');
 
 let mainWindow: BrowserWindow | null = null;
 let calloutWindow: BrowserWindow | null = null;
+
+// Make mainWindow globally accessible for notifications
+declare global {
+  var mainWindow: BrowserWindow | null;
+}
+global.mainWindow = null;
 
 async function createWindows() {
   // Request microphone permission on macOS
@@ -36,8 +42,25 @@ async function createWindows() {
 
   mainWindow = createMainWindow();
   calloutWindow = createCalloutWindow();
+  
+  // Store mainWindow globally for notification service
+  global.mainWindow = mainWindow;
 
   registerAllHandlers(mainWindow, calloutWindow);
+
+  // Start meeting notification service
+  const container = getContainer();
+  container.meetingNotificationService.start();
+
+  // Dev-only: Register keyboard shortcut to reset onboarding (Cmd/Ctrl+Shift+O)
+  if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+    const resetShortcut = process.platform === 'darwin' ? 'Cmd+Shift+O' : 'Ctrl+Shift+O';
+    globalShortcut.register(resetShortcut, () => {
+      logger.info('Dev: Resetting onboarding via keyboard shortcut');
+      mainWindow?.webContents.send('dev:reset-onboarding');
+    });
+    logger.info('Dev: Registered onboarding reset shortcut', { shortcut: resetShortcut });
+  }
 
   logger.info('Application initialized');
 }
@@ -58,12 +81,14 @@ app.on('activate', () => {
 
 // Handle app quit - cleanup
 app.on('before-quit', () => {
+  const container = getContainer();
+  container.meetingNotificationService.stop();
   closeDatabase();
   logger.info('Application closing');
 });
 
 // Export windows for IPC access
-export function getMainWindow(): BrowserWindow | null {
+export function getMainWindowInstance(): BrowserWindow | null {
   return mainWindow;
 }
 

@@ -104,6 +104,16 @@ export class SystemAudioService {
     this.audioLevelCallback = null;
   }
 
+  pause(): void {
+    this.capturing = false;
+  }
+
+  resume(): void {
+    if (this.backend && this.transcriptionProvider) {
+      this.capturing = true;
+    }
+  }
+
   isCapturing(): boolean {
     return this.capturing;
   }

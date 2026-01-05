@@ -22,6 +22,7 @@ export const IPC_CHANNELS = {
   MEETINGS_GET: 'meetings:get',
   MEETINGS_DELETE: 'meetings:delete',
   MEETINGS_SEARCH: 'meetings:search',
+  MEETINGS_CREATE_DISMISSED: 'meetings:createDismissed',
 
   // Callout
   CALLOUT_SHOW: 'callout:show',
@@ -35,24 +36,42 @@ export const IPC_CHANNELS = {
   // Post-processing
   MEETING_SUMMARIZE: 'meeting:summarize',
   MEETING_EXPORT: 'meeting:export',
-
-  // Meeting notes
-  MEETING_NOTES_GENERATING: 'meeting:notes:generating',
-  MEETING_NOTES_COMPLETE: 'meeting:notes:complete',
+  MEETING_NOTES_GENERATING: 'meeting:notesGenerating',
+  MEETING_NOTES_COMPLETE: 'meeting:notesComplete',
+  MEETING_NOTES_SAVE_MANUAL: 'meeting:saveManualNotes',
+  MEETING_ASK_NOTES: 'meeting:askNotes',
+  MEETING_UPDATE_TITLE: 'meeting:updateTitle',
 
   // Knowledge base
   KNOWLEDGE_INDEX: 'knowledge:index',
   KNOWLEDGE_SEARCH: 'knowledge:search',
 
+  // People/Contacts
+  PEOPLE_LIST: 'people:list',
+  PEOPLE_SEARCH: 'people:search',
+  PEOPLE_GET: 'people:get',
+  PEOPLE_UPDATE_NOTES: 'people:updateNotes',
+  PEOPLE_UPDATE_NAME: 'people:updateName',
+  PEOPLE_UPDATE_ORGANIZATION: 'people:updateOrganization',
+  PEOPLE_GET_BY_MEETING: 'people:getByMeeting',
+  PEOPLE_STATS: 'people:stats',
+
   // Calendar
+  CALENDAR_CONNECT: 'calendar:connect',
+  CALENDAR_DISCONNECT: 'calendar:disconnect',
   CALENDAR_LIST_TODAY: 'calendar:listToday',
-  
-  // Calendar OAuth
-  CALENDAR_OAUTH_START: 'calendar:oauth:start',
-  CALENDAR_OAUTH_DISCONNECT: 'calendar:oauth:disconnect',
-  CALENDAR_OAUTH_STATUS: 'calendar:oauth:status',
-  CALENDAR_CREDENTIALS_SAVE: 'calendar:credentials:save',
-  CALENDAR_CREDENTIALS_GET: 'calendar:credentials:get',
+  CALENDAR_GET_UPCOMING: 'calendar:getUpcoming',
+  CALENDAR_LINK_EVENT: 'calendar:linkEvent',
+  CALENDAR_GET_EVENT_FOR_MEETING: 'calendar:getEventForMeeting',
+  CALENDAR_LINK_NOTES: 'calendar:linkNotes',
+  CALENDAR_LIST_CALENDARS: 'calendar:listCalendars',
+  CALENDAR_SET_VISIBLE_CALENDARS: 'calendar:setVisibleCalendars',
+
+  // CRM
+  CRM_CONNECT: 'crm:connect',
+  CRM_DISCONNECT: 'crm:disconnect',
+  CRM_PUSH_NOTES: 'crm:pushNotes',
+  CRM_MEETING_COMPLETE: 'crm:meetingComplete',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

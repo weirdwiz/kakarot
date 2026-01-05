@@ -5,6 +5,7 @@ import type {
   RecordingState,
   AudioLevels,
   AppSettings,
+  CalendarEvent,
 } from '@shared/types';
 
 interface AppState {
@@ -22,11 +23,19 @@ interface AppState {
   meetings: Meeting[];
   selectedMeeting: Meeting | null;
 
+  // Calendar context
+  calendarContext: CalendarEvent | null;
+  activeCalendarContext: CalendarEvent | null; // Calendar event actively being recorded for
+
+  // Notes
+  lastCompletedNoteId: string | null; // ID of last generated notes for navigation
+
   // Settings
   settings: AppSettings | null;
 
   // UI state
-  view: 'recording' | 'history' | 'settings';
+  view: 'recording' | 'history' | 'people' | 'settings';
+  showRecordingHome: boolean;
 
   // Actions
   setRecordingState: (state: RecordingState) => void;
@@ -37,9 +46,13 @@ interface AppState {
   clearLiveTranscript: () => void;
   setMeetings: (meetings: Meeting[]) => void;
   setSelectedMeeting: (meeting: Meeting | null) => void;
+  setCalendarContext: (event: CalendarEvent | null) => void;
+  setActiveCalendarContext: (event: CalendarEvent | null) => void;
+  setLastCompletedNoteId: (id: string | null) => void;
   setSettings: (settings: AppSettings) => void;
-  setView: (view: 'recording' | 'history' | 'settings') => void;
+  setView: (view: 'recording' | 'history' | 'people' | 'settings') => void;
   setCurrentMeetingId: (id: string | null) => void;
+  setShowRecordingHome: (value: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -51,8 +64,12 @@ export const useAppStore = create<AppState>((set) => ({
   currentPartials: { mic: null, system: null },
   meetings: [],
   selectedMeeting: null,
+  calendarContext: null,
+  activeCalendarContext: null,
+  lastCompletedNoteId: null,
   settings: null,
   view: 'recording',
+  showRecordingHome: false,
 
   // Actions
   setRecordingState: (recordingState) => set({ recordingState }),
@@ -95,9 +112,17 @@ export const useAppStore = create<AppState>((set) => ({
 
   setSelectedMeeting: (selectedMeeting) => set({ selectedMeeting }),
 
+  setCalendarContext: (calendarContext) => set({ calendarContext }),
+
+  setActiveCalendarContext: (activeCalendarContext) => set({ activeCalendarContext }),
+
+  setLastCompletedNoteId: (lastCompletedNoteId) => set({ lastCompletedNoteId }),
+
   setSettings: (settings) => set({ settings }),
 
   setView: (view) => set({ view }),
 
   setCurrentMeetingId: (currentMeetingId) => set({ currentMeetingId }),
+
+  setShowRecordingHome: (showRecordingHome) => set({ showRecordingHome }),
 }));
