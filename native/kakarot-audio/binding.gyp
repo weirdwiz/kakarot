@@ -15,7 +15,7 @@
         "<!@(node -p \"require('node-addon-api').include\")",
         "src",
         "deps/webrtc-audio-processing/webrtc",
-        "deps/webrtc-audio-processing/build/subprojects/abseil-cpp-20240722.0"
+        "deps/webrtc-2.0-install/include"
       ],
       "defines": [
         "NAPI_DISABLE_CPP_EXCEPTIONS",
