@@ -6,28 +6,11 @@ import { buildCalloutMessages, parseCalloutResponse } from '../prompts/calloutPr
 import { buildSummaryMessages } from '../prompts/summaryPrompts';
 import { getSpeakerLabel } from '@shared/utils/formatters';
 import type { Meeting, Callout, CalloutSource, TranscriptSegment } from '@shared/types';
-import type { KnowledgeService } from './KnowledgeService';
 
 const logger = createLogger('CalloutService');
 
 export class CalloutService {
   private recentTranscripts: TranscriptSegment[] = [];
-  private knowledgeService: KnowledgeService | null = null;
-
-  constructor(knowledgeService?: KnowledgeService) {
-    this.knowledgeService = knowledgeService || null;
-  }
-
-  setKnowledgeService(service: KnowledgeService): void {
-    this.knowledgeService = service;
-  }
-
-  addTranscriptContext(segment: TranscriptSegment): void {
-    this.recentTranscripts.push(segment);
-    if (this.recentTranscripts.length > CALLOUT_CONFIG.MAX_CONTEXT_SEGMENTS) {
-      this.recentTranscripts.shift();
-    }
-  }
 
   async checkForQuestion(text: string): Promise<Callout | null> {
     if (!matchesQuestionPattern(text)) {
@@ -53,10 +36,9 @@ export class CalloutService {
     if (!aiProvider) return null;
 
     const conversationContext = this.getConversationContext();
-    const knowledgeContext = await this.getKnowledgeContext(question);
     const pastMeetingContext = await this.getPastMeetingContext(question);
 
-    const allContext = [conversationContext, knowledgeContext, pastMeetingContext]
+    const allContext = [conversationContext, pastMeetingContext]
       .filter(Boolean)
       .join('\n\n');
 
@@ -105,20 +87,6 @@ export class CalloutService {
       .join('\n');
   }
 
-  private async getKnowledgeContext(query: string): Promise<string> {
-    if (!this.knowledgeService) return '';
-
-    try {
-      const results = await this.knowledgeService.search(query, CALLOUT_CONFIG.MAX_KNOWLEDGE_RESULTS);
-      if (results.length === 0) return '';
-
-      return 'From your knowledge base:\n' + results.map((r) => `- ${r.content}`).join('\n');
-    } catch (error) {
-      logger.warn('Knowledge search failed', { error });
-      return '';
-    }
-  }
-
   private async getPastMeetingContext(query: string): Promise<string> {
     const { meetingRepo } = getContainer();
 
@@ -160,9 +128,5 @@ export class CalloutService {
     const response = await aiProvider.chat(messages, { maxTokens: 1000 });
 
     return response || 'Unable to generate summary.';
-  }
-
-  clearContext(): void {
-    this.recentTranscripts = [];
   }
 }

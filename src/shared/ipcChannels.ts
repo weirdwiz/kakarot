@@ -12,7 +12,6 @@ export const IPC_CHANNELS = {
   AUDIO_LEVELS: 'audio:levels',
   AUDIO_DATA: 'audio:data',
   AUDIO_GET_SOURCES: 'audio:getSources',
-  AUDIO_CAPTURE_MODE: 'audio:captureMode', // 'native' or 'legacy'
 
   // Transcription
   TRANSCRIPT_UPDATE: 'transcript:update',
@@ -27,7 +26,6 @@ export const IPC_CHANNELS = {
   // Callout
   CALLOUT_SHOW: 'callout:show',
   CALLOUT_DISMISS: 'callout:dismiss',
-  CALLOUT_WINDOW_TOGGLE: 'callout:window:toggle',
 
   // Settings
   SETTINGS_GET: 'settings:get',
@@ -39,10 +37,6 @@ export const IPC_CHANNELS = {
   MEETING_NOTES_GENERATING: 'meeting:notesGenerating',
   MEETING_NOTES_COMPLETE: 'meeting:notesComplete',
 
-  // Knowledge base
-  KNOWLEDGE_INDEX: 'knowledge:index',
-  KNOWLEDGE_SEARCH: 'knowledge:search',
-
   // Calendar
   CALENDAR_CONNECT: 'calendar:connect',
   CALENDAR_DISCONNECT: 'calendar:disconnect',
@@ -52,5 +46,3 @@ export const IPC_CHANNELS = {
   CALENDAR_GET_EVENT_FOR_MEETING: 'calendar:getEventForMeeting',
   CALENDAR_LINK_NOTES: 'calendar:linkNotes',
 } as const;
-
-export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

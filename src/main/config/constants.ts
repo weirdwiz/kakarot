@@ -18,10 +18,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 // AI model identifiers
 export const AI_MODELS = {
-  GPT4_TURBO: 'gpt-4-turbo',
   GPT4O: 'gpt-4o',
   EMBEDDING_SMALL: 'text-embedding-3-small',
-  EMBEDDING_LARGE: 'text-embedding-3-large',
 } as const;
 
 // Question detection patterns
@@ -31,14 +29,6 @@ export const QUESTION_PATTERNS = [
   /^(tell me|explain|describe|clarify)/i,
   /^(do you know|can you tell|could you explain)/i,
 ];
-
-// Knowledge service configuration
-export const KNOWLEDGE_CONFIG = {
-  CHUNK_SIZE: 1000,
-  CHUNK_OVERLAP: 200,
-  SUPPORTED_EXTENSIONS: ['.txt', '.md', '.markdown', '.json'],
-  MAX_SEARCH_RESULTS: 5,
-} as const;
 
 // Callout service configuration
 export const CALLOUT_CONFIG = {
@@ -53,8 +43,6 @@ export const AUDIO_CONFIG = {
   CHUNK_DURATION_MS: 256,
   CHANNELS: 1 as const,
   BIT_DEPTH: 16 as const,
-  SILENCE_THRESHOLD: 10,
-  PACKET_LOG_INTERVAL: 10,
 } as const;
 
 // Acoustic Echo Cancellation configuration (WebRTC AEC3)

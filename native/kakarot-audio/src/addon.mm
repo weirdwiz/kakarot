@@ -1,6 +1,5 @@
 #import <napi.h>
 #import "CombinedAudioCapture.h"
-#import <dispatch/dispatch.h>
 #include <map>
 #include <mutex>
 #include <memory>

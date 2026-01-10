@@ -3,8 +3,6 @@
 #import "SystemAudioCapture.h"
 #import "WebRtcAECWrapper.h"
 #import "AudioSyncBuffer.h"
-#import <mach/mach_time.h>
-#import <Accelerate/Accelerate.h>
 
 @implementation SynchronizedAudioFrame
 @end
@@ -37,8 +35,6 @@
     BOOL _isCapturing;
     dispatch_queue_t _processingQueue;
     dispatch_source_t _pollTimer;
-
-    double _timebaseNanos;
 }
 @end
 
@@ -53,10 +49,6 @@
         _isCapturing = NO;
         _processingQueue = dispatch_queue_create("com.kakarot.combined-audio",
                                                   DISPATCH_QUEUE_SERIAL);
-
-        mach_timebase_info_data_t info;
-        mach_timebase_info(&info);
-        _timebaseNanos = (double)info.numer / (double)info.denom;
     }
     return self;
 }

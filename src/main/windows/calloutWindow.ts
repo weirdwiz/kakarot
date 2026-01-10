@@ -53,16 +53,3 @@ export function hideCalloutWindow(): void {
   }
 }
 
-export function updateCalloutPosition(): void {
-  if (!calloutWindow) return;
-
-  const display = screen.getPrimaryDisplay();
-  const { width: screenWidth, height: screenHeight } = display.workAreaSize;
-  const [windowWidth, windowHeight] = calloutWindow.getSize();
-  const margin = 20;
-
-  calloutWindow.setPosition(
-    screenWidth - windowWidth - margin,
-    screenHeight - windowHeight - margin
-  );
-}

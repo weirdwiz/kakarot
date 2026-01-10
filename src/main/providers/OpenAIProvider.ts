@@ -81,13 +81,4 @@ export class OpenAIProvider {
     });
     return response.data[0].embedding;
   }
-
-  async embedBatch(texts: string[]): Promise<number[][]> {
-    const client = await this.getClient();
-    const response = await client.embeddings.create({
-      model: AI_MODELS.EMBEDDING_SMALL,
-      input: texts,
-    });
-    return response.data.map((d) => d.embedding);
-  }
 }

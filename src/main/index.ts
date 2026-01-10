@@ -72,11 +72,3 @@ app.on('before-quit', () => {
   logger.info('Application closing');
 });
 
-// Export windows for IPC access
-export function getMainWindow(): BrowserWindow | null {
-  return mainWindow;
-}
-
-export function getCalloutWindow(): BrowserWindow | null {
-  return calloutWindow;
-}

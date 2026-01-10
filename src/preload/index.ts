@@ -49,8 +49,6 @@ contextBridge.exposeInMainWorld('kakarot', {
     sendData: (audioData: ArrayBuffer, source: 'mic' | 'system') => {
       ipcRenderer.send(IPC_CHANNELS.AUDIO_DATA, audioData, source);
     },
-    getSources: (): Promise<Array<{ id: string; name: string }>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.AUDIO_GET_SOURCES),
   },
 
   // Transcription
@@ -98,14 +96,6 @@ contextBridge.exposeInMainWorld('kakarot', {
     get: (): Promise<AppSettings> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
     update: (settings: Partial<AppSettings>): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_UPDATE, settings),
-  },
-
-  // Knowledge base
-  knowledge: {
-    index: (path: string): Promise<void> =>
-      ipcRenderer.invoke(IPC_CHANNELS.KNOWLEDGE_INDEX, path),
-    search: (query: string): Promise<unknown[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.KNOWLEDGE_SEARCH, query),
   },
 
   // Calendar
@@ -160,7 +150,6 @@ declare global {
       audio: {
         onLevels: (callback: (levels: AudioLevels) => void) => () => void;
         sendData: (audioData: ArrayBuffer, source: 'mic' | 'system') => void;
-        getSources: () => Promise<Array<{ id: string; name: string }>>;
       };
       transcript: {
         onUpdate: (callback: (update: TranscriptUpdate) => void) => () => void;
@@ -181,10 +170,6 @@ declare global {
       settings: {
         get: () => Promise<AppSettings>;
         update: (settings: Partial<AppSettings>) => Promise<void>;
-      };
-      knowledge: {
-        index: (path: string) => Promise<void>;
-        search: (query: string) => Promise<unknown[]>;
       };
       calendar: {
         connect: (

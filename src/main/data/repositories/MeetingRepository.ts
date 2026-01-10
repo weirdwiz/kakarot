@@ -164,18 +164,6 @@ export class MeetingRepository {
     saveDatabase();
   }
 
-  updateChapters(id: string, chapters: Meeting['chapters']): void {
-    const db = getDatabase();
-    db.run('UPDATE meetings SET chapters = ? WHERE id = ?', [JSON.stringify(chapters), id]);
-    saveDatabase();
-  }
-
-  updatePeople(id: string, people: Meeting['people']): void {
-    const db = getDatabase();
-    db.run('UPDATE meetings SET people = ? WHERE id = ?', [JSON.stringify(people), id]);
-    saveDatabase();
-  }
-
   private rowToMeeting(row: Record<string, unknown>, segments: Record<string, unknown>[]): Meeting {
     return {
       id: row.id as string,

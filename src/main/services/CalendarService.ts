@@ -585,8 +585,6 @@ export class CalendarService {
 
     // Attempt write-back to calendar (best effort, doesn't fail the whole operation)
     try {
-      const deepLink = `app://notes/${notesId}`;
-      
       if (provider === 'google' && settings.calendarConnections.google) {
         // Note: Google Calendar API requires specific scope for updating events
         // This is read-only by design. Persist locally and skip write-back.

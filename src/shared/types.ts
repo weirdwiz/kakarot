@@ -120,14 +120,19 @@ export interface AppSettings {
   calendarEventMappings?: Record<string, CalendarEventMapping>;
 }
 
+// Mapping between calendar events and notes/recordings
+export interface CalendarEventMapping {
+  calendarEventId: string;
+  meetingId?: string;
+  notesId?: string;
+  linkedAt: number;
+  provider: 'google' | 'outlook' | 'icloud';
+}
+
 // IPC payloads
 export interface TranscriptUpdate {
   segment: TranscriptSegment;
   meetingId: string;
-}
-
-export interface CalloutTrigger {
-  callout: Callout;
 }
 
 // Calendar
@@ -142,17 +147,3 @@ export interface CalendarEvent {
   description?: string;
 }
 
-// Enhanced calendar meeting with notes linking
-export interface CalendarMeeting extends CalendarEvent {
-  notesId?: string; // Links to recording/notes if available
-  hasNotes: boolean; // Computed: true if notesId exists
-}
-
-// Mapping between calendar events and notes/recordings
-export interface CalendarEventMapping {
-  calendarEventId: string;
-  meetingId?: string; // Our internal recording ID
-  notesId?: string;
-  linkedAt: number; // epoch ms
-  provider: 'google' | 'outlook' | 'icloud';
-}
