@@ -23,7 +23,9 @@ fi
 WEBRTC_SRC="deps/webrtc-audio-processing"
 WEBRTC_INSTALL="deps/webrtc-2.0-install"
 
-if [ ! -f "$WEBRTC_INSTALL/lib/libwebrtc-audio-processing-2.a" ]; then
+# Check if we need to build (need both the library AND the build dir with abseil)
+ABSEIL_BUILD_DIR="$WEBRTC_SRC/build/subprojects/abseil-cpp-20240722.0"
+if [ ! -f "$WEBRTC_INSTALL/lib/libwebrtc-audio-processing-2.a" ] || [ ! -d "$ABSEIL_BUILD_DIR" ]; then
     echo "Building webrtc-audio-processing..."
     cd "$WEBRTC_SRC"
 
