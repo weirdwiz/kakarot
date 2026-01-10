@@ -3,6 +3,9 @@ import { useAppStore } from '../stores/appStore';
 import type { AppSettings } from '@shared/types';
 import { Calendar } from 'lucide-react';
 
+// TODO(refactor): Extract CalendarConnectionButton component - 3 near-identical buttons
+// for Google/Outlook/iCloud with only provider name changing (lines 341-448)
+// Also: handleConnectCalendar/handleDisconnectCalendar have duplicated try/catch patterns
 export default function SettingsView() {
   const { settings, setSettings } = useAppStore();
   const [localSettings, setLocalSettings] = useState<AppSettings | null>(null);

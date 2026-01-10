@@ -9,6 +9,11 @@ import { createLogger } from '../core/logger';
 
 const logger = createLogger('CalendarService');
 
+// TODO(refactor): Duplicated event fetching logic in this service:
+// - listToday() and getUpcomingMeetings() have nearly identical multi-provider patterns
+// - findCalendarEventForMeeting() and getEventById() have similar provider-switching logic
+// - fetchGoogleEvents() and fetchOutlookEvents() share token refresh and error handling
+// Extract common multi-provider fetching helper
 type Provider = 'google' | 'outlook' | 'icloud';
 
 interface OAuthConfig {

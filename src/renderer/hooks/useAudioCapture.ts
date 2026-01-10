@@ -57,8 +57,15 @@ export function useAudioCapture() {
         await micAudioContextRef.current.resume();
       }
 
+      // Disable browser AEC - it only cancels echo from audio played BY this app,
+      // not from other apps (Zoom, Meet, etc.). Our native AEC handles external audio.
       micStreamRef.current = await navigator.mediaDevices.getUserMedia({
-        audio: { sampleRate: 48000 },
+        audio: {
+          sampleRate: 48000,
+          echoCancellation: false,     // Disable - doesn't help with external audio
+          noiseSuppression: false,     // Let native module handle this
+          autoGainControl: false,      // Let native module handle this
+        },
         video: false,
       });
 

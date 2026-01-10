@@ -1,7 +1,8 @@
-import { OpenAIProvider } from '../providers/OpenAIProvider';
 import { buildNoteGenerationMessages } from '../prompts/summaryPrompts';
 import { createLogger } from '../core/logger';
-import type { Meeting, TranscriptSegment, AppSettings } from '@shared/types';
+import { getSpeakerLabel } from '@shared/utils/formatters';
+import type { OpenAIProvider } from '../providers/OpenAIProvider';
+import type { Meeting, TranscriptSegment } from '@shared/types';
 
 const logger = createLogger('NoteGenerationService');
 
@@ -12,26 +13,11 @@ export interface GeneratedNotes {
 }
 
 export class NoteGenerationService {
-  private aiProvider: OpenAIProvider | null = null;
-
-  initialize(settings: AppSettings): void {
-    if (settings.openAiApiKey) {
-      logger.info('Initializing with settings', {
-        apiKeyPrefix: settings.openAiApiKey.slice(0, 10) + '...',
-        baseURL: settings.openAiBaseUrl || 'default',
-        model: settings.openAiModel || 'default',
-      });
-      this.aiProvider = new OpenAIProvider({
-        apiKey: settings.openAiApiKey,
-        baseURL: settings.openAiBaseUrl || undefined,
-        defaultModel: settings.openAiModel || undefined,
-      });
-      logger.info('Note generation service initialized');
-    }
-  }
+  constructor(private getAIProvider: () => OpenAIProvider | null) {}
 
   async generateNotes(meeting: Meeting): Promise<GeneratedNotes | null> {
-    if (!this.aiProvider) {
+    const aiProvider = this.getAIProvider();
+    if (!aiProvider) {
       logger.warn('No AI provider configured, skipping note generation');
       return null;
     }
@@ -46,7 +32,7 @@ export class NoteGenerationService {
 
     try {
       const messages = buildNoteGenerationMessages(transcriptText);
-      const response = await this.aiProvider.chat(messages, {
+      const response = await aiProvider.chat(messages, {
         maxTokens: 2000,
       });
 
@@ -73,10 +59,7 @@ export class NoteGenerationService {
   private formatTranscript(segments: TranscriptSegment[]): string {
     return segments
       .filter((s) => s.isFinal)
-      .map((s) => {
-        const speaker = s.source === 'mic' ? 'You' : 'Other';
-        return `[${speaker}]: ${s.text}`;
-      })
+      .map((s) => `[${getSpeakerLabel(s.source)}]: ${s.text}`)
       .join('\n');
   }
 }

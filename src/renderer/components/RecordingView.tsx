@@ -12,6 +12,10 @@ interface RecordingViewProps {
   onSelectTab?: (tab: 'notes' | 'prep' | 'interact') => void;
 }
 
+// TODO(refactor): This component is 360+ lines and handles too many responsibilities:
+// greeting, search, recording controls, live transcript, note generation status,
+// completed meeting display, and error handling.
+// Split into: RecordingHeader, RecordingControls, CompletedMeetingView, RecordingError
 export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const { recordingState, audioLevels, liveTranscript, currentPartials, clearLiveTranscript, calendarContext, setCalendarContext, activeCalendarContext, setActiveCalendarContext, setLastCompletedNoteId, setSelectedMeeting, setView } = useAppStore();
   const { startCapture, stopCapture, pause, resume } = useAudioCapture();

@@ -8,10 +8,10 @@ const logger = createLogger('AECProcessor');
 
 /**
  * Native AEC module interface.
- * This maps to the Rust Neon module exports.
+ * This maps to the Rust Neon module exports using WebRTC's AudioProcessing.
  */
 interface NativeAECModule {
-  create(sampleRate: number, frameSize: number, filterLength: number): NativeAECHandle;
+  create(sampleRate: number, numChannels?: number): NativeAECHandle;
   feedReference(handle: NativeAECHandle, buffer: Buffer): void;
   process(handle: NativeAECHandle, buffer: Buffer): Buffer;
   getMetrics(handle: NativeAECHandle): { totalFrames: number; processingTimeUs: number };
@@ -26,17 +26,14 @@ interface NativeAECHandle {
  * Configuration for the AEC processor.
  */
 export interface AECConfig {
-  /** Length of the adaptive filter in samples (128-512). Higher = more echo tail coverage. */
-  filterLength: number;
-  /** Maximum age of reference audio to keep, in ms. */
-  referenceBufferMs: number;
+  /** Number of audio channels (default: 1 for mono). */
+  numChannels: number;
   /** Whether to auto-bypass when headphones are detected. */
   headphoneBypass: boolean;
 }
 
 const DEFAULT_AEC_CONFIG: AECConfig = {
-  filterLength: 256,
-  referenceBufferMs: 500,
+  numChannels: 1,
   headphoneBypass: true,
 };
 
@@ -83,15 +80,14 @@ export class AECProcessor extends BaseAudioProcessor implements IReferenceAudioR
       return;
     }
 
-    // Initialize the native AEC engine
+    // Initialize the native AEC engine (WebRTC AudioProcessing)
     try {
       this.nativeHandle = this.nativeModule!.create(
         audioConfig.sampleRate,
-        audioConfig.frameSize,
-        this.aecConfig.filterLength
+        this.aecConfig.numChannels
       );
       this.active = true;
-      logger.info('AEC processor initialized successfully');
+      logger.info('AEC processor initialized successfully (WebRTC AEC3)');
     } catch (error) {
       logger.error('Failed to create AEC instance', error as Error);
       this.bypass('Failed to initialize AEC engine');
@@ -129,9 +125,9 @@ export class AECProcessor extends BaseAudioProcessor implements IReferenceAudioR
   }
 
   /**
-   * Feed reference (mic) audio to the AEC processor.
-   * Called from recordingHandlers when mic audio arrives via IPC.
-   * The Rust-side buffer handles all synchronization via FIFO ordering.
+   * Feed reference (system/speaker) audio to the AEC processor.
+   * This is the audio playing through speakers that might create echo.
+   * Called from SystemAudioService when system audio is captured.
    */
   feedReference(chunk: Buffer, _timestamp: number): void {
     if (!this.active || this.bypassed) {

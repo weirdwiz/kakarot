@@ -1,29 +1,21 @@
 import { AssemblyAI } from 'assemblyai';
 import type { StreamingTranscriber } from 'assemblyai';
-import type { TranscriptSegment } from '@shared/types';
-import type { ITranscriptionProvider, TranscriptCallback } from './TranscriptionProvider';
+import { BaseDualStreamProvider } from './BaseDualStreamProvider';
 import { createLogger } from '../../core/logger';
 
 const logger = createLogger('AssemblyAI');
 
-export class AssemblyAIProvider implements ITranscriptionProvider {
+export class AssemblyAIProvider extends BaseDualStreamProvider {
   readonly name = 'AssemblyAI';
 
   private client: AssemblyAI;
   private micTranscriber: StreamingTranscriber | null = null;
   private systemTranscriber: StreamingTranscriber | null = null;
-  private transcriptCallback: TranscriptCallback | null = null;
-  private startTime: number = 0;
-  private micConnected: boolean = false;
-  private systemConnected: boolean = false;
 
   constructor(apiKey: string) {
+    super();
     logger.debug('Initializing', { keyPresent: !!apiKey });
     this.client = new AssemblyAI({ apiKey });
-  }
-
-  onTranscript(callback: TranscriptCallback): void {
-    this.transcriptCallback = callback;
   }
 
   async connect(): Promise<void> {
@@ -61,11 +53,7 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
   ): void {
     transcriber.on('open', () => {
       logger.debug('Transcriber opened', { source });
-      if (source === 'mic') {
-        this.micConnected = true;
-      } else {
-        this.systemConnected = true;
-      }
+      this.setConnectionState(source, true);
     });
 
     transcriber.on('turn', (turn) => {
@@ -92,11 +80,7 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
 
     transcriber.on('close', (code, reason) => {
       logger.warn('Transcriber closed', { source, code, reason });
-      if (source === 'mic') {
-        this.micConnected = false;
-      } else {
-        this.systemConnected = false;
-      }
+      this.setConnectionState(source, false);
     });
   }
 
@@ -106,7 +90,7 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
     source: 'mic' | 'system',
     isFinal: boolean,
     words?: Array<{ text: string; confidence: number; start: number; end: number; word_is_final: boolean }>
-  ): TranscriptSegment {
+  ) {
     const mappedWords = (words || []).map((w) => ({
       text: w.text,
       confidence: w.confidence,
@@ -115,32 +99,20 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
       end: w.end,
     }));
 
-    return {
-      id,
-      text,
-      timestamp: Date.now() - this.startTime,
-      source,
-      confidence: 0.95,
-      isFinal,
-      words: mappedWords,
-    };
+    return this.createBaseSegment(id, text, source, isFinal, 0.95, mappedWords);
   }
 
-  sendAudio(audioData: ArrayBuffer, source: 'mic' | 'system'): void {
-    const transcriber = source === 'mic' ? this.micTranscriber : this.systemTranscriber;
-    const isConnected = source === 'mic' ? this.micConnected : this.systemConnected;
+  protected sendToMic(audioData: ArrayBuffer): void {
+    this.micTranscriber?.sendAudio(audioData);
+  }
 
-    if (transcriber && isConnected) {
-      transcriber.sendAudio(audioData);
-    }
+  protected sendToSystem(audioData: ArrayBuffer): void {
+    this.systemTranscriber?.sendAudio(audioData);
   }
 
   async disconnect(): Promise<void> {
     logger.info('Disconnecting');
     const closePromises: Promise<void>[] = [];
-
-    this.micConnected = false;
-    this.systemConnected = false;
 
     if (this.micTranscriber) {
       closePromises.push(this.micTranscriber.close());
@@ -153,7 +125,7 @@ export class AssemblyAIProvider implements ITranscriptionProvider {
     }
 
     await Promise.all(closePromises);
-    this.transcriptCallback = null;
+    this.resetState();
     logger.info('Disconnected');
   }
 }

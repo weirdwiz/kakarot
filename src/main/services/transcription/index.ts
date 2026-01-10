@@ -1,4 +1,5 @@
 export type { ITranscriptionProvider, TranscriptCallback } from './TranscriptionProvider';
+export { BaseDualStreamProvider } from './BaseDualStreamProvider';
 export { AssemblyAIProvider } from './AssemblyAIProvider';
 export { DeepgramProvider } from './DeepgramProvider';
 

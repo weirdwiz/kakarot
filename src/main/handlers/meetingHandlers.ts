@@ -1,12 +1,10 @@
 import { ipcMain, desktopCapturer } from 'electron';
 import { IPC_CHANNELS } from '@shared/ipcChannels';
 import { getContainer } from '../core/container';
-import { CalloutService } from '../services/CalloutService';
 import { ExportService } from '../services/ExportService';
 
 export function registerMeetingHandlers(): void {
-  const { meetingRepo } = getContainer();
-  const calloutService = new CalloutService();
+  const { meetingRepo, calloutService } = getContainer();
   const exportService = new ExportService();
 
   ipcMain.handle(IPC_CHANNELS.MEETINGS_LIST, () => {

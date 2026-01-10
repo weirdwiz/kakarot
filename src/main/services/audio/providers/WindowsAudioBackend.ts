@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
 import { join } from 'path';
-import { BaseAudioBackend, AudioCaptureConfig, AudioChunk } from '@main/services/audio/IAudioCaptureBackend';
+import { BaseAudioBackend } from '@main/services/audio/IAudioCaptureBackend';
 import { createLogger } from '@main/core/logger';
 
 const logger = createLogger('WindowsAudio');
@@ -17,16 +17,6 @@ function getFFmpegPath(): string {
 
 export class WindowsAudioBackend extends BaseAudioBackend {
   private process: ChildProcess | null = null;
-  private buffer: Buffer = Buffer.alloc(0);
-  private chunkSize: number;
-
-  constructor(config: AudioCaptureConfig) {
-    super(config);
-    const channels = config.channels || 1;
-    this.chunkSize = Math.floor(
-      config.sampleRate * channels * 2 * (config.chunkDurationMs / 1000)
-    );
-  }
 
   async start(): Promise<void> {
     if (this.capturing) {
@@ -60,20 +50,10 @@ export class WindowsAudioBackend extends BaseAudioBackend {
       throw new Error('FFmpeg not found. Please ensure FFmpeg is installed.');
     }
 
-    this.buffer = Buffer.alloc(0);
+    this.resetBuffer();
 
     this.process.stdout?.on('data', (data: Buffer) => {
-      if (!this.capturing) return;
-
-      this.buffer = Buffer.concat([this.buffer, data]);
-
-      while (this.buffer.length >= this.chunkSize) {
-        const chunk = this.buffer.subarray(0, this.chunkSize);
-        this.buffer = this.buffer.subarray(this.chunkSize);
-
-        const audioChunk: AudioChunk = { data: Buffer.from(chunk) };
-        this.emit('data', audioChunk);
-      }
+      this.processIncomingData(data);
     });
 
     this.process.stderr?.on('data', (data: Buffer) => {
@@ -167,7 +147,7 @@ export class WindowsAudioBackend extends BaseAudioBackend {
     });
 
     this.process = null;
-    this.buffer = Buffer.alloc(0);
+    this.resetBuffer();
     this.emit('stop');
   }
 }

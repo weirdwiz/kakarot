@@ -57,14 +57,12 @@ export const AUDIO_CONFIG = {
   PACKET_LOG_INTERVAL: 10,
 } as const;
 
-// Acoustic Echo Cancellation configuration
+// Acoustic Echo Cancellation configuration (WebRTC AEC3)
 export const AEC_CONFIG = {
   /** Enable AEC processing (will still auto-bypass if native module unavailable) */
   ENABLED: true,
-  /** Adaptive filter length in samples (higher = more echo tail coverage) */
-  FILTER_LENGTH: 256,
-  /** Maximum age of reference audio to keep for synchronization, in ms */
-  REFERENCE_BUFFER_MS: 500,
+  /** Number of audio channels (1 = mono) */
+  NUM_CHANNELS: 1,
   /** Automatically bypass AEC when headphones are detected */
   HEADPHONE_BYPASS: true,
   /** Emit metrics every N frames */

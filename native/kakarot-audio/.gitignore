@@ -1,0 +1,14 @@
+# Build artifacts
+build/
+*.node
+
+# Dependencies
+node_modules/
+package-lock.json
+
+# WebRTC library (large, must be built locally)
+deps/
+
+# IDE
+.vscode/
+.idea/

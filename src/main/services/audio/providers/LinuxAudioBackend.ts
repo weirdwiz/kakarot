@@ -1,23 +1,11 @@
 import { spawn, ChildProcess } from 'child_process';
-import { BaseAudioBackend, AudioCaptureConfig, AudioChunk } from '@main/services/audio/IAudioCaptureBackend';
+import { BaseAudioBackend } from '@main/services/audio/IAudioCaptureBackend';
 import { createLogger } from '@main/core/logger';
 
 const logger = createLogger('LinuxAudio');
 
 export class LinuxAudioBackend extends BaseAudioBackend {
   private process: ChildProcess | null = null;
-  private buffer: Buffer = Buffer.alloc(0);
-  private chunkSize: number;
-
-  constructor(config: AudioCaptureConfig) {
-    super(config);
-    // Calculate chunk size: sampleRate * channels * bytesPerSample * (chunkDurationMs / 1000)
-    // 16-bit = 2 bytes per sample, mono = 1 channel
-    const channels = config.channels || 1;
-    this.chunkSize = Math.floor(
-      config.sampleRate * channels * 2 * (config.chunkDurationMs / 1000)
-    );
-  }
 
   async start(): Promise<void> {
     if (this.capturing) {
@@ -52,22 +40,10 @@ export class LinuxAudioBackend extends BaseAudioBackend {
     logger.debug('Spawning pw-record', { args });
 
     this.process = spawn('pw-record', args);
-    this.buffer = Buffer.alloc(0);
+    this.resetBuffer();
 
     this.process.stdout?.on('data', (data: Buffer) => {
-      if (!this.capturing) return;
-
-      // Accumulate data into buffer
-      this.buffer = Buffer.concat([this.buffer, data]);
-
-      // Emit chunks of the configured size
-      while (this.buffer.length >= this.chunkSize) {
-        const chunk = this.buffer.subarray(0, this.chunkSize);
-        this.buffer = this.buffer.subarray(this.chunkSize);
-
-        const audioChunk: AudioChunk = { data: Buffer.from(chunk) };
-        this.emit('data', audioChunk);
-      }
+      this.processIncomingData(data);
     });
 
     this.process.stderr?.on('data', (data: Buffer) => {
@@ -160,7 +136,7 @@ export class LinuxAudioBackend extends BaseAudioBackend {
     });
 
     this.process = null;
-    this.buffer = Buffer.alloc(0);
+    this.resetBuffer();
     this.emit('stop');
   }
 }

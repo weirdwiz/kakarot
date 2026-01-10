@@ -1,5 +1,18 @@
 // Meeting and transcript types
 
+export interface MeetingChapter {
+  title: string;
+  startTime: number; // ms from start
+  endTime: number;
+  summary?: string;
+}
+
+export interface MeetingPerson {
+  name: string;
+  role?: string;
+  notes?: string;
+}
+
 export interface Meeting {
   id: string;
   title: string;
@@ -8,6 +21,12 @@ export interface Meeting {
   duration: number; // in seconds
   transcript: TranscriptSegment[];
   summary: string | null;
+  notes: unknown | null;
+  notesPlain: string | null;
+  notesMarkdown: string | null;
+  overview: string | null;
+  chapters: MeetingChapter[];
+  people: MeetingPerson[];
   actionItems: string[];
   participants: string[];
 }

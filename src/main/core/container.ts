@@ -2,6 +2,7 @@ import { MeetingRepository, CalloutRepository, SettingsRepository } from '../dat
 import { OpenAIProvider } from '../providers/OpenAIProvider';
 import { createLogger } from './logger';
 import { CalendarService } from '../services/CalendarService';
+import { CalloutService } from '../services/CalloutService';
 import { NoteGenerationService } from '../services/NoteGenerationService';
 
 const logger = createLogger('Container');
@@ -12,6 +13,7 @@ export interface AppContainer {
   settingsRepo: SettingsRepository;
   aiProvider: OpenAIProvider | null;
   calendarService: CalendarService;
+  calloutService: CalloutService;
   noteGenerationService: NoteGenerationService;
 }
 
@@ -50,9 +52,11 @@ export function initializeContainer(): AppContainer {
     logger.warn('OpenAI API key not configured - AI features disabled');
   }
 
-  // Initialize note generation service
-  const noteGenerationService = new NoteGenerationService();
-  noteGenerationService.initialize(settings);
+  // Initialize note generation service with aiProvider getter (avoids circular dependency)
+  const noteGenerationService = new NoteGenerationService(() => container?.aiProvider ?? null);
+
+  // Initialize callout service
+  const calloutService = new CalloutService();
 
   container = {
     meetingRepo,
@@ -60,6 +64,7 @@ export function initializeContainer(): AppContainer {
     settingsRepo,
     aiProvider,
     calendarService,
+    calloutService,
     noteGenerationService,
   };
 

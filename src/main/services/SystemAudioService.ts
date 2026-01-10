@@ -73,17 +73,16 @@ export class SystemAudioService {
       // Calculate timestamp relative to start
       const timestamp = Date.now() - this.startTimestamp;
 
-      // Process through pipeline (AEC, etc.)
-      let processedData = chunk.data;
-      if (this.pipeline && this.pipeline.hasActiveProcessors()) {
-        try {
-          processedData = await this.pipeline.process(chunk.data, timestamp);
-        } catch (error) {
-          logger.error('Pipeline processing error', error as Error);
-          // Fall back to original data
-          processedData = chunk.data;
-        }
+      // Feed system audio to AEC as REFERENCE (speaker output creates echo)
+      // The AEC will learn what audio is playing through speakers so it can
+      // remove that echo from the microphone signal
+      if (this.aecProcessor) {
+        this.aecProcessor.feedReference(chunk.data, timestamp);
       }
+
+      // System audio is NOT processed through AEC - it's already clean
+      // (comes directly from the meeting, not picked up by mic)
+      const processedData = chunk.data;
 
       // Convert Node.js Buffer to ArrayBuffer for transcription provider
       const uint8Array = new Uint8Array(processedData);
@@ -153,13 +152,28 @@ export class SystemAudioService {
   }
 
   /**
-   * Feed microphone audio to the AEC processor as reference signal.
+   * Process microphone audio through AEC to remove echo from speaker output.
    * Called from recordingHandlers when mic audio arrives via IPC.
+   * Returns processed audio with echo removed.
    */
-  feedMicReference(audioData: ArrayBuffer, timestamp: number): void {
-    if (this.aecProcessor) {
+  async processMicAudio(audioData: ArrayBuffer, timestamp: number): Promise<ArrayBuffer> {
+    if (!this.aecProcessor || !this.pipeline) {
+      return audioData; // No AEC active, return unchanged
+    }
+
+    try {
       const buffer = Buffer.from(audioData);
-      this.aecProcessor.feedReference(buffer, timestamp);
+      const processed = await this.pipeline.process(buffer, timestamp);
+
+      // Convert back to ArrayBuffer
+      const uint8Array = new Uint8Array(processed);
+      return uint8Array.buffer.slice(
+        uint8Array.byteOffset,
+        uint8Array.byteOffset + uint8Array.byteLength
+      );
+    } catch (error) {
+      logger.error('Mic AEC processing error', error as Error);
+      return audioData; // Fall back to original
     }
   }
 

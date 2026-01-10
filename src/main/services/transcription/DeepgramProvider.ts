@@ -1,29 +1,21 @@
 import { createClient, LiveTranscriptionEvents, LiveClient } from '@deepgram/sdk';
 import { v4 as uuidv4 } from 'uuid';
-import type { TranscriptSegment } from '@shared/types';
-import type { ITranscriptionProvider, TranscriptCallback } from './TranscriptionProvider';
+import { BaseDualStreamProvider } from './BaseDualStreamProvider';
 import { createLogger } from '../../core/logger';
 
 const logger = createLogger('Deepgram');
 
-export class DeepgramProvider implements ITranscriptionProvider {
+export class DeepgramProvider extends BaseDualStreamProvider {
   readonly name = 'Deepgram';
 
   private apiKey: string;
   private micConnection: LiveClient | null = null;
   private systemConnection: LiveClient | null = null;
-  private transcriptCallback: TranscriptCallback | null = null;
-  private startTime: number = 0;
-  private micConnected: boolean = false;
-  private systemConnected: boolean = false;
 
   constructor(apiKey: string) {
+    super();
     logger.debug('Initializing', { keyPresent: !!apiKey });
     this.apiKey = apiKey;
-  }
-
-  onTranscript(callback: TranscriptCallback): void {
-    this.transcriptCallback = callback;
   }
 
   async connect(): Promise<void> {
@@ -66,11 +58,7 @@ export class DeepgramProvider implements ITranscriptionProvider {
     return new Promise((resolve, reject) => {
       connection.on(LiveTranscriptionEvents.Open, () => {
         logger.debug('Connection opened', { source });
-        if (source === 'mic') {
-          this.micConnected = true;
-        } else {
-          this.systemConnected = true;
-        }
+        this.setConnectionState(source, true);
         resolve();
       });
 
@@ -101,11 +89,7 @@ export class DeepgramProvider implements ITranscriptionProvider {
 
       connection.on(LiveTranscriptionEvents.Close, () => {
         logger.warn('Connection closed', { source });
-        if (source === 'mic') {
-          this.micConnected = false;
-        } else {
-          this.systemConnected = false;
-        }
+        this.setConnectionState(source, false);
       });
     });
   }
@@ -115,7 +99,7 @@ export class DeepgramProvider implements ITranscriptionProvider {
     source: 'mic' | 'system',
     isFinal: boolean,
     words?: Array<{ word: string; confidence: number; start: number; end: number }>
-  ): TranscriptSegment {
+  ) {
     const mappedWords = (words || []).map((w) => ({
       text: w.word,
       confidence: w.confidence,
@@ -124,31 +108,26 @@ export class DeepgramProvider implements ITranscriptionProvider {
       end: Math.round(w.end * 1000),
     }));
 
-    return {
-      id: uuidv4(),
+    return this.createBaseSegment(
+      uuidv4(),
       text,
-      timestamp: Date.now() - this.startTime,
       source,
-      confidence: words?.[0]?.confidence ?? 0.95,
       isFinal,
-      words: mappedWords,
-    };
+      words?.[0]?.confidence ?? 0.95,
+      mappedWords
+    );
   }
 
-  sendAudio(audioData: ArrayBuffer, source: 'mic' | 'system'): void {
-    const connection = source === 'mic' ? this.micConnection : this.systemConnection;
-    const isConnected = source === 'mic' ? this.micConnected : this.systemConnected;
+  protected sendToMic(audioData: ArrayBuffer): void {
+    this.micConnection?.send(audioData);
+  }
 
-    if (connection && isConnected) {
-      connection.send(audioData);
-    }
+  protected sendToSystem(audioData: ArrayBuffer): void {
+    this.systemConnection?.send(audioData);
   }
 
   async disconnect(): Promise<void> {
     logger.info('Disconnecting');
-
-    this.micConnected = false;
-    this.systemConnected = false;
 
     if (this.micConnection) {
       this.micConnection.requestClose();
@@ -160,7 +139,7 @@ export class DeepgramProvider implements ITranscriptionProvider {
       this.systemConnection = null;
     }
 
-    this.transcriptCallback = null;
+    this.resetState();
     logger.info('Disconnected');
   }
 }

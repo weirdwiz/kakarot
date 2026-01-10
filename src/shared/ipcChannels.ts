@@ -12,6 +12,7 @@ export const IPC_CHANNELS = {
   AUDIO_LEVELS: 'audio:levels',
   AUDIO_DATA: 'audio:data',
   AUDIO_GET_SOURCES: 'audio:getSources',
+  AUDIO_CAPTURE_MODE: 'audio:captureMode', // 'native' or 'legacy'
 
   // Transcription
   TRANSCRIPT_UPDATE: 'transcript:update',
