@@ -6,6 +6,7 @@ Kakarot is an Electron-based AI meeting assistant that captures audio from your 
 
 - **Real-time Transcription**: Live speech-to-text using AssemblyAI's streaming API
 - **Dual Audio Capture**: Captures both microphone (you) and system audio (others) separately
+- **Acoustic Echo Cancellation**: Removes speaker bleed from microphone when using speakers (prevents duplicate transcription)
 - **Question Detection**: Automatically detects when someone asks you a question
 - **Contextual Callouts**: Floating overlay with suggested responses based on:
   - Current conversation context
@@ -45,6 +46,7 @@ Kakarot is an Electron-based AI meeting assistant that captures audio from your 
 - Node.js 18+
 - npm or yarn
 - macOS 13.2+ or Windows 10+
+- Rust toolchain (optional, for building AEC native module)
 - AssemblyAI API key (for transcription)
 - OpenAI API key (for callouts and summaries)
 
@@ -116,7 +118,14 @@ kakarot/
 │   │   ├── services/            # Business logic
 │   │   │   ├── CalloutService.ts
 │   │   │   ├── KnowledgeService.ts
-│   │   │   └── ExportService.ts
+│   │   │   ├── ExportService.ts
+│   │   │   ├── SystemAudioService.ts
+│   │   │   └── audio/           # Audio processing
+│   │   │       ├── HeadphoneDetector.ts
+│   │   │       └── processing/  # Pipeline processors
+│   │   │           ├── IAudioProcessor.ts
+│   │   │           ├── AudioPipeline.ts
+│   │   │           └── AECProcessor.ts
 │   │   ├── providers/           # External API clients
 │   │   │   └── OpenAIProvider.ts
 │   │   ├── prompts/             # LLM prompt templates
@@ -138,6 +147,11 @@ kakarot/
 │   │
 │   └── preload/                 # Secure IPC bridge
 │
+├── native/                      # Native modules
+│   └── kakarot-aec/             # Rust AEC module
+│       ├── Cargo.toml
+│       ├── src/lib.rs
+│       └── index.node           # Compiled module
 ├── resources/                   # App icons
 └── data/                        # Local data (gitignored)
 ```
@@ -151,7 +165,8 @@ kakarot/
 | Styling | Tailwind CSS |
 | Icons | lucide-react |
 | Build | Vite + electron-builder |
-| Audio | electron-audio-loopback |
+| Audio | audiotee (system), Web Audio API (mic) |
+| Echo Cancellation | Rust + aec-rs (SpeexDSP) |
 | Transcription | AssemblyAI SDK |
 | LLM | OpenAI SDK |
 | Database | sql.js (SQLite in WASM) |
@@ -201,6 +216,22 @@ npm run typecheck
 # Linting
 npm run lint
 ```
+
+### Building Native Modules
+
+The AEC (Acoustic Echo Cancellation) module requires Rust:
+
+```bash
+# Install Rust if needed
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Build the AEC module
+cd native/kakarot-aec
+cargo build --release
+cp target/release/libkakarot_aec.dylib index.node  # macOS
+```
+
+The app works without the native module (AEC gracefully bypasses), but building it improves transcription quality when using speakers.
 
 ## License
 

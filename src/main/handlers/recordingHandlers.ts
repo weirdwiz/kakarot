@@ -6,8 +6,9 @@ import { createTranscriptionProvider, ITranscriptionProvider } from '../services
 import { SystemAudioService } from '../services/SystemAudioService';
 import { CalloutService } from '../services/CalloutService';
 import { showCalloutWindow } from '../windows/calloutWindow';
-import { AUDIO_CONFIG } from '../config/constants';
+import { AUDIO_CONFIG, AEC_CONFIG } from '../config/constants';
 import { getDatabase, saveDatabase } from '../data/database';
+import { AECProcessor } from '../services/audio/processing';
 
 const logger = createLogger('RecordingHandlers');
 
@@ -97,6 +98,17 @@ export function registerRecordingHandlers(
 
         if (transcriptionProvider) {
           systemAudioService = new SystemAudioService();
+
+          // Set up AEC if enabled
+          if (AEC_CONFIG.ENABLED) {
+            const aecProcessor = new AECProcessor({
+              filterLength: AEC_CONFIG.FILTER_LENGTH,
+              referenceBufferMs: AEC_CONFIG.REFERENCE_BUFFER_MS,
+              headphoneBypass: AEC_CONFIG.HEADPHONE_BYPASS,
+            });
+            systemAudioService.setAecProcessor(aecProcessor);
+            logger.info('AEC processor configured');
+          }
 
           systemAudioService.onAudioLevel((level) => {
             mainWindow.webContents.send(IPC_CHANNELS.AUDIO_LEVELS, { system: level });
@@ -230,17 +242,30 @@ export function registerRecordingHandlers(
 
   // Audio data handler
   let micAudioDataCount = 0;
+
   ipcMain.on(IPC_CHANNELS.AUDIO_DATA, (_, audioData: ArrayBuffer, source: 'mic' | 'system') => {
     if (source !== 'mic') return;
 
     micAudioDataCount++;
+
+    // Use synchronized timestamp from SystemAudioService to match mic/system audio
+    // This ensures both audio streams use the same time origin
+    const timestamp = systemAudioService?.getTimestamp() ?? 0;
+
     if (micAudioDataCount % AUDIO_CONFIG.PACKET_LOG_INTERVAL === 1) {
       logger.debug('Mic audio data received', {
         size: audioData.byteLength,
         count: micAudioDataCount,
+        timestamp,
       });
     }
 
+    // Feed mic audio to AEC as reference signal
+    if (systemAudioService) {
+      systemAudioService.feedMicReference(audioData, timestamp);
+    }
+
+    // Send to transcription provider
     if (transcriptionProvider) {
       transcriptionProvider.sendAudio(audioData, 'mic');
     } else if (micAudioDataCount === 1) {

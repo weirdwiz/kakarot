@@ -1,0 +1,13 @@
+{
+  "name": "kakarot-aec",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Acoustic Echo Cancellation native module",
+  "main": "index.node",
+  "scripts": {
+    "build": "cargo build --release && cp target/release/libkakarot_aec.dylib index.node 2>/dev/null || cp target/release/kakarot_aec.dll index.node 2>/dev/null || cp target/release/libkakarot_aec.so index.node 2>/dev/null || echo 'Build complete'",
+    "build:debug": "cargo build",
+    "clean": "cargo clean",
+    "rebuild": "npm run clean && npm run build"
+  }
+}

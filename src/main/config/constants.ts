@@ -51,10 +51,24 @@ export const CALLOUT_CONFIG = {
 export const AUDIO_CONFIG = {
   SAMPLE_RATE: 48000,
   CHUNK_DURATION_MS: 256,
-  CHANNELS: 1,
-  BIT_DEPTH: 16,
+  CHANNELS: 1 as const,
+  BIT_DEPTH: 16 as const,
   SILENCE_THRESHOLD: 10,
   PACKET_LOG_INTERVAL: 10,
+} as const;
+
+// Acoustic Echo Cancellation configuration
+export const AEC_CONFIG = {
+  /** Enable AEC processing (will still auto-bypass if native module unavailable) */
+  ENABLED: true,
+  /** Adaptive filter length in samples (higher = more echo tail coverage) */
+  FILTER_LENGTH: 256,
+  /** Maximum age of reference audio to keep for synchronization, in ms */
+  REFERENCE_BUFFER_MS: 500,
+  /** Automatically bypass AEC when headphones are detected */
+  HEADPHONE_BYPASS: true,
+  /** Emit metrics every N frames */
+  METRICS_INTERVAL_FRAMES: 100,
 } as const;
 
 // Export configuration

@@ -56,7 +56,13 @@ src/main/
 │   ├── KnowledgeService.ts
 │   ├── TranscriptionService.ts
 │   ├── SystemAudioService.ts
-│   └── ExportService.ts
+│   ├── ExportService.ts
+│   └── audio/            # Audio processing
+│       ├── HeadphoneDetector.ts
+│       └── processing/   # Audio pipeline
+│           ├── IAudioProcessor.ts
+│           ├── AudioPipeline.ts
+│           └── AECProcessor.ts
 ├── providers/            # External API clients
 │   └── OpenAIProvider.ts # Centralized OpenAI client
 ├── prompts/              # LLM prompt templates
@@ -123,8 +129,39 @@ Copy `.env.example` to `.env` and configure:
 - `ASSEMBLYAI_API_KEY` - Real-time transcription
 - `OPENAI_API_KEY` - Callout generation and summaries
 
+## Native Modules
+
+### Acoustic Echo Cancellation (native/kakarot-aec/)
+
+Rust native module using aec-rs (SpeexDSP bindings) for echo cancellation. Removes speaker audio picked up by the microphone when using speakers instead of headphones.
+
+```bash
+# Build the native module
+cd native/kakarot-aec
+cargo build --release
+cp target/release/libkakarot_aec.dylib index.node  # macOS
+```
+
+The module is loaded dynamically at runtime. If unavailable, AEC gracefully bypasses and the app continues without echo cancellation.
+
+**API**: `create()`, `feedReference()`, `process()`, `getMetrics()`, `reset()`
+
+See `docs/AEC_IMPLEMENTATION_PLAN.md` for full architecture details.
+
+## Audio Processing Pipeline
+
+Audio flows through a processor pipeline in `SystemAudioService`:
+
+1. **Platform Backend** (audiotee) captures system audio
+2. **AudioPipeline** processes chunks through registered processors
+3. **AECProcessor** removes echo using mic audio as reference
+4. Clean audio sent to transcription
+
+The pipeline pattern allows adding future processors (noise suppression, AGC, VAD).
+
 ## Platform Requirements
 
 - macOS 13.2+ (for system audio loopback)
 - Windows 10+
 - Node.js 18+
+- Rust toolchain (for building native modules)

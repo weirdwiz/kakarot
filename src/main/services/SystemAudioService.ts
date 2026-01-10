@@ -2,10 +2,20 @@ import type { ITranscriptionProvider } from '@main/services/transcription';
 import { createLogger } from '@main/core/logger';
 import { AudioBackendFactory, IAudioCaptureBackend, AudioChunk } from '@main/services/audio';
 import { AUDIO_CONFIG } from '@main/config/constants';
+import { AudioPipeline } from '@main/services/audio/processing';
+import type { IAudioProcessor } from '@main/services/audio/processing';
 
 const logger = createLogger('SystemAudio');
 
 type AudioLevelCallback = (level: number) => void;
+
+/**
+ * Reference audio feeder interface for AEC.
+ * Implemented by AECProcessor.
+ */
+export interface IReferenceAudioReceiver {
+  feedReference(chunk: Buffer, timestamp: number): void;
+}
 
 export class SystemAudioService {
   private backend: IAudioCaptureBackend | null = null;
@@ -13,8 +23,20 @@ export class SystemAudioService {
   private audioLevelCallback: AudioLevelCallback | null = null;
   private capturing: boolean = false;
 
+  // Audio processing pipeline
+  private pipeline: AudioPipeline | null = null;
+  private aecProcessor: (IAudioProcessor & IReferenceAudioReceiver) | null = null;
+  private startTimestamp: number = 0;
+
   onAudioLevel(callback: AudioLevelCallback): void {
     this.audioLevelCallback = callback;
+  }
+
+  /**
+   * Set the AEC processor. Called before start() if AEC is enabled.
+   */
+  setAecProcessor(processor: IAudioProcessor & IReferenceAudioReceiver): void {
+    this.aecProcessor = processor;
   }
 
   async start(transcriptionProvider: ITranscriptionProvider): Promise<void> {
@@ -25,6 +47,10 @@ export class SystemAudioService {
 
     logger.info('Starting system audio capture', { platform: process.platform });
     this.transcriptionProvider = transcriptionProvider;
+    this.startTimestamp = Date.now();
+
+    // Initialize processing pipeline
+    await this.initializePipeline();
 
     // Create platform-specific backend
     this.backend = await AudioBackendFactory.create({
@@ -34,7 +60,7 @@ export class SystemAudioService {
     });
 
     let chunkCount = 0;
-    this.backend.on('data', (chunk: AudioChunk) => {
+    this.backend.on('data', async (chunk: AudioChunk) => {
       chunkCount++;
       if (chunkCount <= 3 || chunkCount % 50 === 0) {
         logger.debug('Audio chunk received', { chunk: chunkCount, bytes: chunk.data.length });
@@ -44,15 +70,30 @@ export class SystemAudioService {
         return;
       }
 
+      // Calculate timestamp relative to start
+      const timestamp = Date.now() - this.startTimestamp;
+
+      // Process through pipeline (AEC, etc.)
+      let processedData = chunk.data;
+      if (this.pipeline && this.pipeline.hasActiveProcessors()) {
+        try {
+          processedData = await this.pipeline.process(chunk.data, timestamp);
+        } catch (error) {
+          logger.error('Pipeline processing error', error as Error);
+          // Fall back to original data
+          processedData = chunk.data;
+        }
+      }
+
       // Convert Node.js Buffer to ArrayBuffer for transcription provider
-      const uint8Array = new Uint8Array(chunk.data);
+      const uint8Array = new Uint8Array(processedData);
       const arrayBuffer = uint8Array.buffer.slice(
         uint8Array.byteOffset,
         uint8Array.byteOffset + uint8Array.byteLength
       );
 
-      // Calculate RMS level for UI visualization
-      const level = this.calculateRmsLevel(chunk.data);
+      // Calculate RMS level for UI visualization (use processed audio)
+      const level = this.calculateRmsLevel(processedData);
 
       if (this.audioLevelCallback) {
         this.audioLevelCallback(level);
@@ -79,6 +120,7 @@ export class SystemAudioService {
       await this.backend.start();
     } catch (error) {
       logger.error('Failed to start audio backend', error as Error);
+      await this.cleanupPipeline();
       this.backend = null;
       this.transcriptionProvider = null;
       throw error;
@@ -99,6 +141,8 @@ export class SystemAudioService {
       logger.error('Error stopping audio backend', error as Error);
     }
 
+    await this.cleanupPipeline();
+
     this.backend = null;
     this.transcriptionProvider = null;
     this.audioLevelCallback = null;
@@ -106,6 +150,55 @@ export class SystemAudioService {
 
   isCapturing(): boolean {
     return this.capturing;
+  }
+
+  /**
+   * Feed microphone audio to the AEC processor as reference signal.
+   * Called from recordingHandlers when mic audio arrives via IPC.
+   */
+  feedMicReference(audioData: ArrayBuffer, timestamp: number): void {
+    if (this.aecProcessor) {
+      const buffer = Buffer.from(audioData);
+      this.aecProcessor.feedReference(buffer, timestamp);
+    }
+  }
+
+  /**
+   * Get the current relative timestamp (ms since start).
+   */
+  getTimestamp(): number {
+    return Date.now() - this.startTimestamp;
+  }
+
+  private async initializePipeline(): Promise<void> {
+    const frameSize = (AUDIO_CONFIG.SAMPLE_RATE * AUDIO_CONFIG.CHUNK_DURATION_MS) / 1000;
+
+    this.pipeline = new AudioPipeline({
+      sampleRate: AUDIO_CONFIG.SAMPLE_RATE,
+      channels: AUDIO_CONFIG.CHANNELS,
+      bitDepth: AUDIO_CONFIG.BIT_DEPTH,
+      frameSize,
+    });
+
+    // Add AEC processor if configured
+    if (this.aecProcessor) {
+      this.pipeline.addProcessor(this.aecProcessor);
+      logger.info('AEC processor added to pipeline');
+    }
+
+    await this.pipeline.initialize();
+
+    logger.info('Audio pipeline initialized', {
+      activeProcessors: this.pipeline.getActiveProcessors(),
+    });
+  }
+
+  private async cleanupPipeline(): Promise<void> {
+    if (this.pipeline) {
+      await this.pipeline.cleanup();
+      this.pipeline = null;
+    }
+    this.aecProcessor = null;
   }
 
   // Calculate RMS level from 16-bit signed integer PCM data
