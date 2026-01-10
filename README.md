@@ -45,31 +45,63 @@ Kakarot is an Electron-based AI meeting assistant that captures audio from your 
 
 - Node.js 18+
 - npm or yarn
-- macOS 13.2+ or Windows 10+
-- Rust toolchain (optional, for building AEC native module)
+- macOS 13.2+ (Windows 10+ coming soon)
+- Python 3 (for meson build system)
+- meson and ninja (for building native audio module)
 - AssemblyAI API key (for transcription)
 - OpenAI API key (for callouts and summaries)
 
 ## Installation
 
-1. Clone the repository:
+### 1. Install build tools
+
 ```bash
-git clone https://github.com/weirdwiz/kakarot.git
+# macOS
+brew install meson ninja
+
+# Or with pip (any platform)
+pip install meson ninja
+```
+
+### 2. Clone the repository with submodules
+
+```bash
+git clone --recursive https://github.com/weirdwiz/kakarot.git
 cd kakarot
 ```
 
-2. Install dependencies:
+If you already cloned without `--recursive`:
+```bash
+git submodule update --init --recursive
+```
+
+### 3. Build the native audio module
+
+```bash
+cd native/kakarot-audio
+./setup.sh
+cd ../..
+```
+
+This builds the WebRTC AEC3-based audio capture module. See [native/kakarot-audio/README.md](native/kakarot-audio/README.md) for details.
+
+### 4. Install Node.js dependencies
+
 ```bash
 npm install
 ```
 
-3. Create a `.env` file with your API keys:
+### 5. Configure environment
+
 ```bash
 cp .env.example .env
-# Edit .env and add your API keys
+# Edit .env and add your API keys:
+#   ASSEMBLYAI_API_KEY=your_key_here
+#   OPENAI_API_KEY=your_key_here
 ```
 
-4. Run in development mode:
+### 6. Run in development mode
+
 ```bash
 npm run dev:electron
 ```
