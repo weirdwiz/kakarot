@@ -28,6 +28,7 @@ export default defineConfig({
               external: [
                 'electron',
                 'electron-audio-loopback',
+                'bindings',
                 'bufferutil',
                 'utf-8-validate',
                 'sql.js',

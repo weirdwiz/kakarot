@@ -9,6 +9,12 @@ export const IPC_CHANNELS = {
   RECORDING_STATE: 'recording:state',
 
   // Audio
+  AUDIO_CHECK_NATIVE: 'audio:check-native',
+  AUDIO_START_NATIVE: 'audio:start-native',
+  AUDIO_STOP_NATIVE: 'audio:stop-native',
+  AUDIO_SET_AEC_ENABLED: 'audio:set-aec-enabled',
+  AUDIO_GET_STATE: 'audio:get-state',
+  AUDIO_MIC_DATA: 'audio:mic-data',
   AUDIO_LEVELS: 'audio:levels',
   AUDIO_DATA: 'audio:data',
   AUDIO_GET_SOURCES: 'audio:getSources',

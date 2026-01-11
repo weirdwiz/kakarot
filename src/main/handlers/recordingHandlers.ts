@@ -5,6 +5,8 @@ import { createLogger } from '../core/logger';
 import { createTranscriptionProvider, ITranscriptionProvider } from '../services/transcription';
 import { SystemAudioService } from '../services/SystemAudioService';
 import { CalloutService } from '../services/CalloutService';
+import { AECProcessor } from '../audio/native/AECProcessor';
+import { AECSync } from '../audio/AECSync';
 import { showCalloutWindow } from '../windows/calloutWindow';
 import { AUDIO_CONFIG } from '../config/constants';
 import { getDatabase, saveDatabase } from '../data/database';
@@ -13,6 +15,8 @@ const logger = createLogger('RecordingHandlers');
 
 let transcriptionProvider: ITranscriptionProvider | null = null;
 let systemAudioService: SystemAudioService | null = null;
+let aecProcessor: AECProcessor | null = null;
+let aecSync: AECSync | null = null;
 let activeCalendarContext: {
   calendarEventId: string;
   calendarEventTitle: string;
@@ -22,6 +26,11 @@ let activeCalendarContext: {
   calendarProvider: string;
 } | null = null;
 let isPaused = false;
+
+// NEW: Audio buffering for mic capture
+let micAudioBuffer: Int16Array = new Int16Array(0);
+const MIN_BUFFER_SAMPLES = 2400; // 50ms at 48kHz (AssemblyAI minimum)
+let micAudioDataCount = 0;
 
 export function registerRecordingHandlers(
   mainWindow: BrowserWindow,
@@ -57,6 +66,32 @@ export function registerRecordingHandlers(
     });
 
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'recording');
+
+    // Initialize AEC processor for echo cancellation
+    try {
+      aecProcessor = new AECProcessor({
+        enableAec: true,
+        enableNs: true,
+        enableAgc: false,
+        frameDurationMs: 10,
+        sampleRate: AUDIO_CONFIG.SAMPLE_RATE,
+      });
+      logger.info('✅ AEC processor initialized for recording session');
+
+      // Initialize AECSync for render/capture synchronization
+      try {
+        aecSync = new AECSync(aecProcessor);
+        logger.info('✅ AECSync initialized for recording session');
+      } catch (error) {
+        logger.error('Failed to initialize AECSync', { error: (error as Error).message });
+        aecSync = null;
+      }
+    } catch (error) {
+      logger.error('Failed to initialize AEC processor', { error: (error as Error).message });
+      aecProcessor = null;
+      aecSync = null;
+      // Continue without AEC if initialization fails
+    }
 
     transcriptionProvider = createTranscriptionProvider(
       settings.transcriptionProvider,
@@ -106,6 +141,18 @@ export function registerRecordingHandlers(
         if (transcriptionProvider) {
           systemAudioService = new SystemAudioService();
 
+          // Pass shared AEC processor
+          if (aecProcessor) {
+            systemAudioService.setAECProcessor(aecProcessor);
+          }
+
+          // Feed system audio to AECSync for synchronization
+          if (aecSync) {
+            systemAudioService.onSystemAudio((samples, timestamp) => {
+              aecSync!.addRenderAudio(samples, timestamp);
+            });
+          }
+
           systemAudioService.onAudioLevel((level) => {
             mainWindow.webContents.send(IPC_CHANNELS.AUDIO_LEVELS, { system: level });
           });
@@ -114,6 +161,128 @@ export function registerRecordingHandlers(
             .start(transcriptionProvider)
             .then(() => {
               logger.info('System audio capture started');
+
+              // NEW: Start native microphone capture AFTER system audio is ready
+              if (aecProcessor && transcriptionProvider) {
+                const tp = transcriptionProvider; // Capture in closure
+                
+                const success = aecProcessor.startMicrophoneCapture((samples, timestamp) => {
+                  // This callback runs in main process with native timestamps!
+                  micAudioDataCount++;
+                  if (micAudioDataCount % AUDIO_CONFIG.PACKET_LOG_INTERVAL === 1) {
+                    logger.debug('Native mic audio received', {
+                      size: samples.length,
+                      timestamp,
+                      count: micAudioDataCount,
+                    });
+                  }
+
+                  // Skip if paused
+                  if (isPaused || !tp) {
+                    return;
+                  }
+
+                  // Process mic audio through AEC with synchronized timestamps
+                  let cleanFloat32: Float32Array | null = null;
+
+                  if (aecSync) {
+                    // Use synchronized AEC processing with native timestamp!
+                    cleanFloat32 = aecSync.processCaptureWithSync(samples, timestamp);
+                    
+                    // Log sync stats occasionally
+                    if (micAudioDataCount % 100 === 0) {
+                      const stats = aecSync.getStats();
+                      logger.debug('AEC sync performance', {
+                        syncRate: `${stats.syncRate.toFixed(1)}%`,
+                        bufferSize: stats.bufferSize,
+                        packet: micAudioDataCount
+                      });
+                    }
+                  } else if (aecProcessor && aecProcessor.isReady()) {
+                    // Fallback: direct AEC without sync
+                    cleanFloat32 = aecProcessor.processCaptureAudio(samples);
+                  }
+
+                  if (cleanFloat32 && cleanFloat32.length > 0) {
+                    // Convert echo-cancelled audio to Int16
+                    const cleanInt16 = new Int16Array(cleanFloat32.length);
+                    for (let i = 0; i < cleanFloat32.length; i++) {
+                      cleanInt16[i] = Math.max(-32768, Math.min(32767, cleanFloat32[i] * 32768));
+                    }
+                    
+                    // Buffer the audio
+                    const newBuffer = new Int16Array(micAudioBuffer.length + cleanInt16.length);
+                    newBuffer.set(micAudioBuffer);
+                    newBuffer.set(cleanInt16, micAudioBuffer.length);
+                    micAudioBuffer = newBuffer;
+                    
+                    // Debug: Check buffer status
+                    if (micAudioDataCount === 5 || micAudioDataCount === 10 || micAudioDataCount === 15) {
+                      logger.info('🔍 Buffer check (AEC path)', {
+                        bufferSize: micAudioBuffer.length,
+                        needed: MIN_BUFFER_SAMPLES,
+                        chunk: micAudioDataCount,
+                        justAdded: cleanInt16.length
+                      });
+                    }
+                    
+                    // Send if buffer is large enough (50ms minimum for AssemblyAI)
+                    if (micAudioBuffer.length >= MIN_BUFFER_SAMPLES) {
+                      logger.info('📤 Sending mic audio to AssemblyAI (AEC)', { 
+                        samples: micAudioBuffer.length, 
+                        bytes: micAudioBuffer.buffer.byteLength,
+                        firstSample: micAudioBuffer[0],
+                        maxSample: Math.max(...Array.from(micAudioBuffer))
+                      });
+                      tp.sendAudio(micAudioBuffer.buffer as ArrayBuffer, 'mic');
+                      micAudioBuffer = new Int16Array(0); // Reset buffer
+                    }
+                  } else {
+                    // Fallback to raw audio if AEC processing fails
+                    if (micAudioDataCount % 100 === 1) {
+                      logger.warn('AEC processing returned empty, using raw mic audio', { micAudioDataCount });
+                    }
+                    const rawInt16 = new Int16Array(samples.length);
+                    for (let i = 0; i < samples.length; i++) {
+                      rawInt16[i] = Math.max(-32768, Math.min(32767, samples[i] * 32768));
+                    }
+                    
+                    // Buffer the raw audio
+                    const newBuffer = new Int16Array(micAudioBuffer.length + rawInt16.length);
+                    newBuffer.set(micAudioBuffer);
+                    newBuffer.set(rawInt16, micAudioBuffer.length);
+                    micAudioBuffer = newBuffer;
+                    
+                    // Debug: Check buffer status
+                    if (micAudioDataCount === 5 || micAudioDataCount === 10 || micAudioDataCount === 15) {
+                      logger.info('🔍 Buffer check', {
+                        bufferSize: micAudioBuffer.length,
+                        needed: MIN_BUFFER_SAMPLES,
+                        chunk: micAudioDataCount,
+                        justAdded: rawInt16.length
+                      });
+                    }
+                    
+                    // Send if buffer is large enough
+                    if (micAudioBuffer.length >= MIN_BUFFER_SAMPLES) {
+                      logger.info('📤 Sending mic audio to AssemblyAI', { 
+                        samples: micAudioBuffer.length, 
+                        bytes: micAudioBuffer.buffer.byteLength,
+                        firstSample: micAudioBuffer[0],
+                        maxSample: Math.max(...Array.from(micAudioBuffer))
+                      });
+                      tp.sendAudio(micAudioBuffer.buffer as ArrayBuffer, 'mic');
+                      micAudioBuffer = new Int16Array(0);
+                    }
+                  }
+                });
+
+                if (success) {
+                  logger.info('✅ Native microphone capture started (perfect sync with system audio!)');
+                } else {
+                  logger.error('❌ Failed to start native microphone capture');
+                }
+              }
             })
             .catch((error) => {
               logger.error('System audio capture failed', error);
@@ -136,7 +305,35 @@ export function registerRecordingHandlers(
 
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'processing');
 
-    // Stop system audio first
+    // NEW: Stop native mic capture first
+    if (aecProcessor && aecProcessor.isMicrophoneCapturing()) {
+      logger.info('Stopping native microphone capture');
+      aecProcessor.stopMicrophoneCapture();
+    }
+
+    // Reset mic audio counter and buffer
+    micAudioDataCount = 0;
+    micAudioBuffer = new Int16Array(0);
+
+    // Clean up AEC sync
+    if (aecSync) {
+      const finalStats = aecSync.getStats();
+      logger.info('Final AEC sync stats', finalStats);
+      aecSync.clear();
+      aecSync = null;
+    }
+
+    // Clean up AEC processor
+    if (aecProcessor) {
+      try {
+        aecProcessor.destroy();
+      } catch (error) {
+        logger.warn('Error destroying AEC processor', { error: (error as Error).message });
+      }
+      aecProcessor = null;
+    }
+
+    // Stop system audio
     if (systemAudioService) {
       const sas = systemAudioService;
       systemAudioService = null;
@@ -262,24 +459,16 @@ export function registerRecordingHandlers(
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'recording');
   });
 
-  // Audio data handler
-  let micAudioDataCount = 0;
-  ipcMain.on(IPC_CHANNELS.AUDIO_DATA, (_, audioData: ArrayBuffer, source: 'mic' | 'system') => {
-    if (source !== 'mic') return;
+  // REMOVED: Audio data handler for renderer mic capture
+  // Now using native microphone capture in the main process!
+  // The IPC_CHANNELS.AUDIO_DATA handler is no longer needed for mic audio.
+}
 
-    // Only process if actively recording
-    if (!transcriptionProvider || isPaused) {
-      return;
-    }
+// Expose transcription state for other handlers (e.g., audioHandlers)
+export function getActiveTranscriptionProvider(): ITranscriptionProvider | null {
+  return transcriptionProvider;
+}
 
-    micAudioDataCount++;
-    if (micAudioDataCount % AUDIO_CONFIG.PACKET_LOG_INTERVAL === 1) {
-      logger.debug('Mic audio data received', {
-        size: audioData.byteLength,
-        count: micAudioDataCount,
-      });
-    }
-
-    transcriptionProvider.sendAudio(audioData, 'mic');
-  });
+export function isRecordingPaused(): boolean {
+  return isPaused;
 }
