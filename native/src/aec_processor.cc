@@ -9,6 +9,7 @@
 #include <cmath>
 #include <algorithm>
 #include <queue>
+#include <optional>
 
 namespace kakarot {
 
@@ -29,6 +30,61 @@ public:
                   << config_.frame_duration_ms << "ms at " << sample_rate << "Hz)\n";
 
         try {
+            // Create custom EchoCanceller3Config for aggressive echo suppression
+            webrtc::EchoCanceller3Config aec3_config;
+            
+            // DELAY - allow up to 500ms of delay between speakers and mic
+            aec3_config.delay.default_delay = 5;
+            aec3_config.delay.down_sampling_factor = 4;
+            aec3_config.delay.num_filters = 5;
+            aec3_config.delay.delay_headroom_samples = 64;  // More headroom (was 32)
+            aec3_config.delay.hysteresis_limit_blocks = 2;  // More stable (was 1)
+            
+            // FILTER - Make adaptive filter longer and more aggressive
+            aec3_config.filter.refined.length_blocks = 24;  // Longer filter (default 13)
+            aec3_config.filter.refined.leakage_converged = 0.00002f;  // Less leakage (was 0.00005)
+            aec3_config.filter.refined_initial.length_blocks = 18;  // Longer initial (default 12)
+            aec3_config.filter.refined_initial.leakage_converged = 0.0002f;  // Less leakage
+            aec3_config.filter.config_change_duration_blocks = 100;  // Faster adaptation (was 250)
+            aec3_config.filter.initial_state_seconds = 1.5f;  // Faster startup (was 2.5)
+            aec3_config.filter.conservative_initial_phase = false;  // Aggressive from start
+            
+            // SUPPRESSOR - MUCH more aggressive echo suppression
+            aec3_config.suppressor.nearend_average_blocks = 4;
+            
+            // Normal tuning - more aggressive suppression
+            aec3_config.suppressor.normal_tuning.mask_lf.enr_transparent = 0.15f;  // Start suppressing earlier (was 0.3)
+            aec3_config.suppressor.normal_tuning.mask_lf.enr_suppress = 0.2f;  // Suppress harder (was 0.4)
+            aec3_config.suppressor.normal_tuning.mask_hf.enr_transparent = 0.04f;  // Very aggressive HF (was 0.07)
+            aec3_config.suppressor.normal_tuning.mask_hf.enr_suppress = 0.05f;  // Very aggressive HF (was 0.1)
+            aec3_config.suppressor.normal_tuning.max_inc_factor = 1.5f;  // Slower gain increase (was 2.0)
+            aec3_config.suppressor.normal_tuning.max_dec_factor_lf = 0.1f;  // Faster gain decrease (was 0.25)
+            
+            // High bands suppression - crush echo in high frequencies
+            aec3_config.suppressor.high_bands_suppression.enr_threshold = 0.5f;  // More sensitive (was 1.0)
+            aec3_config.suppressor.high_bands_suppression.max_gain_during_echo = 0.01f;  // Near silence during echo (was 1.0)
+            
+            // Floor first increase - allow quick suppression
+            aec3_config.suppressor.floor_first_increase = 0.000001f;  // Very small (was 0.00001)
+            
+            // Dominant nearend detection - detect voice more sensitively
+            aec3_config.suppressor.dominant_nearend_detection.enr_threshold = 0.15f;  // Lower threshold (was 0.25)
+            aec3_config.suppressor.dominant_nearend_detection.trigger_threshold = 8;  // Faster trigger (was 12)
+            
+            // Echo audibility - be more aggressive about detecting echo
+            aec3_config.echo_audibility.floor_power = 32.f;  // Lower floor (was 128)
+            aec3_config.echo_audibility.audibility_threshold_lf = 5.f;  // More sensitive (was 10)
+            aec3_config.echo_audibility.audibility_threshold_mf = 5.f;
+            aec3_config.echo_audibility.audibility_threshold_hf = 5.f;
+            
+            // Render levels - capture more echo
+            aec3_config.render_levels.active_render_limit = 50.f;  // Lower threshold (was 100)
+            
+            // EP strength - protect nearend speech
+            aec3_config.ep_strength.default_len = 0.95f;  // Strong protection (was 0.83)
+            
+            std::cout << "✅ Aggressive AEC3 config created (2x stronger suppression)\n";
+            
             // Create AudioProcessing::Config
             webrtc::AudioProcessing::Config apm_config;
             
@@ -36,7 +92,7 @@ public:
             if (config_.enable_aec) {
                 apm_config.echo_canceller.enabled = true;
                 apm_config.echo_canceller.mobile_mode = false;
-                std::cout << "✅ AEC3 enabled\n";
+                std::cout << "✅ AEC3 enabled with aggressive settings\n";
             }
             
             // Configure noise suppression
@@ -60,9 +116,17 @@ public:
             // Create Environment (required for Build)
             webrtc::Environment env = webrtc::CreateEnvironment();
             
-            // Build AudioProcessing instance using BuiltinAudioProcessingBuilder
-            audio_processing_ = webrtc::BuiltinAudioProcessingBuilder(apm_config)
-                .Build(env);
+            // Build AudioProcessing instance with custom AEC3 config
+            webrtc::BuiltinAudioProcessingBuilder builder(apm_config);
+            
+            // Pass our custom AEC3 configuration using the correct method
+            if (config_.enable_aec) {
+                // Second parameter is for multichannel config (we use mono, so pass empty optional)
+                builder.SetEchoCancellerConfig(aec3_config, {});
+                std::cout << "✅ Custom aggressive AEC3 config applied\n";
+            }
+            
+            audio_processing_ = builder.Build(env);
             
             if (!audio_processing_) {
                 std::cerr << "❌ Failed to create AudioProcessing, using fallback\n";

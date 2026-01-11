@@ -332,7 +332,7 @@ endif
 
 quiet_cmd_regen_makefile = ACTION Regenerating $@
 cmd_regen_makefile = cd $(srcdir); /Users/moxo/Desktop/kakarot-master/native/node_modules/node-gyp/gyp/gyp_main.py -fmake --ignore-environment "-Dlibrary=shared_library" "-Dvisibility=default" "-Dnode_root_dir=/Users/moxo/Library/Caches/node-gyp/25.2.1" "-Dnode_gyp_dir=/Users/moxo/Desktop/kakarot-master/native/node_modules/node-gyp" "-Dnode_lib_file=/Users/moxo/Library/Caches/node-gyp/25.2.1/<(target_arch)/node.lib" "-Dmodule_root_dir=/Users/moxo/Desktop/kakarot-master/native" "-Dnode_engine=v8" "--depth=." "-Goutput_dir=." "--generator-output=build" -I/Users/moxo/Desktop/kakarot-master/native/build/config.gypi -I/Users/moxo/Desktop/kakarot-master/native/node_modules/node-gyp/addon.gypi -I/Users/moxo/Library/Caches/node-gyp/25.2.1/include/node/common.gypi "--toplevel-dir=." binding.gyp
-Makefile: $(srcdir)/binding.gyp $(srcdir)/build/config.gypi $(srcdir)/../../../Library/Caches/node-gyp/25.2.1/include/node/common.gypi $(srcdir)/node_modules/node-gyp/addon.gypi
+Makefile: $(srcdir)/../../../Library/Caches/node-gyp/25.2.1/include/node/common.gypi $(srcdir)/binding.gyp $(srcdir)/node_modules/node-gyp/addon.gypi $(srcdir)/build/config.gypi
 	$(call do_cmd,regen_makefile)
 
 # "all" is a concatenation of the "all" targets from all the included
