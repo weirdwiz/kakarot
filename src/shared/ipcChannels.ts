@@ -48,6 +48,12 @@ export const IPC_CHANNELS = {
   MEETING_ASK_NOTES: 'meeting:askNotes',
   MEETING_UPDATE_TITLE: 'meeting:updateTitle',
 
+  // Chat
+  CHAT_SEND_MESSAGE: 'chat:sendMessage',
+
+  // Meeting Prep
+  PREP_GENERATE_BRIEFING: 'prep:generateBriefing',
+
   // Knowledge base
   KNOWLEDGE_INDEX: 'knowledge:index',
   KNOWLEDGE_SEARCH: 'knowledge:search',

@@ -1,7 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabase, saveDatabase, resultToObject, resultToObjectByIndex } from '../database';
-import type { Meeting, TranscriptSegment } from '@shared/types';
+import type { Meeting, TranscriptSegment, CalendarAttendee } from '@shared/types';
 import { createLogger } from '../../core/logger';
+import { PeopleRepository } from './PeopleRepository';
 
 const logger = createLogger('MeetingRepository');
 
@@ -10,7 +11,25 @@ let currentMeetingId: string | null = null;
 let meetingStartTime: number | null = null;
 
 export class MeetingRepository {
-  async startNewMeeting(title?: string, attendeeEmails?: string[]): Promise<string> {
+  private peopleRepo?: PeopleRepository;
+  private peopleApiFetcher?: (email: string) => Promise<string | null>;
+
+  constructor(peopleRepo?: PeopleRepository) {
+    this.peopleRepo = peopleRepo;
+  }
+
+  setPeopleRepository(peopleRepo: PeopleRepository): void {
+    this.peopleRepo = peopleRepo;
+  }
+
+  setPeopleApiFetcher(fetcher: (email: string) => Promise<string | null>): void {
+    this.peopleApiFetcher = fetcher;
+  }
+
+  async startNewMeeting(
+    title?: string,
+    attendees?: (string | CalendarAttendee)[]
+  ): Promise<string> {
     const db = getDatabase();
     const id = uuidv4();
     const now = Date.now();
@@ -22,7 +41,11 @@ export class MeetingRepository {
       minute: '2-digit',
     });
 
-    const attendeesJson = JSON.stringify(attendeeEmails || []);
+    // Convert attendees to email array for backward compatibility
+    const attendeeEmails = attendees?.map((a) =>
+      typeof a === 'string' ? a : a.email
+    ) || [];
+    const attendeesJson = JSON.stringify(attendeeEmails);
     db.run('INSERT INTO meetings (id, title, created_at, attendee_emails) VALUES (?, ?, ?, ?)', [
       id,
       meetingTitle,
@@ -33,7 +56,28 @@ export class MeetingRepository {
     meetingStartTime = now;
     saveDatabase();
 
-    logger.info('Started new meeting', { id, title: meetingTitle, attendeeCount: attendeeEmails?.length || 0 });
+    // Upsert attendees into people table with names if provided
+    if (attendees && this.peopleRepo) {
+      for (const attendee of attendees) {
+        if (typeof attendee === 'object') {
+          logger.info('Upserting attendee from meeting start', {
+            email: attendee.email,
+            name: attendee.name,
+            isObject: true
+          });
+          await this.peopleRepo.upsertFromCalendarAttendee(
+            attendee.email,
+            attendee.name,
+            undefined,
+            this.peopleApiFetcher
+          );
+        } else {
+          logger.info('Attendee is string (email only)', { email: attendee });
+        }
+      }
+    }
+
+    logger.info('Started new meeting', { id, title: meetingTitle, attendeeCount: attendeeEmails.length });
     return id;
   }
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { Meeting } from '@shared/types';
-import { Search, Trash2, Folder, Calendar as CalendarIcon, Users, Share2, Copy, Link, Mail } from 'lucide-react';
+import { Search, Trash2, Folder, Calendar as CalendarIcon, Users, Share2, Copy, Link, Mail, MessageCircle, Send, X } from 'lucide-react';
 import { formatDuration, formatTimestamp, getSpeakerLabel } from '../lib/formatters';
 import slackLogo from '../assets/slack.png';
 
@@ -13,7 +13,12 @@ export default function HistoryView() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [showSharePopover, setShowSharePopover] = useState(false);
   const [showAttendeeModal, setShowAttendeeModal] = useState(false);
+  const [showChatPopover, setShowChatPopover] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Array<{role: 'user' | 'assistant', content: string}>>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
   const shareRef = useRef<HTMLDivElement | null>(null);
+  const chatInputRef = useRef<HTMLInputElement | null>(null);
 
   const getAvatarColor = (email: string) => {
     const colors = [
@@ -44,9 +49,43 @@ export default function HistoryView() {
     }
   }, [setMeetings]);
 
+  const handleSendMessage = useCallback(async () => {
+    if (!chatInput.trim() || isChatLoading) return;
+
+    const userMessage = chatInput.trim();
+    setChatInput('');
+    setChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setIsChatLoading(true);
+
+    try {
+      const response = await window.kakarot.chat.sendMessage(userMessage, {
+        selectedMeetingId: selectedMeeting?.id,
+        context: 'history_view'
+      });
+      setChatMessages(prev => [...prev, { role: 'assistant', content: response }]);
+    } catch (error) {
+      console.error('Chat error:', error);
+      setChatMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please try again.'
+      }]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  }, [chatInput, isChatLoading, selectedMeeting]);
+
+  const handleChatKeyPress = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  }, [handleSendMessage]);
+
   useEffect(() => {
-    loadMeetings();
-  }, [loadMeetings]);
+    if (showChatPopover && chatInputRef.current) {
+      chatInputRef.current.focus();
+    }
+  }, [showChatPopover]);
 
   const handleSearch = async () => {
     if (searchQuery.trim()) {
@@ -79,7 +118,7 @@ export default function HistoryView() {
     setSelectedMeeting({ ...selectedMeeting, summary });
   };
 
-  const handleExport = async (format: 'markdown' | 'pdf') => {
+  const _handleExport = async (format: 'markdown' | 'pdf') => {
     if (!selectedMeeting) return;
     const filePath = await window.kakarot.meetings.export(selectedMeeting.id, format);
     alert(`Exported to: ${filePath}`);
@@ -116,6 +155,11 @@ export default function HistoryView() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Load meetings on component mount
+  useEffect(() => {
+    loadMeetings();
+  }, [loadMeetings]);
 
   const handleCopyText = async () => {
     if (!selectedMeeting) return;
@@ -173,7 +217,7 @@ export default function HistoryView() {
   return (
     <div className="h-full flex bg-[#050505] text-slate-100 rounded-2xl border border-[#1A1A1A] shadow-[0_8px_30px_rgba(0,0,0,0.35)] overflow-hidden">
       {/* Meeting list sidebar */}
-      <div className="w-96 border-r border-[#1A1A1A] flex flex-col bg-[#121212]">
+      <div className="w-96 border-r border-[#1A1A1A] flex flex-col bg-[#121212] overflow-hidden">
         {/* Search */}
         <div className="p-4 border-b border-[#1A1A1A]">
           <div className="relative">
@@ -251,7 +295,7 @@ export default function HistoryView() {
       </div>
 
       {/* Meeting detail */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-[#050505]">
+      <div className="flex-1 flex flex-col bg-[#050505] overflow-hidden">
         {selectedMeeting ? (
           <>
             {/* Header */}
@@ -313,67 +357,63 @@ export default function HistoryView() {
                       <Folder className="w-4 h-4 text-slate-400" />
                       <div className="text-sm text-slate-200 whitespace-nowrap">No folder</div>
                     </div>
+                    {!selectedMeeting.notesMarkdown && (
+                      <button
+                        onClick={handleGenerateSummary}
+                        className="flex flex-none items-center gap-2 rounded-lg border border-[#1A1A1A] bg-indigo-500 hover:bg-indigo-400 text-white px-3 py-2 whitespace-nowrap text-sm transition-colors"
+                      >
+                        Generate Notes
+                      </button>
+                    )}
+                    <div className="relative" ref={shareRef}>
+                      <button
+                        onClick={() => setShowSharePopover((prev) => !prev)}
+                        className="flex flex-none items-center gap-2 rounded-lg border border-[#1A1A1A] bg-[#171717] hover:bg-[#1D1D1F] text-slate-100 px-3 py-2 whitespace-nowrap text-sm transition-colors"
+                      >
+                        <Share2 className="w-4 h-4" />
+                        Share
+                      </button>
+                      {showSharePopover && (
+                        <div className="absolute right-0 mt-2 w-56 rounded-lg border border-slate-700 bg-[#121212] shadow-soft-card p-3 space-y-2 z-50">
+                          <p className="text-xs text-slate-400 px-1">Share your meeting</p>
+                          <button
+                            onClick={handleCopyText}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md bg-[#171717] hover:bg-[#1D1D1F] text-slate-100 text-sm transition-colors"
+                          >
+                            <Copy className="w-4 h-4 text-slate-400" />
+                            <span>Copy Text</span>
+                          </button>
+                          <button
+                            onClick={handleShareLink}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md bg-[#171717] hover:bg-[#1D1D1F] text-slate-100 text-sm transition-colors"
+                          >
+                            <Link className="w-4 h-4 text-slate-400" />
+                            <span>Shareable Link</span>
+                          </button>
+                          <button
+                            onClick={handleEmailParticipants}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md bg-[#171717] hover:bg-[#1D1D1F] text-slate-100 text-sm transition-colors"
+                          >
+                            <Mail className="w-4 h-4 text-slate-400" />
+                            <span>Email Participants</span>
+                          </button>
+                          <button
+                            onClick={handleSlack}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md bg-[#171717] hover:bg-[#1D1D1F] text-slate-100 text-sm transition-colors"
+                          >
+                            <img src={slackLogo} alt="Slack" className="w-4 h-4" />
+                            <span>Send to Slack</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <p className="text-sm text-slate-400">
                     {formatDuration(selectedMeeting.duration)} · {selectedMeeting.transcript.length} segments
                   </p>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {!selectedMeeting.summary && (
-                    <button
-                      onClick={handleGenerateSummary}
-                      className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-400 text-white rounded-lg text-sm transition-colors"
-                    >
-                      Generate Summary
-                    </button>
-                  )}
-                  <div className="relative" ref={shareRef}>
-                    <button
-                      onClick={() => setShowSharePopover((prev) => !prev)}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-[#171717] hover:bg-[#1D1D1F] text-slate-100 rounded-lg text-sm transition-colors border border-[#1A1A1A]"
-                    >
-                      <Share2 className="w-4 h-4" />
-                      Share
-                    </button>
-                    {showSharePopover && (
-                      <div className="absolute right-0 mt-2 w-56 rounded-lg border border-slate-700 bg-[#121212] shadow-soft-card p-3 space-y-2 z-50">
-                        <p className="text-xs text-slate-400 px-1">Share your meeting</p>
-                        <button
-                          onClick={handleCopyText}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md bg-[#171717] hover:bg-[#1D1D1F] text-slate-100 text-sm transition-colors"
-                        >
-                          <Copy className="w-4 h-4 text-slate-400" />
-                          <span>Copy Text</span>
-                        </button>
-                        <button
-                          onClick={handleShareLink}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md bg-[#171717] hover:bg-[#1D1D1F] text-slate-100 text-sm transition-colors"
-                        >
-                          <Link className="w-4 h-4 text-slate-400" />
-                          <span>Shareable Link</span>
-                        </button>
-                        <button
-                          onClick={handleEmailParticipants}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md bg-[#171717] hover:bg-[#1D1D1F] text-slate-100 text-sm transition-colors"
-                        >
-                          <Mail className="w-4 h-4 text-slate-400" />
-                          <span>Email Participants</span>
-                        </button>
-                        <button
-                          onClick={handleSlack}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md bg-[#171717] hover:bg-[#1D1D1F] text-slate-100 text-sm transition-colors"
-                        >
-                          <img src={slackLogo} alt="Slack" className="w-4 h-4" />
-                          <span>Send to Slack</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
               </div>
             </div>
-
-            {/* Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-[#050505]">
               {/* Overview */}
               {selectedMeeting.overview && (
@@ -488,6 +528,93 @@ export default function HistoryView() {
               ) : (
                 <p className="text-sm text-slate-400 text-center py-4">No attendees</p>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Chat Pill */}
+      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50">
+        <button
+          onClick={() => setShowChatPopover(!showChatPopover)}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-400 text-white rounded-full shadow-lg transition-all duration-200 hover:shadow-xl"
+        >
+          <MessageCircle className="w-4 h-4" />
+          <span className="text-sm font-medium">Ask Me Anything</span>
+        </button>
+      </div>
+
+      {/* Chat Popover */}
+      {showChatPopover && (
+        <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 w-96 max-h-96 bg-[#121212] border border-[#1A1A1A] rounded-xl shadow-2xl z-50 flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-[#1A1A1A]">
+            <h3 className="text-sm font-semibold text-white">AI Assistant</h3>
+            <button
+              onClick={() => setShowChatPopover(false)}
+              className="text-slate-400 hover:text-white transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-64">
+            {chatMessages.length === 0 ? (
+              <div className="text-center text-slate-400 text-sm py-4">
+                Ask me anything about your meetings!
+              </div>
+            ) : (
+              chatMessages.map((message, index) => (
+                <div
+                  key={index}
+                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                      message.role === 'user'
+                        ? 'bg-indigo-500 text-white'
+                        : 'bg-[#1A1A1A] text-slate-200'
+                    }`}
+                  >
+                    {message.content}
+                  </div>
+                </div>
+              ))
+            )}
+            {isChatLoading && (
+              <div className="flex justify-start">
+                <div className="bg-[#1A1A1A] rounded-lg px-3 py-2 text-sm text-slate-200">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse"></div>
+                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0.1s' }}></div>
+                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Input */}
+          <div className="p-4 border-t border-[#1A1A1A]">
+            <div className="flex gap-2">
+              <input
+                ref={chatInputRef}
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyPress={handleChatKeyPress}
+                placeholder="Ask about your meetings..."
+                className="flex-1 bg-[#0F0F10] border border-[#1A1A1A] text-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder:text-slate-500"
+                disabled={isChatLoading}
+              />
+              <button
+                onClick={handleSendMessage}
+                disabled={!chatInput.trim() || isChatLoading}
+                className="px-3 py-2 bg-indigo-500 hover:bg-indigo-400 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+              >
+                <Send className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </div>

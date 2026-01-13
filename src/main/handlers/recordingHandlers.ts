@@ -10,6 +10,7 @@ import { AECSync } from '../audio/AECSync';
 import { showCalloutWindow } from '../windows/calloutWindow';
 import { AUDIO_CONFIG } from '../config/constants';
 import { getDatabase, saveDatabase } from '../data/database';
+import type { CalendarAttendee } from '@shared/types';
 
 const logger = createLogger('RecordingHandlers');
 
@@ -20,7 +21,7 @@ let aecSync: AECSync | null = null;
 let activeCalendarContext: {
   calendarEventId: string;
   calendarEventTitle: string;
-  calendarEventAttendees?: string[];
+  calendarEventAttendees?: CalendarAttendee[];
   calendarEventStart: string;
   calendarEventEnd: string;
   calendarProvider: string;

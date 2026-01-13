@@ -84,7 +84,7 @@ export default function MeetingContextPreview({ meeting, onDismiss }: MeetingCon
                       key={i}
                       className="inline-block px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded text-xs text-slate-700 dark:text-slate-300 truncate"
                     >
-                      {attendee}
+                      {typeof attendee === 'string' ? attendee : attendee.email}
                     </span>
                   ))}
                   {meeting.attendees.length > 3 && (

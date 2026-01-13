@@ -353,7 +353,13 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
           </div>
           
           {meeting?.attendees && meeting.attendees.length > 0 ? (
-            <AttendeesList attendeeEmails={meeting.attendees} />
+            <AttendeesList 
+              attendeeEmails={
+                meeting.attendees.map((a: any) => 
+                  typeof a === 'string' ? a : a.email
+                )
+              } 
+            />
           ) : (
             <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 hover:bg-white/80 dark:hover:bg-slate-700/80 transition text-slate-600 dark:text-slate-400 whitespace-nowrap">
               <Users className="w-4 h-4" />

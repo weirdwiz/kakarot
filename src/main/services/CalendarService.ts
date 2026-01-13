@@ -42,7 +42,7 @@ export class CalendarService {
           tokenUrl: 'https://oauth2.googleapis.com/token',
           clientId,
           clientSecret,
-          scope: 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+          scope: 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/contacts.readonly',
           extraAuthParams: {
             access_type: 'offline',
             prompt: 'consent',
@@ -457,6 +457,11 @@ export class CalendarService {
           }
         }
         
+        const attendees = item.attendees?.map((a: any) => ({
+          email: a.email,
+          name: a.displayName,
+        })) ?? [];
+
         return {
           id: item.id,
           title: item.summary || 'Untitled',
@@ -464,7 +469,7 @@ export class CalendarService {
           end: new Date(item.end?.dateTime || item.end?.date || item.start?.dateTime || item.start?.date),
           provider: 'google',
           location: meetingLink,
-          attendees: item.attendees?.map((a: any) => a.email) ?? [],
+          attendees,
           description: item.description,
         };
       });
@@ -525,7 +530,10 @@ export class CalendarService {
           end: new Date(item.end?.dateTime || item.end),
           provider: 'outlook',
           location: meetingLink,
-          attendees: item.attendees?.map((a: any) => a.emailAddress?.address) ?? [],
+          attendees: item.attendees?.map((a: any) => ({
+            email: a.emailAddress?.address,
+            name: a.emailAddress?.name,
+          })) ?? [],
           description: item.bodyPreview,
         };
       });
@@ -714,6 +722,55 @@ export class CalendarService {
     }
     
     return null;
+  }
+
+  /**
+   * Fetch person's name from Google People API using their email
+   * Returns null if not found or on error
+   */
+  async fetchPersonNameFromGoogle(email: string): Promise<string | null> {
+    const settings = this.settingsRepo.getSettings();
+    if (!settings.calendarConnections.google) return null;
+
+    try {
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      if (!clientId || !clientSecret) return null;
+
+      const tokens = await this.ensureFreshToken('google', settings.calendarConnections.google, {
+        tokenUrl: 'https://oauth2.googleapis.com/token',
+        clientId,
+        clientSecret,
+      });
+
+      // Search for person by email using People API
+      const url = new URL('https://people.googleapis.com/v1/people:searchContacts');
+      url.searchParams.set('query', email);
+      url.searchParams.set('readMask', 'names,emailAddresses');
+
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${tokens.accessToken}` },
+      });
+
+      if (!response.ok) {
+        logger.debug('People API search failed', { email, status: response.status });
+        return null;
+      }
+
+      const data = await response.json();
+      const results = data.results || [];
+      
+      if (results.length > 0 && results[0].person?.names?.[0]?.displayName) {
+        const displayName = results[0].person.names[0].displayName;
+        logger.info('Fetched name from People API', { email, name: displayName });
+        return displayName;
+      }
+
+      return null;
+    } catch (error) {
+      logger.debug('Failed to fetch person from People API', { email, error: (error as Error).message });
+      return null;
+    }
   }
 
   /**

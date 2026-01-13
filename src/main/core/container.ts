@@ -6,6 +6,7 @@ import { NoteGenerationService } from '../services/NoteGenerationService';
 import { HubSpotService } from '../services/HubSpotService';
 import { SalesforceService } from '../services/SalesforceService';
 import { MeetingNotificationService } from '../services/MeetingNotificationService';
+import { PrepService } from '../services/PrepService';
 
 const logger = createLogger('Container');
 
@@ -20,6 +21,7 @@ export interface AppContainer {
   hubSpotService: HubSpotService;
   salesforceService: SalesforceService;
   meetingNotificationService: MeetingNotificationService;
+  prepService: PrepService;
 }
 
 let container: AppContainer | null = null;
@@ -31,6 +33,14 @@ export function initializeContainer(): AppContainer {
   const settingsRepo = new SettingsRepository();
   const peopleRepo = new PeopleRepository();
   const calendarService = new CalendarService(settingsRepo);
+  
+  // Inject peopleRepo into meetingRepo for attendee syncing
+  meetingRepo.setPeopleRepository(peopleRepo);
+  
+  // Inject People API fetcher for smart name resolution
+  meetingRepo.setPeopleApiFetcher((email: string) => 
+    calendarService.fetchPersonNameFromGoogle(email)
+  );
 
   // Initialize default settings
   settingsRepo.initializeDefaults();
@@ -85,6 +95,9 @@ export function initializeContainer(): AppContainer {
   // Initialize meeting notification service
   const meetingNotificationService = new MeetingNotificationService(calendarService);
 
+  // Initialize prep service
+  const prepService = new PrepService();
+
   container = {
     meetingRepo,
     calloutRepo,
@@ -96,6 +109,7 @@ export function initializeContainer(): AppContainer {
     hubSpotService,
     salesforceService,
     meetingNotificationService,
+    prepService,
   };
 
   logger.info('Container initialized');

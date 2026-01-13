@@ -400,7 +400,11 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     ? completedMeeting.title 
     : recordingTitle;
   const displayDate = activeCalendarContext?.start || (completedMeeting ? new Date(completedMeeting.createdAt) : new Date());
-  const displayAttendees: string[] = (activeCalendarContext?.attendees as any) || completedMeeting?.attendeeEmails || completedMeeting?.participants || [];
+  const displayAttendees: string[] = (
+    activeCalendarContext?.attendees?.map((a: any) => 
+      typeof a === 'string' ? a : a.email
+    ) || completedMeeting?.attendeeEmails || completedMeeting?.participants || []
+  );
   const displayLocation = activeCalendarContext?.location;
 
   React.useEffect(() => {

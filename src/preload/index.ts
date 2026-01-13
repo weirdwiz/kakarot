@@ -8,6 +8,7 @@ import type {
   TranscriptUpdate,
   Callout,
   CalendarEvent,
+  CalendarAttendee,
   CalendarConnections,
   Person,
 } from '@shared/types';
@@ -19,7 +20,7 @@ contextBridge.exposeInMainWorld('kakarot', {
     start: (calendarContext?: {
       calendarEventId: string;
       calendarEventTitle: string;
-      calendarEventAttendees?: string[];
+      calendarEventAttendees?: (string | CalendarAttendee)[];
       calendarEventStart: string;
       calendarEventEnd: string;
       calendarProvider: string;
@@ -105,6 +106,18 @@ contextBridge.exposeInMainWorld('kakarot', {
     },
     dismiss: (id: string): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.CALLOUT_DISMISS, id),
+  },
+
+  // Chat
+  chat: {
+    sendMessage: (message: string, context?: any): Promise<string> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CHAT_SEND_MESSAGE, message, context),
+  },
+
+  // Meeting Prep
+  prep: {
+    generateBriefing: (input: any): Promise<any> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PREP_GENERATE_BRIEFING, input),
   },
 
   // Settings
@@ -199,7 +212,7 @@ declare global {
         start: (calendarContext?: {
           calendarEventId: string;
           calendarEventTitle: string;
-          calendarEventAttendees?: string[];
+          calendarEventAttendees?: (string | CalendarAttendee)[];
           calendarEventStart: string;
           calendarEventEnd: string;
           calendarProvider: string;
@@ -235,6 +248,12 @@ declare global {
       callout: {
         onShow: (callback: (callout: Callout) => void) => () => void;
         dismiss: (id: string) => Promise<void>;
+      };
+      chat: {
+        sendMessage: (message: string, context?: any) => Promise<string>;
+      };
+      prep: {
+        generateBriefing: (input: any) => Promise<any>;
       };
       settings: {
         get: () => Promise<AppSettings>;

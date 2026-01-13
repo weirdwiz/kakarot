@@ -1,38 +1,71 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { Search, Users, Calendar, Clock, FileText, TrendingUp, Mail, Building2, ChevronRight } from 'lucide-react';
-import type { Person, Meeting } from '@shared/types';
+import { Users, Building2, Sparkles, AlertCircle, CheckCircle, X } from 'lucide-react';
+import type { Person } from '@shared/types';
 import { formatDuration } from '../lib/formatters';
 
+interface MeetingPrepResult {
+  meeting: {
+    type: string;
+    duration_minutes: number;
+  };
+  generated_at: string;
+  participants: Array<{
+    name: string;
+    email: string | null;
+    history_strength: 'strong' | 'weak' | 'org-only' | 'none';
+    context: {
+      last_meeting_date: string | null;
+      meeting_count: number;
+      recent_topics: string[];
+      key_points: string[];
+    };
+    talking_points: string[];
+    questions_to_ask: string[];
+    background: string;
+  }>;
+  agenda: {
+    opening: string;
+    key_topics: string[];
+    closing: string;
+  };
+  success_metrics: string[];
+  risk_mitigation: string[];
+}
+
 export default function PrepView() {
-  const { meetings } = useAppStore();
+  const { settings } = useAppStore();
   const [people, setPeople] = useState<Person[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedPeople, setSelectedPeople] = useState<Person[]>([]);
-  const [upcomingMeetings, setUpcomingMeetings] = useState<any[]>([]);
+  const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const [isLoadingPeople, setIsLoadingPeople] = useState(true);
+  const [meetingType, setMeetingType] = useState('');
+  const [customMeetingType, setCustomMeetingType] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatingError, setGeneratingError] = useState<string | null>(null);
+  const [briefingResult, setBriefingResult] = useState<MeetingPrepResult | null>(null);
+
+  // Get meeting types from settings
+  const meetingTypes = useMemo(() => {
+    const customTypes = settings?.customMeetingTypes || [];
+    return customTypes.length > 0 ? [...customTypes, 'Custom...'] : [
+      'Tech Sync', 'Kick-Off Meeting', 'Cadence Call', 'Product Demo', 'Sales Call',
+      'Check-in', 'Strategy Session', 'Sprint Planning', 'Retrospective', '1:1 Meeting', 'Custom...'
+    ];
+  }, [settings?.customMeetingTypes]);
 
   useEffect(() => {
     loadPeople();
-    loadUpcomingMeetings();
   }, []);
 
   const loadPeople = async () => {
     setIsLoadingPeople(true);
     try {
       const peopleList = await window.kakarot.people.list();
+      console.log('[PrepView] Loaded people:', peopleList);
       setPeople(peopleList);
     } finally {
       setIsLoadingPeople(false);
-    }
-  };
-
-  const loadUpcomingMeetings = async () => {
-    try {
-      const upcoming = await window.kakarot.calendar.getUpcoming();
-      setUpcomingMeetings(upcoming || []);
-    } catch (error) {
-      console.error('Failed to load upcoming meetings:', error);
     }
   };
 
@@ -48,39 +81,23 @@ export default function PrepView() {
   }, [people, searchQuery]);
 
   const handleSelectPerson = (person: Person) => {
-    if (selectedPeople.find(p => p.email === person.email)) {
-      setSelectedPeople(selectedPeople.filter(p => p.email !== person.email));
-    } else {
-      setSelectedPeople([...selectedPeople, person]);
+    setSelectedPerson(person);
+    setSearchQuery('');
+  };
+
+  const isCustomMeetingType = meetingType === 'Custom...';
+  const finalMeetingType = isCustomMeetingType ? customMeetingType : meetingType;
+
+  const getDisplayName = (person: Person): string => {
+    if (person.name && person.name.trim()) {
+      return person.name;
     }
-  };
-
-  const getPersonMeetings = (person: Person): Meeting[] => {
-    return meetings.filter(m =>
-      m.attendeeEmails?.includes(person.email)
-    ).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  };
-
-  const getRecentTopics = (person: Person): string[] => {
-    const personMeetings = getPersonMeetings(person);
-    const topics = new Set<string>();
-    
-    personMeetings.slice(0, 3).forEach(meeting => {
-      if (meeting.notesPlain) {
-        // Extract key topics from notes (simple heuristic)
-        const lines = meeting.notesPlain.split('\n');
-        lines.forEach(line => {
-          if (line.includes('##') || line.includes('**')) {
-            const topic = line.replace(/[#*]/g, '').trim();
-            if (topic.length > 10 && topic.length < 80) {
-              topics.add(topic);
-            }
-          }
-        });
-      }
-    });
-    
-    return Array.from(topics).slice(0, 3);
+    // Extract name from email (e.g., "john.doe@company.com" -> "John Doe")
+    const localPart = person.email.split('@')[0];
+    const nameParts = localPart.split(/[._-]/).filter(part => part.length > 0);
+    return nameParts
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(' ');
   };
 
   const getAvatarColor = (email: string) => {
@@ -99,15 +116,12 @@ export default function PrepView() {
   };
 
   const getInitials = (person: Person) => {
-    if (person.name) {
-      return person.name
-        .split(' ')
-        .map(n => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2);
+    const displayName = getDisplayName(person);
+    const nameParts = displayName.split(' ');
+    if (nameParts.length >= 2) {
+      return (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase();
     }
-    return person.email[0].toUpperCase();
+    return displayName.slice(0, 2).toUpperCase();
   };
 
   const formatLastMeeting = (date: Date) => {
@@ -122,262 +136,422 @@ export default function PrepView() {
     return `${Math.floor(diffDays / 30)} months ago`;
   };
 
-  return (
-    <div className="h-[calc(100vh-200px)] flex flex-col">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900 dark:text-white mb-2">
-          Meeting Prep
-        </h1>
-        <p className="text-slate-600 dark:text-slate-400">
-          Select attendees to review past context and prepare for your next meeting
-        </p>
-      </div>
+  const handleGenerateBriefing = async () => {
+    if (!finalMeetingType.trim() || !selectedPerson) {
+      setGeneratingError('Please select a person and meeting type');
+      return;
+    }
 
-      <div className="flex-1 flex gap-6 min-h-0">
-        {/* People Selection Panel */}
-        <div className="w-96 flex flex-col bg-gray-50 dark:bg-slate-800/30 rounded-xl border border-gray-200 dark:border-slate-700/50">
-          {/* Search */}
-          <div className="p-4 border-b border-gray-200 dark:border-slate-700/50">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search attendees..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 text-gray-900 dark:text-white rounded-lg px-4 py-2 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+    setIsGenerating(true);
+    setGeneratingError(null);
+    setBriefingResult(null);
+
+    try {
+      const payload = {
+        meeting: {
+          meeting_type: finalMeetingType,
+          objective: finalMeetingType,
+        },
+        participants: [{
+          name: selectedPerson.name || selectedPerson.email,
+          email: selectedPerson.email,
+          company: selectedPerson.organization || null,
+          domain: selectedPerson.email?.split('@')[1] || null,
+        }],
+      };
+
+      const result = await window.kakarot.prep.generateBriefing(payload);
+      setBriefingResult(result);
+    } catch (error) {
+      setGeneratingError(
+        error instanceof Error ? error.message : 'Failed to generate briefing'
+      );
+      console.error('Failed to generate briefing:', error);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  return (
+    <div className="h-[calc(100vh-200px)] flex flex-col overflow-hidden">
+      {briefingResult ? (
+        // Briefing Result View
+        <div className="flex flex-col overflow-hidden">
+          {/* Header with back button */}
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200 dark:border-slate-700">
+            <div>
+              <h1 className="text-2xl font-semibold text-slate-900 dark:text-white mb-1">
+                Meeting Briefing
+              </h1>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Generated on {new Date(briefingResult.generated_at).toLocaleString()}
+              </p>
             </div>
-            {selectedPeople.length > 0 && (
-              <div className="mt-2 text-xs text-purple-600 dark:text-purple-400 font-medium">
-                {selectedPeople.length} selected
-              </div>
-            )}
+            <button
+              onClick={() => {
+                setBriefingResult(null);
+                setMeetingType('');
+                setCustomMeetingType('');
+                setSelectedPerson(null);
+              }}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+            >
+              Generate Another
+            </button>
           </div>
 
-          {/* People List */}
-          <div className="flex-1 overflow-y-auto p-2">
-            {isLoadingPeople ? (
-              <div className="p-4 text-center text-gray-500">Loading...</div>
-            ) : filteredPeople.length === 0 ? (
-              <div className="p-6 text-center">
-                <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                <p className="text-gray-600 dark:text-gray-400 font-medium">No contacts found</p>
-                <p className="text-sm text-gray-500 mt-1">
-                  {searchQuery ? 'Try a different search' : 'Contacts appear after meetings'}
-                </p>
+          {/* Briefing Content */}
+          <div className="flex-1 overflow-y-auto space-y-6">
+            {/* Meeting Overview */}
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-6 border border-blue-200 dark:border-blue-800">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+                {briefingResult.meeting.type}
+              </h2>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-600 dark:text-gray-400 mb-2">Duration</p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">{briefingResult.meeting.duration_minutes} minutes</p>
+                </div>
               </div>
-            ) : (
-              <div className="space-y-1">
-                {filteredPeople.map((person) => {
-                  const isSelected = selectedPeople.some(p => p.email === person.email);
-                  return (
-                    <button
-                      key={person.email}
-                      onClick={() => handleSelectPerson(person)}
-                      className={`w-full p-3 rounded-lg text-left transition-colors ${
-                        isSelected
-                          ? 'bg-purple-50 dark:bg-purple-900/20 border border-purple-300 dark:border-purple-700'
-                          : 'hover:bg-gray-100 dark:hover:bg-slate-700/50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-full ${getAvatarColor(person.email)} flex items-center justify-center text-white font-medium text-sm flex-shrink-0`}>
-                          {getInitials(person)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                            {person.name || person.email}
-                          </h3>
-                          {person.name && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{person.email}</p>
-                          )}
-                          {person.organization && (
-                            <p className="text-xs text-gray-600 dark:text-gray-300 truncate mt-0.5">{person.organization}</p>
-                          )}
-                        </div>
-                        {isSelected && (
-                          <div className="w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center flex-shrink-0">
-                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
+            </div>
+
+            {/* Agenda */}
+            <div className="bg-white dark:bg-slate-800/50 rounded-xl p-6 border border-gray-200 dark:border-slate-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Agenda</h3>
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm font-medium text-purple-600 dark:text-purple-400 mb-1">Opening</p>
+                  <p className="text-gray-700 dark:text-gray-300">{briefingResult.agenda.opening}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-purple-600 dark:text-purple-400 mb-2">Key Topics</p>
+                  <ul className="space-y-2">
+                    {briefingResult.agenda.key_topics.map((topic, idx) => (
+                      <li key={idx} className="flex gap-3">
+                        <span className="text-purple-500 flex-shrink-0 mt-1">•</span>
+                        <span className="text-gray-700 dark:text-gray-300">{topic}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-purple-600 dark:text-purple-400 mb-1">Closing</p>
+                  <p className="text-gray-700 dark:text-gray-300">{briefingResult.agenda.closing}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Success Metrics */}
+            {briefingResult.success_metrics.length > 0 && (
+              <div className="bg-white dark:bg-slate-800/50 rounded-xl p-6 border border-gray-200 dark:border-slate-700">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Success Metrics</h3>
+                <ul className="space-y-2">
+                  {briefingResult.success_metrics.map((metric, idx) => (
+                    <li key={idx} className="flex gap-3">
+                      <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0 mt-1" />
+                      <span className="text-gray-700 dark:text-gray-300">{metric}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
+
+            {/* Risk Mitigation */}
+            {briefingResult.risk_mitigation.length > 0 && (
+              <div className="bg-white dark:bg-slate-800/50 rounded-xl p-6 border border-gray-200 dark:border-slate-700">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Risk Mitigation</h3>
+                <ul className="space-y-2">
+                  {briefingResult.risk_mitigation.map((risk, idx) => (
+                    <li key={idx} className="flex gap-3">
+                      <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-1" />
+                      <span className="text-gray-700 dark:text-gray-300">{risk}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Participant Sections */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Participant Insights</h3>
+              {briefingResult.participants.map((participant, idx) => (
+                <div key={idx} className="bg-white dark:bg-slate-800/50 rounded-xl p-6 border border-gray-200 dark:border-slate-700">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h4 className="text-lg font-semibold text-gray-900 dark:text-white">{participant.name}</h4>
+                      {participant.email && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">{participant.email}</p>
+                      )}
+                    </div>
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                      participant.history_strength === 'strong'
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                        : participant.history_strength === 'weak'
+                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                        : participant.history_strength === 'org-only'
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                        : 'bg-gray-100 text-gray-800 dark:bg-gray-700/30 dark:text-gray-300'
+                    }`}>
+                      {participant.history_strength === 'strong' && 'Strong History'}
+                      {participant.history_strength === 'weak' && 'Weak History'}
+                      {participant.history_strength === 'org-only' && 'Same Org'}
+                      {participant.history_strength === 'none' && 'No History'}
+                    </span>
+                  </div>
+
+                  {/* Context Info */}
+                  <div className="grid grid-cols-3 gap-3 mb-4 text-sm">
+                    <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-2">
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Meetings</p>
+                      <p className="font-semibold text-gray-900 dark:text-white">{participant.context.meeting_count}</p>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-2">
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Recent Topics</p>
+                      <p className="font-semibold text-gray-900 dark:text-white">{participant.context.recent_topics.length}</p>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-2">
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Last Meeting</p>
+                      <p className="font-semibold text-gray-900 dark:text-white text-xs">
+                        {participant.context.last_meeting_date ? new Date(participant.context.last_meeting_date).toLocaleDateString() : 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Background */}
+                  {participant.background && (
+                    <div className="mb-4 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-1 font-medium">Background</p>
+                      <p className="text-sm text-gray-700 dark:text-gray-300">{participant.background}</p>
+                    </div>
+                  )}
+
+                  {/* Talking Points */}
+                  {participant.talking_points.length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">Talking Points</p>
+                      <ul className="space-y-1">
+                        {participant.talking_points.map((point, pidx) => (
+                          <li key={pidx} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
+                            <span className="text-purple-500 flex-shrink-0">→</span>
+                            <span>{point}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Questions to Ask */}
+                  {participant.questions_to_ask.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">Questions to Ask</p>
+                      <ul className="space-y-1">
+                        {participant.questions_to_ask.map((question, qidx) => (
+                          <li key={qidx} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
+                            <span className="text-blue-500 flex-shrink-0">?</span>
+                            <span>{question}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
+      ) : (
+        // Form View
+        <>
+          {/* Header */}
+          <div className="mb-8">
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white mb-2">
+              Meeting Prep
+            </h1>
+            <p className="text-slate-600 dark:text-slate-400">
+              Get ready for your next meeting in less than 5 minutes
+            </p>
+          </div>
 
-        {/* Context Panel */}
-        <div className="flex-1 overflow-y-auto">
-          {selectedPeople.length === 0 ? (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center max-w-md">
-                <Users className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                  Select attendees to prepare
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Choose people from the left to see your meeting history, past topics, and contextual information
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Summary Card */}
-              <div className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-xl p-6 border border-purple-200 dark:border-purple-800">
-                <div className="flex items-start gap-4">
-                  <div className="flex -space-x-2">
-                    {selectedPeople.slice(0, 3).map((person) => (
-                      <div
-                        key={person.email}
-                        className={`w-12 h-12 rounded-full ${getAvatarColor(person.email)} flex items-center justify-center text-white font-medium border-2 border-white dark:border-slate-800`}
-                      >
-                        {getInitials(person)}
-                      </div>
-                    ))}
+          {/* Natural language form */}
+          <div className="max-w-4xl">
+            <div className="flex flex-wrap items-center gap-3 text-lg text-slate-700 dark:text-slate-300">
+              <span>I have a meeting with</span>
+              
+              {/* Person Selection */}
+              {selectedPerson ? (
+                <button
+                  onClick={() => setSelectedPerson(null)}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:border-slate-400 dark:hover:border-slate-500 transition-colors group"
+                >
+                  <div className={`w-6 h-6 rounded-full ${getAvatarColor(selectedPerson.email)} flex items-center justify-center text-white text-xs font-medium`}>
+                    {getInitials(selectedPerson)}
                   </div>
-                  <div className="flex-1">
-                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-                      Meeting with {selectedPeople.map(p => p.name || p.email).join(', ')}
-                    </h2>
-                    <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
-                        {selectedPeople.reduce((sum, p) => sum + p.meetingCount, 0)} past meetings
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        {formatDuration(selectedPeople.reduce((sum, p) => sum + p.totalDuration, 0))} together
-                      </span>
+                  <div className="flex flex-col">
+                    <span className="font-medium text-slate-900 dark:text-white">
+                      {getDisplayName(selectedPerson)}
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{selectedPerson.email}</span>
+                  </div>
+                  <X className="w-4 h-4 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300" />
+                </button>
+              ) : (
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search person..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-64 px-3 py-1.5 border border-slate-300 dark:border-slate-600 rounded-lg focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400"
+                  />
+                  {searchQuery && filteredPeople.length > 0 && (
+                    <div className="absolute z-10 mt-2 w-80 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg max-h-72 overflow-y-auto">
+                      {filteredPeople.slice(0, 5).map((person) => (
+                        <button
+                          key={person.email}
+                          onClick={() => handleSelectPerson(person)}
+                          className="w-full p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-3 text-left border-b border-slate-100 dark:border-slate-700/50 last:border-0"
+                        >
+                          <div className={`w-8 h-8 rounded-full ${getAvatarColor(person.email)} flex items-center justify-center text-white text-sm font-medium flex-shrink-0`}>
+                            {getInitials(person)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-900 dark:text-white truncate">
+                              {getDisplayName(person)}
+                            </div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                              {person.email}
+                              {person.organization && ' • '}
+                              {person.organization || ''}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <span>about</span>
+              
+              {/* Meeting Type Dropdown */}
+              <select
+                value={meetingType}
+                onChange={(e) => setMeetingType(e.target.value)}
+                className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 rounded-lg focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium min-w-[180px]"
+              >
+                <option value="">Select type...</option>
+                {meetingTypes.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Custom inputs */}
+            {isCustomMeetingType && (
+              <div className="mt-4 ml-0">
+                <input
+                  type="text"
+                  placeholder="Enter custom meeting type..."
+                  value={customMeetingType}
+                  onChange={(e) => setCustomMeetingType(e.target.value)}
+                  className="w-full max-w-md px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  autoFocus
+                />
+              </div>
+            )}
+
+            {/* Error Message */}
+            {generatingError && (
+              <div className="mt-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                <p className="text-sm text-red-700 dark:text-red-300">{generatingError}</p>
+              </div>
+            )}
+
+            {/* Generate Button */}
+            <button
+              onClick={handleGenerateBriefing}
+              disabled={isGenerating || !selectedPerson || !finalMeetingType.trim()}
+              className="mt-6 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-semibold rounded-lg transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isGenerating ? (
+                <>
+                  <div className="animate-spin">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  Analyzing your meeting history...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-5 h-5" />
+                  Prepare My Meeting
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Context Preview for Selected Person */}
+          {selectedPerson && !briefingResult && (
+            <div className="mt-8 max-w-4xl bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-6">
+              <div className="flex items-start gap-4 mb-4">
+                <div className={`w-12 h-12 rounded-full ${getAvatarColor(selectedPerson.email)} flex items-center justify-center text-white font-medium flex-shrink-0`}>
+                  {getInitials(selectedPerson)}
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                    {getDisplayName(selectedPerson)}
+                  </h3>
+                  <div className="flex flex-col gap-1 mt-1">
+                    <div className="text-sm text-slate-600 dark:text-slate-400">{selectedPerson.email}</div>
+                    <div className="flex items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
+                      {selectedPerson.organization && (
+                        <span className="flex items-center gap-1">
+                          <Building2 className="w-3.5 h-3.5" />
+                          {selectedPerson.organization}
+                        </span>
+                      )}
+                      {selectedPerson.lastMeetingAt && (
+                        <span>Last met: {formatLastMeeting(selectedPerson.lastMeetingAt)}</span>
+                      )}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Individual Contexts */}
-              {selectedPeople.map((person) => {
-                const personMeetings = getPersonMeetings(person);
-                const recentTopics = getRecentTopics(person);
-                
-                return (
-                  <div key={person.email} className="bg-white dark:bg-slate-800/50 rounded-xl p-6 border border-gray-200 dark:border-slate-700">
-                    <div className="flex items-start gap-4 mb-4">
-                      <div className={`w-12 h-12 rounded-full ${getAvatarColor(person.email)} flex items-center justify-center text-white font-medium flex-shrink-0`}>
-                        {getInitials(person)}
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                          {person.name || person.email}
-                        </h3>
-                        <div className="flex items-center gap-3 mt-1 text-sm text-gray-600 dark:text-gray-400">
-                          {person.organization && (
-                            <span className="flex items-center gap-1">
-                              <Building2 className="w-3.5 h-3.5" />
-                              {person.organization}
-                            </span>
-                          )}
-                          <span>Last met: {formatLastMeeting(person.lastMeetingAt)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Stats */}
-                    <div className="grid grid-cols-3 gap-3 mb-4">
-                      <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Meetings</div>
-                        <div className="text-xl font-semibold text-gray-900 dark:text-white">{person.meetingCount}</div>
-                      </div>
-                      <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Total Time</div>
-                        <div className="text-xl font-semibold text-gray-900 dark:text-white">
-                          {formatDuration(person.totalDuration)}
-                        </div>
-                      </div>
-                      <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Avg Duration</div>
-                        <div className="text-xl font-semibold text-gray-900 dark:text-white">
-                          {formatDuration(Math.round(person.totalDuration / person.meetingCount))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Recent Topics */}
-                    {recentTopics.length > 0 && (
-                      <div className="mb-4">
-                        <div className="flex items-center gap-2 mb-2">
-                          <TrendingUp className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                          <h4 className="text-sm font-medium text-gray-900 dark:text-white">Recent Topics</h4>
-                        </div>
-                        <div className="space-y-1">
-                          {recentTopics.map((topic, idx) => (
-                            <div key={idx} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                              <ChevronRight className="w-3 h-3 text-gray-400" />
-                              <span>{topic}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Notes */}
-                    {person.notes && (
-                      <div className="mb-4">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                          <h4 className="text-sm font-medium text-gray-900 dark:text-white">Your Notes</h4>
-                        </div>
-                        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                          {person.notes}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Recent Meetings */}
-                    {personMeetings.length > 0 && (
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <Calendar className="w-4 h-4 text-green-600 dark:text-green-400" />
-                          <h4 className="text-sm font-medium text-gray-900 dark:text-white">
-                            Recent Meetings ({personMeetings.length})
-                          </h4>
-                        </div>
-                        <div className="space-y-2">
-                          {personMeetings.slice(0, 3).map((meeting) => (
-                            <div key={meeting.id} className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-3">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex-1 min-w-0">
-                                  <h5 className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                                    {meeting.title}
-                                  </h5>
-                                  <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                    <span>{new Date(meeting.createdAt).toLocaleDateString()}</span>
-                                    <span>{formatDuration(meeting.duration)}</span>
-                                  </div>
-                                </div>
-                              </div>
-                              {meeting.overview && (
-                                <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 line-clamp-2">
-                                  {meeting.overview}
-                                </p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3">
+                  <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Meetings</div>
+                  <div className="text-xl font-semibold text-slate-900 dark:text-white">{selectedPerson.meetingCount || 0}</div>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3">
+                  <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Total Time</div>
+                  <div className="text-xl font-semibold text-slate-900 dark:text-white">
+                    {formatDuration(selectedPerson.totalDuration || 0)}
                   </div>
-                );
-              })}
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3">
+                  <div className="text-xs text-slate-600 dark:text-slate-400 mb-1">Status</div>
+                  <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                    {(selectedPerson.meetingCount || 0) === 0 ? 'First time' : 'Returning'}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
-        </div>
-      </div>
+
+          {/* No contacts state */}
+          {!selectedPerson && !isLoadingPeople && people.length === 0 && (
+            <div className="mt-12 text-center">
+              <Users className="w-16 h-16 mx-auto mb-4 text-slate-300 dark:text-slate-600" />
+              <h3 className="text-lg font-medium text-slate-900 dark:text-white mb-2">
+                No contacts yet
+              </h3>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Contacts will appear here after you record your first meeting
+              </p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

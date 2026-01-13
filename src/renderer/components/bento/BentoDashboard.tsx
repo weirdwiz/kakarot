@@ -192,7 +192,7 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
       // Create a dismissed meeting record without starting recording
       const meetingId = await window.kakarot.meetings.createDismissed(
         event.title,
-        event.attendees
+        event.attendees?.map((a: any) => typeof a === 'string' ? a : a.email)
       );
 
       console.log('[BentoDashboard] Created dismissed meeting:', meetingId);

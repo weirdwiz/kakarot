@@ -184,6 +184,8 @@ export interface AppSettings {
   crmOAuthSalesforceClientSecret?: string;
   crmOAuthHubSpotClientId?: string;
   crmOAuthHubSpotClientSecret?: string;
+  // Custom meeting types for PrepView
+  customMeetingTypes?: string[];
 }
 
 // IPC payloads
@@ -197,6 +199,11 @@ export interface CalloutTrigger {
 }
 
 // Calendar
+export interface CalendarAttendee {
+  email: string;
+  name?: string; // displayName from Google or name from Outlook
+}
+
 export interface CalendarEvent {
   id: string;
   title: string;
@@ -204,7 +211,7 @@ export interface CalendarEvent {
   end: Date;
   provider: 'google' | 'outlook' | 'icloud' | 'unknown';
   location?: string;
-  attendees?: string[];
+  attendees?: CalendarAttendee[];
   description?: string;
 }
 

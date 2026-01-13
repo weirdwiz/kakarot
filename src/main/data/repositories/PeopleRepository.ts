@@ -141,6 +141,67 @@ export class PeopleRepository {
     };
   }
 
+  /**
+   * Upsert person from calendar attendee with smart name resolution
+   * 1. Use displayName from calendar if available
+   * 2. Fallback to People API lookup
+   * 3. Final fallback to email extraction
+   */
+  async upsertFromCalendarAttendee(
+    email: string,
+    calendarDisplayName?: string,
+    organization?: string,
+    peopleApiFetcher?: (email: string) => Promise<string | null>
+  ): Promise<void> {
+    if (!email) return;
+
+    const db = getDatabase();
+    const now = Date.now();
+
+    // Step 1: Try calendar displayName
+    let name = calendarDisplayName;
+
+    // Step 2: If no calendar name, try People API
+    if (!name && peopleApiFetcher) {
+      try {
+        name = await peopleApiFetcher(email) || undefined;
+      } catch (error) {
+        logger.debug('People API lookup failed', { email, error: (error as Error).message });
+      }
+    }
+
+    // Step 3: Final fallback - extract from email
+    if (!name) {
+      const localPart = email.split('@')[0];
+      const nameParts = localPart.split(/[._-]/).filter(part => part.length > 0);
+      name = nameParts
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+        .join(' ');
+      logger.debug('Using email-extracted name', { email, name });
+    }
+
+    const existing = db.exec('SELECT * FROM people WHERE email = ?', [email]);
+
+    if (existing[0]?.values.length > 0) {
+      // Update existing person - only update if current name is null or email-derived
+      db.run(
+        'UPDATE people SET name = COALESCE(name, ?), organization = COALESCE(organization, ?), updated_at = ? WHERE email = ?',
+        [name, organization || null, now, email]
+      );
+      logger.info('Updated person from calendar', { email, name, source: calendarDisplayName ? 'calendar' : 'fallback' });
+    } else {
+      // Create new person
+      db.run(
+        `INSERT INTO people (email, name, last_meeting_at, meeting_count, total_duration, organization, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [email, name, now, 0, 0, organization || null, now, now]
+      );
+      logger.info('Created person from calendar', { email, name, source: calendarDisplayName ? 'calendar' : 'fallback' });
+    }
+
+    saveDatabase();
+  }
+
   private rowToPerson(row: unknown[]): Person {
     return {
       email: row[0] as string,

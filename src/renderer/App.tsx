@@ -2,9 +2,10 @@ import React, { useEffect, useCallback, useState } from 'react';
 import { useAppStore } from './stores/appStore';
 import { useOnboardingStore } from './stores/onboardingStore';
 import RecordingView from './components/RecordingView';
+import PrepView from './components/PrepView';
 import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
-import PrepView from './components/PrepView';
+import InteractView from './components/InteractView';
 import PeopleView from './components/PeopleView';
 import Sidebar from './components/Sidebar';
 import OnboardingFlow from './components/onboarding/OnboardingFlow';
@@ -119,22 +120,17 @@ export default function App() {
         </header>
 
         {/* Scrollable Content */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
-            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121212] shadow-soft-card">
-              <div className="p-4 sm:p-6">
+        <main className={`flex-1 ${view === 'history' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+          <div className={`max-w-6xl mx-auto px-4 sm:px-6 ${view === 'history' ? 'h-full' : 'py-6'}`}>
+            <div className={`rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121212] shadow-soft-card ${view === 'history' ? 'h-full' : ''}`}>
+              <div className={`${view === 'history' ? 'h-full p-0' : 'p-4 sm:p-6'}`}>
                 {view === 'recording' && (
                   pillarTab === 'notes' ? (
                     <RecordingView onSelectTab={setPillarTab} />
                   ) : pillarTab === 'prep' ? (
                     <PrepView />
                   ) : (
-                    <div className="h-[60vh] flex items-center justify-center text-center text-slate-500 dark:text-slate-400">
-                      <div>
-                        <p className="text-lg font-medium mb-2">Interact Space</p>
-                        <p className="text-sm">This area is reserved for future features.</p>
-                      </div>
-                    </div>
+                    <InteractView />
                   )
                 )}
                 {view === 'history' && <HistoryView />}
