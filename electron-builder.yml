@@ -16,8 +16,8 @@ files:
 mac:
   category: public.app-category.productivity
   target:
-    - target: dmg
-      arch: [universal]
+    - target: dir
+      arch: [arm64]
   extraResources:
     - from: node_modules/audiotee/bin/audiotee
       to: audiotee

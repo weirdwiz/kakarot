@@ -2,9 +2,15 @@ import { BaseAudioProcessor, AudioProcessorConfig } from './IAudioProcessor';
 import { HeadphoneDetector } from '../HeadphoneDetector';
 import { createLogger } from '@main/core/logger';
 import { AEC_CONFIG } from '@main/config/constants';
-import type { IReferenceAudioReceiver } from '../../../services/SystemAudioService';
 
 const logger = createLogger('AECProcessor');
+
+/**
+ * Reference audio feeder interface for AEC.
+ */
+export interface IReferenceAudioReceiver {
+  feedReference(chunk: Buffer, timestamp: number): void;
+}
 
 /**
  * Native AEC module interface.

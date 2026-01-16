@@ -43,6 +43,7 @@ export const AUDIO_CONFIG = {
   CHUNK_DURATION_MS: 256,
   CHANNELS: 1 as const,
   BIT_DEPTH: 16 as const,
+  PACKET_LOG_INTERVAL: 100, // Log every N packets
 } as const;
 
 // Acoustic Echo Cancellation configuration (WebRTC AEC3)
