@@ -56,29 +56,54 @@ export class MeetingRepository {
     meetingStartTime = now;
     saveDatabase();
 
-    // Upsert attendees into people table with names if provided
+    logger.info('Started new meeting', { id, title: meetingTitle, attendeeCount: attendeeEmails.length });
+
+    // Upsert attendees into people table in BACKGROUND (non-blocking)
+    // This prevents API calls from delaying recording startup
     if (attendees && this.peopleRepo) {
-      for (const attendee of attendees) {
-        if (typeof attendee === 'object') {
-          logger.info('Upserting attendee from meeting start', {
-            email: attendee.email,
-            name: attendee.name,
-            isObject: true
-          });
+      // Run asynchronously without awaiting
+      this.upsertAttendeesInBackground(attendees).catch((error) => {
+        logger.error('Background attendee upsert failed', { error: (error as Error).message });
+      });
+    }
+
+    return id;
+  }
+
+  /**
+   * Upsert attendees in background without blocking meeting startup
+   * This prevents slow API calls from delaying recording
+   */
+  private async upsertAttendeesInBackground(
+    attendees: (string | CalendarAttendee)[]
+  ): Promise<void> {
+    if (!this.peopleRepo) return;
+
+    logger.info('Starting background attendee upsert', { count: attendees.length });
+
+    for (const attendee of attendees) {
+      if (typeof attendee === 'object') {
+        try {
           await this.peopleRepo.upsertFromCalendarAttendee(
             attendee.email,
             attendee.name,
             undefined,
             this.peopleApiFetcher
           );
-        } else {
-          logger.info('Attendee is string (email only)', { email: attendee });
+          logger.debug('Upserted attendee in background', {
+            email: attendee.email,
+            name: attendee.name,
+          });
+        } catch (error) {
+          logger.warn('Failed to upsert attendee', {
+            email: attendee.email,
+            error: (error as Error).message,
+          });
         }
       }
     }
 
-    logger.info('Started new meeting', { id, title: meetingTitle, attendeeCount: attendeeEmails.length });
-    return id;
+    logger.info('Completed background attendee upsert');
   }
 
   getCurrentMeetingId(): string | null {

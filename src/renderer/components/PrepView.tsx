@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
 import {
   Users,
@@ -7,14 +7,14 @@ import {
   AlertCircle,
   CheckCircle,
   X,
-  Search,
-  BarChart3,
-  MessageCircle,
-  Copy,
-  Save,
-  ChevronLeft,
-  Moon,
-  Sun,
+  Lightbulb,
+  Rocket,
+  Code,
+  Briefcase,
+  Calendar,
+  Target,
+  ListChecks,
+  Plus,
 } from 'lucide-react';
 import type { Person } from '@shared/types';
 import { formatDuration } from '../lib/formatters';
@@ -48,62 +48,37 @@ interface MeetingPrepResult {
   risk_mitigation: string[];
 }
 
+const PREDEFINED_MEETING_TYPES = [
+  { id: '1-1', label: '1:1 Meeting', icon: Users },
+  { id: 'kickoff', label: 'Kick-Off', icon: Rocket },
+  { id: 'technical', label: 'Technical Sync', icon: Code },
+  { id: 'status', label: 'Status Update', icon: ListChecks },
+  { id: 'brainstorm', label: 'Brainstorming', icon: Lightbulb },
+  { id: 'client', label: 'Client Sync', icon: Briefcase },
+  { id: 'planning', label: 'Planning', icon: Target },
+  { id: 'retro', label: 'Retrospective', icon: Calendar },
+];
 
 export default function PrepView() {
   const { settings } = useAppStore();
   const [people, setPeople] = useState<Person[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
+  const [selectedPeople, setSelectedPeople] = useState<Person[]>([]);
   const [isLoadingPeople, setIsLoadingPeople] = useState(true);
-  const [meetingType, setMeetingType] = useState('');
+  const [selectedMeetingType, setSelectedMeetingType] = useState('');
   const [customMeetingType, setCustomMeetingType] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingError, setGeneratingError] = useState<string | null>(null);
   const [briefingResult, setBriefingResult] = useState<MeetingPrepResult | null>(null);
-  const [isDarkMode, setIsDarkMode] = useState(true);
 
-  // Popover states
-  const [showPersonDropdown, setShowPersonDropdown] = useState(false);
-  const [showTypeDropdown, setShowTypeDropdown] = useState(false);
-  const personDropdownRef = useRef<HTMLDivElement>(null);
-  const typeDropdownRef = useRef<HTMLDivElement>(null);
-
-  // Get meeting types from settings
-  const meetingTypes = useMemo(() => {
-    const customTypes = settings?.customMeetingTypes || [];
-    return customTypes.length > 0
-      ? [...customTypes, 'Custom...']
-      : [
-          '1:1 Meeting',
-          'Kick-Off',
-          'Technical Sync',
-          'Status Update',
-          'Planning Session',
-          'Retrospective',
-          'Custom...',
-        ];
-  }, [settings?.customMeetingTypes]);
+  const customTypes = settings?.customMeetingTypes || [];
+  const allMeetingTypes = useMemo(
+    () => [...customTypes.map((label) => ({ id: label, label })), ...PREDEFINED_MEETING_TYPES],
+    [customTypes]
+  );
 
   useEffect(() => {
     loadPeople();
-  }, []);
-
-  // Close dropdowns when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        personDropdownRef.current &&
-        !personDropdownRef.current.contains(e.target as Node)
-      ) {
-        setShowPersonDropdown(false);
-      }
-      if (typeDropdownRef.current && !typeDropdownRef.current.contains(e.target as Node)) {
-        setShowTypeDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const loadPeople = async () => {
@@ -121,25 +96,14 @@ export default function PrepView() {
     const query = searchQuery.toLowerCase();
     return people.filter(
       (p) =>
-        (p.name?.toLowerCase().includes(query)) ||
+        p.name?.toLowerCase().includes(query) ||
         p.email.toLowerCase().includes(query) ||
-        (p.organization?.toLowerCase().includes(query))
+        p.organization?.toLowerCase().includes(query)
     );
   }, [people, searchQuery]);
 
-  const handleSelectPerson = (person: Person) => {
-    setSelectedPerson(person);
-    setSearchQuery('');
-    setShowPersonDropdown(false);
-  };
-
-  const isCustomMeetingType = meetingType === 'Custom...';
-  const finalMeetingType = isCustomMeetingType ? customMeetingType : meetingType;
-
   const getDisplayName = (person: Person): string => {
-    if (person.name && person.name.trim()) {
-      return person.name;
-    }
+    if (person.name && person.name.trim()) return person.name;
     const localPart = person.email.split('@')[0];
     const nameParts = localPart.split(/[._-]/).filter((part) => part.length > 0);
     return nameParts
@@ -171,9 +135,30 @@ export default function PrepView() {
     return displayName.slice(0, 2).toUpperCase();
   };
 
+  const formatLastMeeting = (date: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+    return `${Math.floor(diffDays / 30)} months ago`;
+  };
+
+  const togglePerson = (person: Person) => {
+    const exists = selectedPeople.some((p) => p.email === person.email);
+    setSelectedPeople((prev) =>
+      exists ? prev.filter((p) => p.email !== person.email) : [...prev, person]
+    );
+    setSearchQuery('');
+  };
+
+  const meetingTypeValue = selectedMeetingType === 'custom' ? customMeetingType.trim() : selectedMeetingType;
+
   const handleGenerateBriefing = async () => {
-    if (!finalMeetingType.trim() || !selectedPerson) {
-      setGeneratingError('Please select a person and meeting type');
+    if (!meetingTypeValue || selectedPeople.length === 0) {
+      setGeneratingError('Please pick at least one participant and a meeting objective');
       return;
     }
 
@@ -184,457 +169,414 @@ export default function PrepView() {
     try {
       const payload = {
         meeting: {
-          meeting_type: finalMeetingType,
-          objective: finalMeetingType,
+          meeting_type: meetingTypeValue,
+          objective: meetingTypeValue,
         },
-        participants: [
-          {
-            name: selectedPerson.name || selectedPerson.email,
-            email: selectedPerson.email,
-            company: selectedPerson.organization || null,
-            domain: selectedPerson.email?.split('@')[1] || null,
-          },
-        ],
+        participants: selectedPeople.map((person) => ({
+          name: getDisplayName(person),
+          email: person.email,
+          company: person.organization || null,
+          domain: person.email?.split('@')[1] || null,
+        })),
       };
 
       const result = await window.kakarot.prep.generateBriefing(payload);
       setBriefingResult(result);
     } catch (error) {
-      setGeneratingError(
-        error instanceof Error ? error.message : 'Failed to generate briefing'
-      );
+      setGeneratingError(error instanceof Error ? error.message : 'Failed to generate briefing');
       console.error('Failed to generate briefing:', error);
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const copyToNotes = async () => {
-    if (!briefingResult) return;
-    const text = JSON.stringify(briefingResult, null, 2);
-    await navigator.clipboard.writeText(text);
-  };
 
-  // Form view
-  if (!briefingResult) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800">
-        {/* Header */}
-        <div className="sticky top-0 z-40 bg-slate-900/80 backdrop-blur border-b border-white/5">
-          <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
-            <button className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-              <ChevronLeft className="w-5 h-5 text-white" />
-            </button>
-
-            {/* Segmented Control */}
-            <div className="flex gap-1 bg-slate-800/50 rounded-full p-1 border border-white/10">
-              <button className="px-4 py-1.5 rounded-full text-sm text-slate-400 hover:text-white transition-colors">
-                Home
-              </button>
-              <button className="px-4 py-1.5 rounded-full text-sm bg-purple-600 text-white transition-colors">
-                Prep
-              </button>
-              <button className="px-4 py-1.5 rounded-full text-sm text-slate-400 hover:text-white transition-colors">
-                Interact
-              </button>
-            </div>
-
-            {/* Dark Mode Toggle */}
-            <button
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-            >
-              {isDarkMode ? (
-                <Moon className="w-5 h-5 text-white" />
-              ) : (
-                <Sun className="w-5 h-5 text-white" />
-              )}
-            </button>
+  const renderParticipantSelection = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+      <div className="relative bg-[#0C0C0F] border border-purple-700/40 rounded-2xl p-5 shadow-[0_10px_50px_rgba(124,58,237,0.25)] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between mb-4 flex-shrink-0">
+          <div>
+            <p className="text-sm text-purple-200 uppercase tracking-wide">Select Participants</p>
+            <h3 className="text-xl font-semibold text-white">Who are you meeting?</h3>
           </div>
+          <Sparkles className="w-5 h-5 text-purple-300" />
         </div>
 
-        {/* Main Content */}
-        <div className="max-w-3xl mx-auto px-6 py-12">
-          {/* Title */}
-          <h1 className="text-4xl font-bold text-white text-center mb-12">
-            Meeting Preparation
-          </h1>
+        <div className="flex flex-wrap gap-2 mb-3 min-h-[36px] flex-shrink-0">
+          {selectedPeople.length === 0 && (
+            <span className="text-sm text-slate-400">No participants selected yet</span>
+          )}
+          {selectedPeople.map((person) => (
+            <button
+              key={person.email}
+              onClick={() => togglePerson(person)}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-purple-500/40 text-sm text-white hover:bg-purple-600/30 transition"
+            >
+              <span className={`w-6 h-6 rounded-full ${getAvatarColor(person.email)} flex items-center justify-center text-white text-xs font-semibold`}>
+                {getInitials(person)}
+              </span>
+              <span>{getDisplayName(person)}</span>
+              <X className="w-3 h-3" />
+            </button>
+          ))}
+        </div>
 
-          {/* Sentence Builder */}
-          <div className="space-y-8">
-            {/* Input Sentence */}
-            <div className="flex flex-wrap items-center justify-center gap-3 text-xl text-white">
-              <span>I have a meeting with</span>
-
-              {/* Person Dropdown */}
-              <div className="relative" ref={personDropdownRef}>
+        <div className="relative mb-4 flex-shrink-0">
+          <input
+            type="text"
+            placeholder="Search..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-[#111019] border border-white/10 rounded-xl px-4 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/60"
+          />
+          {searchQuery && filteredPeople.length > 0 && (
+            <div className="absolute z-10 mt-2 w-full max-h-60 overflow-y-auto bg-[#0C0C0F] border border-white/10 rounded-xl shadow-2xl">
+              {filteredPeople.slice(0, 8).map((person) => (
                 <button
-                  onClick={() => setShowPersonDropdown(!showPersonDropdown)}
-                  className={`px-4 py-2 rounded-lg font-medium transition-all inline-flex items-center gap-2 ${
-                    selectedPerson
-                      ? 'bg-slate-700 hover:bg-slate-600'
-                      : 'bg-slate-700 hover:bg-slate-600'
-                  }`}
+                  key={person.email}
+                  onClick={() => togglePerson(person)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 text-left border-b border-white/5 last:border-none"
                 >
-                  {selectedPerson ? (
-                    <>
-                      <div
-                        className={`w-5 h-5 rounded-full ${getAvatarColor(
-                          selectedPerson.email
-                        )} flex items-center justify-center text-white text-xs font-medium`}
-                      >
-                        {getInitials(selectedPerson)}
-                      </div>
-                      <span className="text-white">{getDisplayName(selectedPerson)}</span>
-                      <X className="w-4 h-4 text-slate-400" />
-                    </>
-                  ) : (
-                    <>
-                      <Search className="w-4 h-4 text-slate-400" />
-                      <span className="text-slate-300">Select person</span>
-                    </>
+                  <span className={`w-8 h-8 rounded-full ${getAvatarColor(person.email)} flex items-center justify-center text-white text-sm font-semibold`}>
+                    {getInitials(person)}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white truncate">{getDisplayName(person)}</p>
+                    <p className="text-xs text-slate-400 truncate">{person.email}</p>
+                  </div>
+                  {selectedPeople.some((p) => p.email === person.email) && (
+                    <span className="text-xs text-purple-300">Selected</span>
                   )}
                 </button>
-
-                {/* Popover */}
-                {showPersonDropdown && (
-                  <div className="absolute top-full left-0 mt-2 w-80 bg-slate-800 border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
-                    {/* Search */}
-                    <div className="p-3 border-b border-white/5">
-                      <input
-                        autoFocus
-                        type="text"
-                        placeholder="Search people..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-700/50 border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:border-purple-500"
-                      />
-                    </div>
-
-                    {/* People List */}
-                    <div className="max-h-64 overflow-y-auto">
-                      {filteredPeople.length === 0 ? (
-                        <div className="p-4 text-center text-slate-400 text-sm">
-                          No people found
-                        </div>
-                      ) : (
-                        filteredPeople.map((person) => (
-                          <button
-                            key={person.email}
-                            onClick={() => handleSelectPerson(person)}
-                            className="w-full p-3 hover:bg-slate-700/50 flex items-center gap-3 text-left border-b border-white/5 last:border-0 transition-colors"
-                          >
-                            <div
-                              className={`w-8 h-8 rounded-full ${getAvatarColor(
-                                person.email
-                              )} flex items-center justify-center text-white text-xs font-medium flex-shrink-0`}
-                            >
-                              {getInitials(person)}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium text-white truncate">
-                                {getDisplayName(person)}
-                              </div>
-                              <div className="text-xs text-slate-400 truncate">
-                                {person.email}
-                              </div>
-                            </div>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <span>about</span>
-
-              {/* Topic/Type Dropdown */}
-              <div className="relative" ref={typeDropdownRef}>
-                <button
-                  onClick={() => setShowTypeDropdown(!showTypeDropdown)}
-                  className="px-4 py-2 rounded-lg font-medium bg-cyan-900/30 border border-cyan-500/50 hover:bg-cyan-900/50 transition-all text-cyan-300 inline-flex items-center gap-2"
-                >
-                  {meetingType || <span className="text-slate-400">Select topic</span>}
-                </button>
-
-                {/* Popover */}
-                {showTypeDropdown && (
-                  <div className="absolute top-full right-0 mt-2 w-72 bg-slate-800 border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
-                    <div className="p-3 border-b border-white/5">
-                      <p className="text-sm text-slate-400 font-medium">Meeting Types</p>
-                    </div>
-                    <div className="max-h-64 overflow-y-auto">
-                      {meetingTypes.map((type) => (
-                        <button
-                          key={type}
-                          onClick={() => {
-                            setMeetingType(type);
-                            setShowTypeDropdown(false);
-                          }}
-                          className={`w-full p-3 text-left hover:bg-slate-700/50 transition-colors border-b border-white/5 last:border-0 ${
-                            meetingType === type
-                              ? 'bg-purple-600/20 border-l-2 border-l-purple-500'
-                              : ''
-                          }`}
-                        >
-                          <span className="text-white text-sm font-medium">{type}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Custom Type Input */}
-            {isCustomMeetingType && (
-              <div className="flex justify-center">
-                <input
-                  autoFocus
-                  type="text"
-                  placeholder="Enter custom meeting type..."
-                  value={customMeetingType}
-                  onChange={(e) => setCustomMeetingType(e.target.value)}
-                  className="px-4 py-2 max-w-xs bg-slate-700/50 border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:border-purple-500"
-                />
-              </div>
-            )}
-
-            {/* Error Message */}
-            {generatingError && (
-              <div className="flex justify-center">
-                <div className="px-4 py-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                  <p className="text-sm text-red-300">{generatingError}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Generate Button */}
-            <div className="flex justify-center pt-4">
-              <button
-                onClick={handleGenerateBriefing}
-                disabled={isGenerating || !selectedPerson || !finalMeetingType.trim()}
-                className="w-full max-w-md px-8 py-4 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-700 disabled:opacity-50 text-white font-semibold rounded-lg transition-all inline-flex items-center justify-center gap-2 disabled:cursor-not-allowed"
-              >
-                {isGenerating ? (
-                  <>
-                    <Sparkles className="w-5 h-5 animate-spin" />
-                    Generating Insights...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-5 h-5" />
-                    Generate Prep Insights
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Empty State */}
-          {!isLoadingPeople && people.length === 0 && (
-            <div className="mt-20 text-center">
-              <Users className="w-16 h-16 mx-auto mb-4 text-slate-600" />
-              <h3 className="text-lg font-medium text-slate-300 mb-2">No contacts yet</h3>
-              <p className="text-sm text-slate-500">
-                Contacts will appear here after you record your first meeting
-              </p>
+              ))}
             </div>
           )}
+        </div>
+
+        <div className="flex-1 flex flex-col min-h-0">
+          <p className="text-sm text-slate-400 mb-3 flex-shrink-0">Recent contacts</p>
+          <div className="space-y-2 flex-1 overflow-y-auto">
+            {people.slice(0, 3).map((person) => (
+              <button
+                key={person.email}
+                onClick={() => togglePerson(person)}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-left"
+              >
+                <span className={`w-8 h-8 rounded-full ${getAvatarColor(person.email)} flex items-center justify-center text-white text-sm font-semibold`}>
+                  {getInitials(person)}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-white truncate">{getDisplayName(person)}</p>
+                  <p className="text-xs text-slate-400 truncate">{person.email}</p>
+                </div>
+                {person.lastMeetingAt && (
+                  <span className="text-xs text-slate-400">{formatLastMeeting(person.lastMeetingAt)}</span>
+                )}
+              </button>             
+            ))}
+          </div>
+          <button
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:border-purple-400/60 transition mt-4 flex-shrink-0"
+          >
+            <Users className="w-4 h-4 text-purple-300" />
+            <span className="text-sm text-white">View All Contacts</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Meeting Objective Selection */}
+      <div className="bg-[#0C0C0F] border border-purple-700/40 rounded-2xl p-5 shadow-[0_10px_50px_rgba(124,58,237,0.25)] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between mb-4 flex-shrink-0">
+          <div>
+            <p className="text-sm text-purple-200 uppercase tracking-wide">Meeting Objective</p>
+            <h3 className="text-xl font-semibold text-white">What's the meeting about?</h3>
+          </div>
+          <Sparkles className="w-5 h-5 text-purple-300" />
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          {PREDEFINED_MEETING_TYPES.slice(0, 7).map((type) => {
+            const Icon = type.icon;
+            const isActive = selectedMeetingType === type.label;
+            return (
+              <button
+                key={type.id}
+                onClick={() => {
+                  setSelectedMeetingType(type.label);
+                  setCustomMeetingType('');
+                }}
+                className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border transition ${
+                  isActive
+                    ? 'border-purple-500 bg-purple-600/20 shadow-[0_10px_30px_rgba(124,58,237,0.35)]'
+                    : 'border-white/10 bg-white/5 hover:border-purple-400/60'
+                }`}
+              >
+                <span className="p-2 rounded-lg bg-white/10">
+                  <Icon className="w-4 h-4 text-purple-200" />
+                </span>
+                <span className="text-sm text-white text-left">{type.label}</span>
+              </button>
+            );
+          })}
+          <button
+            className="flex items-center gap-2.5 px-4 py-3 rounded-xl border border-white/10 bg-white/5 hover:border-purple-400/60"
+          >
+            <span className="p-2 rounded-lg bg-white/10">
+              <span className="text-purple-200 text-lg">...</span>
+            </span>
+            <span className="text-sm text-white text-left">View More</span>
+          </button>
+        </div>
+
+        {customTypes.length > 0 && (
+          <div className="space-y-2 mt-3">
+            <p className="text-sm text-purple-200 uppercase tracking-wide">Custom Types</p>
+            <div className="grid grid-cols-2 gap-2">
+              {customTypes.map((type) => {
+                const isActive = selectedMeetingType === type;
+                return (
+                  <button
+                    key={type}
+                    onClick={() => {
+                      setSelectedMeetingType(type);
+                      setCustomMeetingType('');
+                    }}
+                    className={`px-3 py-2 rounded-lg border text-sm transition text-left ${
+                      isActive
+                        ? 'border-purple-500 bg-purple-600/20 text-white'
+                        : 'border-white/10 bg-white/5 text-slate-200 hover:border-purple-400/60'
+                    }`}
+                  >
+                    {type}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )
+        }
+        </div>
+
+        <button
+          onClick={() => setSelectedMeetingType('custom')}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:border-purple-400/60 transition mt-4 flex-shrink-0"
+        >
+          <Plus className="w-4 h-4 text-purple-300" />
+          <span className="text-sm text-white">Add Custom Meeting Objective</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  if (briefingResult) {
+    return (
+      <div className="h-[calc(100vh-200px)] flex flex-col overflow-hidden">
+        {/* Briefing Result View */}
+        <div className="flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200 dark:border-slate-700">
+            <div>
+              <h1 className="text-2xl font-semibold text-slate-900 dark:text-white mb-1">Meeting Briefing</h1>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Generated on {new Date(briefingResult.generated_at).toLocaleString()}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setBriefingResult(null);
+                setSelectedMeetingType('');
+                setCustomMeetingType('');
+                setSelectedPeople([]);
+              }}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+            >
+              Generate Another
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-6">
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-6 border border-blue-200 dark:border-blue-800">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+                {briefingResult.meeting.type}
+              </h2>
+              <p className="text-sm text-gray-700 dark:text-gray-300">{briefingResult.meeting.duration_minutes} minutes</p>
+            </div>
+
+            <div className="bg-white dark:bg-slate-800/50 rounded-xl p-6 border border-gray-200 dark:border-slate-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Agenda</h3>
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm font-medium text-purple-600 dark:text-purple-400 mb-1">Opening</p>
+                  <p className="text-gray-700 dark:text-gray-300">{briefingResult.agenda.opening}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-purple-600 dark:text-purple-400 mb-2">Key Topics</p>
+                  <ul className="space-y-2">
+                    {briefingResult.agenda.key_topics.map((topic, idx) => (
+                      <li key={idx} className="flex gap-3">
+                        <span className="text-purple-500 flex-shrink-0 mt-1">•</span>
+                        <span className="text-gray-700 dark:text-gray-300">{topic}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-purple-600 dark:text-purple-400 mb-1">Closing</p>
+                  <p className="text-gray-700 dark:text-gray-300">{briefingResult.agenda.closing}</p>
+                </div>
+              </div>
+            </div>
+
+            {briefingResult.success_metrics.length > 0 && (
+              <div className="bg-white dark:bg-slate-800/50 rounded-xl p-6 border border-gray-200 dark:border-slate-700">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Success Metrics</h3>
+                <ul className="space-y-2">
+                  {briefingResult.success_metrics.map((metric, idx) => (
+                    <li key={idx} className="flex gap-3">
+                      <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0 mt-1" />
+                      <span className="text-gray-700 dark:text-gray-300">{metric}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {briefingResult.risk_mitigation.length > 0 && (
+              <div className="bg-white dark:bg-slate-800/50 rounded-xl p-6 border border-gray-200 dark:border-slate-700">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Risk Mitigation</h3>
+                <ul className="space-y-2">
+                  {briefingResult.risk_mitigation.map((risk, idx) => (
+                    <li key={idx} className="flex gap-3">
+                      <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-1" />
+                      <span className="text-gray-700 dark:text-gray-300">{risk}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Participant Insights</h3>
+              {briefingResult.participants.map((participant, idx) => (
+                <div key={idx} className="bg-white dark:bg-slate-800/50 rounded-xl p-6 border border-gray-200 dark:border-slate-700">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h4 className="text-lg font-semibold text-gray-900 dark:text-white">{participant.name}</h4>
+                      {participant.email && <p className="text-sm text-gray-500 dark:text-gray-400">{participant.email}</p>}
+                    </div>
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                      participant.history_strength === 'strong'
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                        : participant.history_strength === 'weak'
+                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                        : participant.history_strength === 'org-only'
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                        : 'bg-gray-100 text-gray-800 dark:bg-gray-700/30 dark:text-gray-300'
+                    }`}>
+                      {participant.history_strength === 'strong' && 'Strong History'}
+                      {participant.history_strength === 'weak' && 'Weak History'}
+                      {participant.history_strength === 'org-only' && 'Same Org'}
+                      {participant.history_strength === 'none' && 'No History'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 mb-4 text-sm">
+                    <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-2">
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Meetings</p>
+                      <p className="font-semibold text-gray-900 dark:text-white">{participant.context.meeting_count}</p>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-2">
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Recent Topics</p>
+                      <p className="font-semibold text-gray-900 dark:text-white">{participant.context.recent_topics.length}</p>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-2">
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Last Meeting</p>
+                      <p className="font-semibold text-gray-900 dark:text-white text-xs">
+                        {participant.context.last_meeting_date ? new Date(participant.context.last_meeting_date).toLocaleDateString() : 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {participant.background && (
+                    <div className="mb-4 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-1 font-medium">Background</p>
+                      <p className="text-sm text-gray-700 dark:text-gray-300">{participant.background}</p>
+                    </div>
+                  )}
+
+                  {participant.talking_points.length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">Talking Points</p>
+                      <ul className="space-y-1">
+                        {participant.talking_points.map((point, pidx) => (
+                          <li key={pidx} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
+                            <span className="text-purple-500 flex-shrink-0">→</span>
+                            <span>{point}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {participant.questions_to_ask.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">Questions to Ask</p>
+                      <ul className="space-y-1">
+                        {participant.questions_to_ask.map((question, qidx) => (
+                          <li key={qidx} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
+                            <span className="text-blue-500 flex-shrink-0">?</span>
+                            <span>{question}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Results view
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800">
-      {/* Header */}
-      <div className="sticky top-0 z-40 bg-slate-900/80 backdrop-blur border-b border-white/5">
-        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
-          <button
-            onClick={() => {
-              setBriefingResult(null);
-              setMeetingType('');
-              setCustomMeetingType('');
-              setSelectedPerson(null);
-            }}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-          >
-            <ChevronLeft className="w-5 h-5 text-white" />
-          </button>
+    <div className="h-[calc(100vh-140px)] flex flex-col text-white">
+      <div className="mb-4">
+        <h1 className="text-2xl font-semibold">Meeting Preparation</h1>
+        <p className="text-slate-400">Pick participants and set the objective before generating your briefing.</p>
+      </div>
 
-          {/* Segmented Control */}
-          <div className="flex gap-1 bg-slate-800/50 rounded-full p-1 border border-white/10">
-            <button className="px-4 py-1.5 rounded-full text-sm text-slate-400 hover:text-white transition-colors">
-              Home
-            </button>
-            <button className="px-4 py-1.5 rounded-full text-sm bg-purple-600 text-white transition-colors">
-              Prep
-            </button>
-            <button className="px-4 py-1.5 rounded-full text-sm text-slate-400 hover:text-white transition-colors">
-              Interact
-            </button>
+      <div className="flex-1 min-h-0">
+        {renderParticipantSelection()}
+      </div>
+
+      <div className="mt-3 bg-[#0C0C0F] border border-white/10 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-full bg-purple-600/20 text-purple-200">
+            <Sparkles className="w-5 h-5" />
           </div>
-
-          {/* Dark Mode Toggle */}
+          <div>
+            <p className="text-sm text-slate-400">Summary</p>
+            <p className="text-sm text-white">
+              {selectedPeople.length} participant{selectedPeople.length === 1 ? '' : 's'} · {meetingTypeValue || 'No objective yet'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsDarkMode(!isDarkMode)}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+            onClick={handleGenerateBriefing}
+            disabled={isGenerating || selectedPeople.length === 0 || !meetingTypeValue}
+            className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-semibold shadow-[0_12px_30px_rgba(124,58,237,0.35)] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isDarkMode ? (
-              <Moon className="w-5 h-5 text-white" />
-            ) : (
-              <Sun className="w-5 h-5 text-white" />
-            )}
+            {isGenerating ? 'Generating...' : 'Generate'}
           </button>
         </div>
       </div>
 
-      {/* Results Content */}
-      <div className="max-w-3xl mx-auto px-6 py-12">
-        <div className="mb-12 animate-fadeIn">
-          {/* Prep Insights Card */}
-          <div className="bg-gradient-to-br from-slate-800 to-slate-800/50 border border-white/10 rounded-2xl overflow-hidden">
-            {/* Header */}
-            <div className="px-8 py-8 border-b border-white/5">
-              <h2 className="text-3xl font-bold text-white">Prep Insights</h2>
-              <p className="text-slate-400 mt-2">
-                Generated for {selectedPerson?.name || 'selected person'} • {briefingResult.meeting.type}
-              </p>
-            </div>
-
-            {/* Content */}
-            <div className="px-8 py-8 space-y-8">
-              {/* Key Insights */}
-              <div>
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="p-2 bg-blue-500/20 rounded-lg">
-                    <BarChart3 className="w-5 h-5 text-blue-400" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-white">
-                    Key Insights from Past Discussions
-                  </h3>
-                </div>
-                <ul className="space-y-3 ml-11">
-                  {briefingResult.participants[0]?.context.key_points.map((point, idx) => (
-                    <li key={idx} className="flex gap-3 text-slate-300">
-                      <span className="text-purple-400 mt-1">•</span>
-                      <span>{point || 'Previous action item pending'}</span>
-                    </li>
-                  )) || [
-                    <li key="0" className="flex gap-3 text-slate-300">
-                      <span className="text-purple-400 mt-1">•</span>
-                      <span>First time meeting</span>
-                    </li>,
-                  ]}
-                </ul>
-              </div>
-
-              {/* Recommended Conversation */}
-              <div>
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="p-2 bg-emerald-500/20 rounded-lg">
-                    <MessageCircle className="w-5 h-5 text-emerald-400" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-white">
-                    Recommended Conversation Tracks
-                  </h3>
-                </div>
-                <ul className="space-y-3 ml-11">
-                  {briefingResult.participants[0]?.talking_points.slice(0, 3).map((point, idx) => (
-                    <li key={idx} className="flex gap-3 text-slate-300">
-                      <span className="text-teal-400 mt-1">•</span>
-                      <span>{point}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Agenda */}
-              {briefingResult.agenda.key_topics.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-4">Agenda</h3>
-                  <div className="space-y-3 ml-0 pl-4 border-l-2 border-purple-500/30">
-                    {briefingResult.agenda.key_topics.map((topic, idx) => (
-                      <div key={idx}>
-                        <p className="text-sm text-purple-300 font-medium">Topic {idx + 1}</p>
-                        <p className="text-slate-300">{topic}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Footer Actions */}
-            <div className="px-8 py-6 bg-slate-900/50 border-t border-white/5 flex justify-end gap-3">
-              <button
-                onClick={copyToNotes}
-                className="px-4 py-2 border border-white/20 hover:border-white/40 rounded-lg text-slate-300 hover:text-white transition-all inline-flex items-center gap-2"
-              >
-                <Copy className="w-4 h-4" />
-                Copy to Notes
-              </button>
-              <button className="px-4 py-2 border border-white/20 hover:border-white/40 rounded-lg text-slate-300 hover:text-white transition-all inline-flex items-center gap-2">
-                <Save className="w-4 h-4" />
-                Save to Meeting
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Additional Details */}
-        <div className="mt-8 space-y-6">
-          {/* Success Metrics */}
-          {briefingResult.success_metrics.length > 0 && (
-            <div className="bg-gradient-to-br from-slate-800 to-slate-800/50 border border-white/10 rounded-2xl p-8">
-              <h3 className="text-lg font-semibold text-white mb-4">Success Metrics</h3>
-              <ul className="space-y-3">
-                {briefingResult.success_metrics.map((metric, idx) => (
-                  <li key={idx} className="flex gap-3 text-slate-300">
-                    <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-                    <span>{metric}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Risk Mitigation */}
-          {briefingResult.risk_mitigation.length > 0 && (
-            <div className="bg-gradient-to-br from-slate-800 to-slate-800/50 border border-white/10 rounded-2xl p-8">
-              <h3 className="text-lg font-semibold text-white mb-4">Risk Mitigation</h3>
-              <ul className="space-y-3">
-                {briefingResult.risk_mitigation.map((risk, idx) => (
-                  <li key={idx} className="flex gap-3 text-slate-300">
-                    <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                    <span>{risk}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Fade in animation */}
-      <style>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-fadeIn {
-          animation: fadeIn 0.5s ease-out;
-        }
-      `}</style>
+      {generatingError && (
+        <p className="mt-2 text-sm text-amber-300">{generatingError}</p>
+      )}
     </div>
   );
 }

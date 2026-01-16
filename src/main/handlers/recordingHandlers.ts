@@ -150,7 +150,10 @@ export function registerRecordingHandlers(
           // Feed system audio to AECSync for synchronization
           if (aecSync) {
             systemAudioService.onSystemAudio((samples, timestamp) => {
-              aecSync!.addRenderAudio(samples, timestamp);
+              // Null-safety check: aecSync might be cleaned up during shutdown
+              if (aecSync) {
+                aecSync.addRenderAudio(samples, timestamp);
+              }
             });
           }
 
@@ -306,16 +309,27 @@ export function registerRecordingHandlers(
 
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'processing');
 
-    // NEW: Stop native mic capture first
+    // CRITICAL: Stop audio capture FIRST before cleaning up AEC resources
+    // This prevents race conditions where callbacks try to access null AEC objects
+
+    // Step 1: Stop system audio capture (prevents new callbacks from firing)
+    if (systemAudioService) {
+      const sas = systemAudioService;
+      systemAudioService = null;
+      await sas.stop().catch((error) => logger.error('System audio stop error', error));
+      logger.info('System audio capture stopped');
+    }
+
+    // Step 2: Stop native mic capture
     if (aecProcessor && aecProcessor.isMicrophoneCapturing()) {
       logger.info('Stopping native microphone capture');
       aecProcessor.stopMicrophoneCapture();
     }
 
-    // Reset mic audio counter and buffer
-    micAudioDataCount = 0;
-    micAudioBuffer = new Int16Array(0);
+    // Step 3: Wait for any in-flight audio callbacks to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
+    // Step 4: Now safe to clean up AEC resources
     // Clean up AEC sync
     if (aecSync) {
       const finalStats = aecSync.getStats();
@@ -334,13 +348,9 @@ export function registerRecordingHandlers(
       aecProcessor = null;
     }
 
-    // Stop system audio
-    if (systemAudioService) {
-      const sas = systemAudioService;
-      systemAudioService = null;
-      await sas.stop().catch((error) => logger.error('System audio stop error', error));
-      logger.info('System audio capture stopped');
-    }
+    // Reset mic audio counter and buffer
+    micAudioDataCount = 0;
+    micAudioBuffer = new Int16Array(0);
 
     // Disconnect transcription and wait for it to flush
     if (transcriptionProvider) {
