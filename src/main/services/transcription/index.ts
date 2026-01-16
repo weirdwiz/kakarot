@@ -49,7 +49,8 @@ class AssemblyAIProviderWithHostedTokens extends AssemblyAIProvider {
       throw new Error('Hosted AssemblyAI token unavailable');
     }
     // Reinitialize client with fresh token before connecting
-    (this as any).client = new (require('assemblyai').AssemblyAI)({ apiKey: token });
+    const { AssemblyAI } = await import('assemblyai');
+    (this as any).client = new AssemblyAI({ apiKey: token });
     return super.connect();
   }
 }

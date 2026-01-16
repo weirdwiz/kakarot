@@ -8,7 +8,9 @@ import type {
   TranscriptUpdate,
   Callout,
   CalendarEvent,
+  CalendarAttendee,
   CalendarConnections,
+  Person,
 } from '@shared/types';
 
 // Expose protected methods to the renderer process
@@ -18,7 +20,7 @@ contextBridge.exposeInMainWorld('kakarot', {
     start: (calendarContext?: {
       calendarEventId: string;
       calendarEventTitle: string;
-      calendarEventAttendees?: string[];
+      calendarEventAttendees?: (string | CalendarAttendee)[];
       calendarEventStart: string;
       calendarEventEnd: string;
       calendarProvider: string;
@@ -35,6 +37,11 @@ contextBridge.exposeInMainWorld('kakarot', {
       const handler = (_: unknown, data: { meetingId: string; title: string; overview: string }) => callback(data);
       ipcRenderer.on(IPC_CHANNELS.MEETING_NOTES_COMPLETE, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.MEETING_NOTES_COMPLETE, handler);
+    },
+    onNotificationStartRecording: (callback: (context: any) => void) => {
+      const handler = (_: unknown, context: any) => callback(context);
+      ipcRenderer.on('notification:start-recording', handler);
+      return () => ipcRenderer.removeListener('notification:start-recording', handler);
     },
   },
 
@@ -78,6 +85,14 @@ contextBridge.exposeInMainWorld('kakarot', {
       ipcRenderer.invoke(IPC_CHANNELS.MEETING_SUMMARIZE, id),
     export: (id: string, format: 'markdown' | 'pdf'): Promise<string> =>
       ipcRenderer.invoke(IPC_CHANNELS.MEETING_EXPORT, id, format),
+    saveManualNotes: (id: string, content: string): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEETING_NOTES_SAVE_MANUAL, id, content),
+    askNotes: (id: string, query: string): Promise<string> =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEETING_ASK_NOTES, id, query),
+    updateTitle: (id: string, title: string): Promise<Meeting | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEETING_UPDATE_TITLE, id, title),
+    createDismissed: (title: string, attendeeEmails?: string[]): Promise<string> =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEETINGS_CREATE_DISMISSED, title, attendeeEmails),
   },
 
   // Callout
@@ -91,11 +106,51 @@ contextBridge.exposeInMainWorld('kakarot', {
       ipcRenderer.invoke(IPC_CHANNELS.CALLOUT_DISMISS, id),
   },
 
+  // Chat
+  chat: {
+    sendMessage: (message: string, context?: any): Promise<string> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CHAT_SEND_MESSAGE, message, context),
+  },
+
+  // Meeting Prep
+  prep: {
+    generateBriefing: (input: any): Promise<any> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PREP_GENERATE_BRIEFING, input),
+  },
+
   // Settings
   settings: {
     get: (): Promise<AppSettings> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
     update: (settings: Partial<AppSettings>): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_UPDATE, settings),
+  },
+
+  // Knowledge base
+  knowledge: {
+    index: (path: string): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.KNOWLEDGE_INDEX, path),
+    search: (query: string): Promise<unknown[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.KNOWLEDGE_SEARCH, query),
+  },
+
+  // People
+  people: {
+    list: (): Promise<Person[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_LIST),
+    search: (query: string): Promise<Person[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_SEARCH, query),
+    get: (email: string): Promise<Person | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_GET, email),
+    updateNotes: (email: string, notes: string): Promise<Person | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_UPDATE_NOTES, email, notes),
+    updateName: (email: string, name: string): Promise<Person | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_UPDATE_NAME, email, name),
+    updateOrganization: (email: string, organization: string): Promise<Person | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_UPDATE_ORGANIZATION, email, organization),
+    getByMeeting: (meetingId: string): Promise<Person[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_GET_BY_MEETING, meetingId),
+    getStats: (): Promise<{ totalPeople: number; totalMeetings: number; avgMeetingsPerPerson: number }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_STATS),
   },
 
   // Calendar
@@ -116,6 +171,25 @@ contextBridge.exposeInMainWorld('kakarot', {
       ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_GET_EVENT_FOR_MEETING, meetingId),
     linkNotes: (calendarEventId: string, notesId: string, provider: 'google' | 'outlook' | 'icloud'): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_LINK_NOTES, calendarEventId, notesId, provider),
+    listCalendars: (provider: 'google' | 'outlook' | 'icloud'): Promise<Array<{ id: string; name: string }>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_LIST_CALENDARS, provider),
+    setVisibleCalendars: (provider: 'google' | 'outlook' | 'icloud', ids: string[]): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR_SET_VISIBLE_CALENDARS, provider, ids),
+  },
+
+  // CRM
+  crm: {
+    connect: (provider: 'salesforce' | 'hubspot'): Promise<any> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CRM_CONNECT, provider),
+    disconnect: (provider: 'salesforce' | 'hubspot'): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CRM_DISCONNECT, provider),
+    pushNotes: (meetingId: string): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CRM_PUSH_NOTES, meetingId),
+    onMeetingComplete: (callback: (data: { meetingId: string; shouldPrompt: boolean; provider?: string }) => void) => {
+      const handler = (_: unknown, data: { meetingId: string; shouldPrompt: boolean; provider?: string }) => callback(data);
+      ipcRenderer.on(IPC_CHANNELS.CRM_MEETING_COMPLETE, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.CRM_MEETING_COMPLETE, handler);
+    },
   },
 
   // Dev utilities
@@ -136,16 +210,17 @@ declare global {
         start: (calendarContext?: {
           calendarEventId: string;
           calendarEventTitle: string;
-          calendarEventAttendees?: string[];
+          calendarEventAttendees?: (string | CalendarAttendee)[];
           calendarEventStart: string;
           calendarEventEnd: string;
           calendarProvider: string;
-        }) => Promise<void>;
+        }) => Promise<string>;
         stop: () => Promise<Meeting>;
         pause: () => Promise<void>;
         resume: () => Promise<void>;
         onStateChange: (callback: (state: RecordingState) => void) => () => void;
         onNotesComplete: (callback: (data: { meetingId: string; title: string; overview: string }) => void) => () => void;
+        onNotificationStartRecording: (callback: (context: any) => void) => () => void;
       };
       audio: {
         onLevels: (callback: (levels: AudioLevels) => void) => () => void;
@@ -162,14 +237,38 @@ declare global {
         search: (query: string) => Promise<Meeting[]>;
         summarize: (id: string) => Promise<string>;
         export: (id: string, format: 'markdown' | 'pdf') => Promise<string>;
+        saveManualNotes: (id: string, content: string) => Promise<void>;
+        askNotes: (id: string, query: string) => Promise<string>;
+        updateTitle: (id: string, title: string) => Promise<Meeting | null>;
+        createDismissed: (title: string, attendeeEmails?: string[]) => Promise<string>;
       };
       callout: {
         onShow: (callback: (callout: Callout) => void) => () => void;
         dismiss: (id: string) => Promise<void>;
       };
+      chat: {
+        sendMessage: (message: string, context?: any) => Promise<string>;
+      };
+      prep: {
+        generateBriefing: (input: any) => Promise<any>;
+      };
       settings: {
         get: () => Promise<AppSettings>;
         update: (settings: Partial<AppSettings>) => Promise<void>;
+      };
+      knowledge: {
+        index: (path: string) => Promise<void>;
+        search: (query: string) => Promise<unknown[]>;
+      };
+      people: {
+        list: () => Promise<Person[]>;
+        search: (query: string) => Promise<Person[]>;
+        get: (email: string) => Promise<Person | null>;
+        updateNotes: (email: string, notes: string) => Promise<Person | null>;
+        updateName: (email: string, name: string) => Promise<Person | null>;
+        updateOrganization: (email: string, organization: string) => Promise<Person | null>;
+        getByMeeting: (meetingId: string) => Promise<Person[]>;
+        getStats: () => Promise<{ totalPeople: number; totalMeetings: number; avgMeetingsPerPerson: number }>;
       };
       calendar: {
         connect: (
@@ -182,6 +281,14 @@ declare global {
         linkEvent: (calendarEventId: string, meetingId: string, provider: 'google' | 'outlook' | 'icloud') => Promise<void>;
         getEventForMeeting: (meetingId: string) => Promise<CalendarEvent | null>;
         linkNotes: (calendarEventId: string, notesId: string, provider: 'google' | 'outlook' | 'icloud') => Promise<void>;
+        listCalendars: (provider: 'google' | 'outlook' | 'icloud') => Promise<Array<{ id: string; name: string }>>;
+        setVisibleCalendars: (provider: 'google' | 'outlook' | 'icloud', ids: string[]) => Promise<void>;
+      };
+      crm: {
+        connect: (provider: 'salesforce' | 'hubspot') => Promise<any>;
+        disconnect: (provider: 'salesforce' | 'hubspot') => Promise<void>;
+        pushNotes: (meetingId: string) => Promise<void>;
+        onMeetingComplete: (callback: (data: { meetingId: string; shouldPrompt: boolean; provider?: string }) => void) => () => void;
       };
       dev: {
         onResetOnboarding: (callback: () => void) => () => void;

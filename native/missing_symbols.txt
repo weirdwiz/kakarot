@@ -1,0 +1,12 @@
+webrtc::LogMessage::IsNoop(webrtc::LoggingSeverity)
+webrtc::SplittingFilter::Analysis(webrtc::ChannelBuffer<float> const*, webrtc::ChannelBuffer<float>*)
+webrtc::SplittingFilter::Synthesis(webrtc::ChannelBuffer<float> const*, webrtc::ChannelBuffer<float>*)
+webrtc::SplittingFilter::SplittingFilter(unsigned long, unsigned long, unsigned long)
+webrtc::SplittingFilter::~SplittingFilter()
+webrtc::webrtc_logging_impl::Log(webrtc::webrtc_logging_impl::LogArgType const*, ...)
+webrtc::CreateDefaultTaskQueueFactory(webrtc::FieldTrialsView const*)
+webrtc::Clock::GetRealTimeClock()
+webrtc::rnn_vad::AutoCorrelationCalculator::ComputeOnPitchBuffer(webrtc::ArrayView<float const, 432l>, webrtc::ArrayView<float, 147l>)
+webrtc::rnn_vad::AutoCorrelationCalculator::AutoCorrelationCalculator()
+webrtc::rnn_vad::AutoCorrelationCalculator::~AutoCorrelationCalculator()
+webrtc::FieldTrialsRegistry::Lookup(std::__Cr::basic_string_view<char, std::__Cr::char_traits<char>>) const

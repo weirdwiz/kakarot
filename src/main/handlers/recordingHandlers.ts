@@ -3,119 +3,41 @@ import { IPC_CHANNELS } from '@shared/ipcChannels';
 import { getContainer } from '../core/container';
 import { createLogger } from '../core/logger';
 import { createTranscriptionProvider, ITranscriptionProvider } from '../services/transcription';
-import { DualAudioService } from '../services/DualAudioService';
+import { SystemAudioService } from '../services/SystemAudioService';
+import { CalloutService } from '../services/CalloutService';
+import { AECProcessor } from '../audio/native/AECProcessor';
+import { AECSync } from '../audio/AECSync';
 import { showCalloutWindow } from '../windows/calloutWindow';
+import { AUDIO_CONFIG } from '../config/constants';
 import { getDatabase, saveDatabase } from '../data/database';
+import type { CalendarAttendee } from '@shared/types';
 
 const logger = createLogger('RecordingHandlers');
 
 let transcriptionProvider: ITranscriptionProvider | null = null;
-let dualAudioService: DualAudioService | null = null;
+let systemAudioService: SystemAudioService | null = null;
+let aecProcessor: AECProcessor | null = null;
+let aecSync: AECSync | null = null;
 let activeCalendarContext: {
   calendarEventId: string;
   calendarEventTitle: string;
-  calendarEventAttendees?: string[];
+  calendarEventAttendees?: CalendarAttendee[];
   calendarEventStart: string;
   calendarEventEnd: string;
   calendarProvider: string;
 } | null = null;
+let isPaused = false;
 
-async function stopAudioCapture(): Promise<void> {
-  if (dualAudioService) {
-    const das = dualAudioService;
-    dualAudioService = null;
-    await das.stop().catch((error) => logger.error('Audio capture stop error', error));
-    logger.info('Audio capture stopped');
-  }
-}
-
-async function stopTranscription(): Promise<void> {
-  if (transcriptionProvider) {
-    const tp = transcriptionProvider;
-    transcriptionProvider = null;
-    await tp.disconnect().catch((error) => logger.error('Transcription disconnect error', error));
-    logger.info('Transcription provider disconnected');
-  }
-  // Wait for any remaining finals to arrive and be stored
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-}
-
-interface CalendarContext {
-  calendarEventId: string;
-  calendarProvider: string;
-}
-
-async function generateAndSaveNotes(
-  meetingId: string,
-  calendarContext: CalendarContext | null,
-  sendToRenderer: (channel: string, data: unknown) => void
-): Promise<void> {
-  const { meetingRepo, noteGenerationService, calendarService } = getContainer();
-  const fullMeeting = meetingRepo.findById(meetingId);
-
-  if (!fullMeeting || fullMeeting.transcript.length === 0) {
-    logger.warn('No transcript segments to generate notes from');
-    sendToRenderer(IPC_CHANNELS.RECORDING_STATE, 'idle');
-    return;
-  }
-
-  sendToRenderer(IPC_CHANNELS.MEETING_NOTES_GENERATING, { meetingId });
-
-  try {
-    logger.info('Notes generation started', { meetingId });
-    const notes = await noteGenerationService.generateNotes(fullMeeting);
-
-    if (notes) {
-      logger.info('Notes generated successfully', { meetingId });
-      meetingRepo.updateNotes(meetingId, null, notes.notesMarkdown, notes.notesMarkdown);
-      meetingRepo.updateOverview(meetingId, notes.overview);
-      const db = getDatabase();
-      db.run('UPDATE meetings SET title = ? WHERE id = ?', [notes.title, meetingId]);
-      saveDatabase();
-
-      if (calendarContext) {
-        calendarService.linkNotesToEvent(
-          calendarContext.calendarEventId,
-          meetingId,
-          calendarContext.calendarProvider as 'google' | 'outlook' | 'icloud'
-        ).catch((err) => {
-          logger.error('Failed to link notes to calendar event', {
-            calendarEventId: calendarContext.calendarEventId,
-            error: (err as Error).message,
-          });
-        });
-      }
-
-      sendToRenderer(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
-        meetingId,
-        title: notes.title,
-        overview: notes.overview,
-      });
-    } else {
-      logger.info('Notes generation skipped (no notes returned)', { meetingId });
-      sendToRenderer(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
-        meetingId,
-        title: fullMeeting.title || 'Untitled Meeting',
-        overview: '',
-      });
-    }
-  } catch (error) {
-    logger.error('Notes generation failed', { meetingId, error: (error as Error).message });
-    sendToRenderer(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
-      meetingId,
-      title: fullMeeting.title || 'Untitled Meeting',
-      overview: '',
-    });
-  }
-
-  sendToRenderer(IPC_CHANNELS.RECORDING_STATE, 'idle');
-}
+// NEW: Audio buffering for mic capture
+let micAudioBuffer: Int16Array = new Int16Array(0);
+const MIN_BUFFER_SAMPLES = 2400; // 50ms at 48kHz (AssemblyAI minimum)
+let micAudioDataCount = 0;
 
 export function registerRecordingHandlers(
   mainWindow: BrowserWindow,
   calloutWindow: BrowserWindow
 ): void {
-  const { calloutService } = getContainer();
+  const calloutService = new CalloutService();
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_START, async (_, calendarContext?: any) => {
     logger.info('Recording start requested', { hasCalendarContext: !!calendarContext });
@@ -132,18 +54,51 @@ export function registerRecordingHandlers(
       });
     }
 
-    // Start meeting with calendar title if available
+    // Start meeting with calendar title and attendees if available
     const meetingTitle = calendarContext?.calendarEventTitle;
-    await meetingRepo.startNewMeeting(meetingTitle);
-    logger.info('Meeting started');
+    const attendeeEmails = calendarContext?.calendarEventAttendees;
+    const meetingId = await meetingRepo.startNewMeeting(meetingTitle, attendeeEmails);
+    logger.info('Meeting started', { 
+      meetingId,
+      meetingTitle, 
+      hadCalendarContext: !!calendarContext,
+      attendeeCount: attendeeEmails?.length || 0,
+      actualTitle: meetingTitle || 'will use default timestamp'
+    });
 
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'recording');
+
+    // Initialize AEC processor for echo cancellation
+    try {
+      aecProcessor = new AECProcessor({
+        enableAec: true,
+        enableNs: true,
+        enableAgc: false,
+        frameDurationMs: 10,
+        sampleRate: AUDIO_CONFIG.SAMPLE_RATE,
+      });
+      logger.info('✅ AEC processor initialized for recording session');
+
+      // Initialize AECSync for render/capture synchronization
+      try {
+        aecSync = new AECSync(aecProcessor);
+        logger.info('✅ AECSync initialized for recording session');
+      } catch (error) {
+        logger.error('Failed to initialize AECSync', { error: (error as Error).message });
+        aecSync = null;
+      }
+    } catch (error) {
+      logger.error('Failed to initialize AEC processor', { error: (error as Error).message });
+      aecProcessor = null;
+      aecSync = null;
+      // Continue without AEC if initialization fails
+    }
 
     transcriptionProvider = createTranscriptionProvider(
       settings.transcriptionProvider,
       settings.assemblyAiApiKey,
       settings.deepgramApiKey,
-      undefined, // hostedTokenManager not implemented
+      undefined,
       settings.useHostedTokens
     );
     logger.info('Using transcription provider', { name: transcriptionProvider.name });
@@ -181,55 +136,316 @@ export function registerRecordingHandlers(
 
     transcriptionProvider
       .connect()
-      .then(async () => {
+      .then(() => {
         logger.info('Transcription provider connected');
 
-        if (!transcriptionProvider) return;
+        if (transcriptionProvider) {
+          systemAudioService = new SystemAudioService();
 
-        // Use native synchronized audio capture
-        dualAudioService = new DualAudioService();
+          // Pass shared AEC processor
+          if (aecProcessor) {
+            systemAudioService.setAECProcessor(aecProcessor);
+          }
 
-        dualAudioService.onMicLevel((level) => {
-          mainWindow.webContents.send(IPC_CHANNELS.AUDIO_LEVELS, { mic: level });
-        });
+          // Feed system audio to AECSync for synchronization
+          if (aecSync) {
+            systemAudioService.onSystemAudio((samples, timestamp) => {
+              // Null-safety check: aecSync might be cleaned up during shutdown
+              if (aecSync) {
+                aecSync.addRenderAudio(samples, timestamp);
+              }
+            });
+          }
 
-        dualAudioService.onSystemLevel((level) => {
-          mainWindow.webContents.send(IPC_CHANNELS.AUDIO_LEVELS, { system: level });
-        });
+          systemAudioService.onAudioLevel((level) => {
+            mainWindow.webContents.send(IPC_CHANNELS.AUDIO_LEVELS, { system: level });
+          });
 
-        try {
-          await dualAudioService.start(transcriptionProvider);
-          logger.info('Native dual audio capture started (with synchronized AEC)');
-        } catch (error) {
-          logger.error('Native audio capture failed', error as Error);
-          mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+          systemAudioService
+            .start(transcriptionProvider)
+            .then(() => {
+              logger.info('System audio capture started');
+
+              // NEW: Start native microphone capture AFTER system audio is ready
+              if (aecProcessor && transcriptionProvider) {
+                const tp = transcriptionProvider; // Capture in closure
+                
+                const success = aecProcessor.startMicrophoneCapture((samples, timestamp) => {
+                  // This callback runs in main process with native timestamps!
+                  micAudioDataCount++;
+                  if (micAudioDataCount % AUDIO_CONFIG.PACKET_LOG_INTERVAL === 1) {
+                    logger.debug('Native mic audio received', {
+                      size: samples.length,
+                      timestamp,
+                      count: micAudioDataCount,
+                    });
+                  }
+
+                  // Skip if paused
+                  if (isPaused || !tp) {
+                    return;
+                  }
+
+                  // Process mic audio through AEC with synchronized timestamps
+                  let cleanFloat32: Float32Array | null = null;
+
+                  if (aecSync) {
+                    // Use synchronized AEC processing with native timestamp!
+                    cleanFloat32 = aecSync.processCaptureWithSync(samples, timestamp);
+                    
+                    // Log sync stats occasionally
+                    if (micAudioDataCount % 100 === 0) {
+                      const stats = aecSync.getStats();
+                      logger.debug('AEC sync performance', {
+                        syncRate: `${stats.syncRate.toFixed(1)}%`,
+                        bufferSize: stats.bufferSize,
+                        packet: micAudioDataCount
+                      });
+                    }
+                  } else if (aecProcessor && aecProcessor.isReady()) {
+                    // Fallback: direct AEC without sync
+                    cleanFloat32 = aecProcessor.processCaptureAudio(samples);
+                  }
+
+                  if (cleanFloat32 && cleanFloat32.length > 0) {
+                    // Convert echo-cancelled audio to Int16
+                    const cleanInt16 = new Int16Array(cleanFloat32.length);
+                    for (let i = 0; i < cleanFloat32.length; i++) {
+                      cleanInt16[i] = Math.max(-32768, Math.min(32767, cleanFloat32[i] * 32768));
+                    }
+                    
+                    // Buffer the audio
+                    const newBuffer = new Int16Array(micAudioBuffer.length + cleanInt16.length);
+                    newBuffer.set(micAudioBuffer);
+                    newBuffer.set(cleanInt16, micAudioBuffer.length);
+                    micAudioBuffer = newBuffer;
+                    
+                    // Debug: Check buffer status
+                    if (micAudioDataCount === 5 || micAudioDataCount === 10 || micAudioDataCount === 15) {
+                      logger.info('🔍 Buffer check (AEC path)', {
+                        bufferSize: micAudioBuffer.length,
+                        needed: MIN_BUFFER_SAMPLES,
+                        chunk: micAudioDataCount,
+                        justAdded: cleanInt16.length
+                      });
+                    }
+                    
+                    // Send if buffer is large enough (50ms minimum for AssemblyAI)
+                    if (micAudioBuffer.length >= MIN_BUFFER_SAMPLES) {
+                      logger.info('📤 Sending mic audio to AssemblyAI (AEC)', { 
+                        samples: micAudioBuffer.length, 
+                        bytes: micAudioBuffer.buffer.byteLength,
+                        firstSample: micAudioBuffer[0],
+                        maxSample: Math.max(...Array.from(micAudioBuffer))
+                      });
+                      tp.sendAudio(micAudioBuffer.buffer as ArrayBuffer, 'mic');
+                      micAudioBuffer = new Int16Array(0); // Reset buffer
+                    }
+                  } else {
+                    // Fallback to raw audio if AEC processing fails
+                    if (micAudioDataCount % 100 === 1) {
+                      logger.warn('AEC processing returned empty, using raw mic audio', { micAudioDataCount });
+                    }
+                    const rawInt16 = new Int16Array(samples.length);
+                    for (let i = 0; i < samples.length; i++) {
+                      rawInt16[i] = Math.max(-32768, Math.min(32767, samples[i] * 32768));
+                    }
+                    
+                    // Buffer the raw audio
+                    const newBuffer = new Int16Array(micAudioBuffer.length + rawInt16.length);
+                    newBuffer.set(micAudioBuffer);
+                    newBuffer.set(rawInt16, micAudioBuffer.length);
+                    micAudioBuffer = newBuffer;
+                    
+                    // Debug: Check buffer status
+                    if (micAudioDataCount === 5 || micAudioDataCount === 10 || micAudioDataCount === 15) {
+                      logger.info('🔍 Buffer check', {
+                        bufferSize: micAudioBuffer.length,
+                        needed: MIN_BUFFER_SAMPLES,
+                        chunk: micAudioDataCount,
+                        justAdded: rawInt16.length
+                      });
+                    }
+                    
+                    // Send if buffer is large enough
+                    if (micAudioBuffer.length >= MIN_BUFFER_SAMPLES) {
+                      logger.info('📤 Sending mic audio to AssemblyAI', { 
+                        samples: micAudioBuffer.length, 
+                        bytes: micAudioBuffer.buffer.byteLength,
+                        firstSample: micAudioBuffer[0],
+                        maxSample: Math.max(...Array.from(micAudioBuffer))
+                      });
+                      tp.sendAudio(micAudioBuffer.buffer as ArrayBuffer, 'mic');
+                      micAudioBuffer = new Int16Array(0);
+                    }
+                  }
+                });
+
+                if (success) {
+                  logger.info('✅ Native microphone capture started (perfect sync with system audio!)');
+                } else {
+                  logger.error('❌ Failed to start native microphone capture');
+                }
+              }
+            })
+            .catch((error) => {
+              logger.error('System audio capture failed', error);
+            });
         }
       })
       .catch((error) => {
         logger.error('Transcription provider connection failed', error);
       });
+
+    return meetingId;
   });
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_STOP, async () => {
     logger.info('Recording stop requested');
-    const { meetingRepo } = getContainer();
+    const { meetingRepo, noteGenerationService, calendarService } = getContainer();
     const meetingId = meetingRepo.getCurrentMeetingId();
-    const calendarContext = activeCalendarContext;
+    const calendContext = activeCalendarContext;
     activeCalendarContext = null;
 
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'processing');
 
-    await stopAudioCapture();
-    await stopTranscription();
+    // CRITICAL: Stop audio capture FIRST before cleaning up AEC resources
+    // This prevents race conditions where callbacks try to access null AEC objects
+
+    // Step 1: Stop system audio capture (prevents new callbacks from firing)
+    if (systemAudioService) {
+      const sas = systemAudioService;
+      systemAudioService = null;
+      await sas.stop().catch((error) => logger.error('System audio stop error', error));
+      logger.info('System audio capture stopped');
+    }
+
+    // Step 2: Stop native mic capture
+    if (aecProcessor && aecProcessor.isMicrophoneCapturing()) {
+      logger.info('Stopping native microphone capture');
+      aecProcessor.stopMicrophoneCapture();
+    }
+
+    // Step 3: Wait for any in-flight audio callbacks to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Step 4: Now safe to clean up AEC resources
+    // Clean up AEC sync
+    if (aecSync) {
+      const finalStats = aecSync.getStats();
+      logger.info('Final AEC sync stats', finalStats);
+      aecSync.clear();
+      aecSync = null;
+    }
+
+    // Clean up AEC processor
+    if (aecProcessor) {
+      try {
+        aecProcessor.destroy();
+      } catch (error) {
+        logger.warn('Error destroying AEC processor', { error: (error as Error).message });
+      }
+      aecProcessor = null;
+    }
+
+    // Reset mic audio counter and buffer
+    micAudioDataCount = 0;
+    micAudioBuffer = new Int16Array(0);
+
+    // Disconnect transcription and wait for it to flush
+    if (transcriptionProvider) {
+      const tp = transcriptionProvider;
+      transcriptionProvider = null;
+      await tp.disconnect().catch((error) => logger.error('Transcription disconnect error', error));
+      logger.info('Transcription provider disconnected');
+    }
+
+    isPaused = false;
+
+    // Wait for any remaining finals to arrive and be stored
+    await new Promise((resolve) => setTimeout(resolve, 1500));
 
     const meeting = await meetingRepo.endCurrentMeeting();
     logger.info('Meeting ended', { id: meeting?.id, transcriptCount: meeting?.transcript.length });
 
+    // Auto-generate notes in background
     if (meeting && meetingId) {
-      const sendToRenderer = (channel: string, data: unknown) => {
-        mainWindow.webContents.send(channel, data);
-      };
-      await generateAndSaveNotes(meeting.id, calendarContext, sendToRenderer);
+      mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_GENERATING, { meetingId: meeting.id });
+
+      // Re-fetch meeting to get all transcript segments
+      const fullMeeting = meetingRepo.findById(meeting.id);
+      if (fullMeeting && fullMeeting.transcript.length > 0) {
+        // Generate notes safely with try/catch
+        try {
+          logger.info('Notes generation started', { meetingId: meeting.id });
+          const notes = await noteGenerationService.generateNotes(fullMeeting);
+          
+          if (notes) {
+            logger.info('Notes generated successfully', { meetingId: meeting.id });
+            meetingRepo.updateNotes(meeting.id, null, notes.notesMarkdown, notes.notesMarkdown);
+            meetingRepo.updateOverview(meeting.id, notes.overview);
+
+            // Preserve calendar-derived titles; only override when we don't have a calendar context
+            if (!calendContext) {
+              logger.info('Updating meeting title with AI-generated title (no calendar context)', {
+                meetingId: meeting.id,
+                aiTitle: notes.title
+              });
+              const db = getDatabase();
+              db.run('UPDATE meetings SET title = ? WHERE id = ?', [notes.title, meeting.id]);
+              saveDatabase();
+            } else {
+              logger.info('Preserving calendar-derived title (calendar context exists)', {
+                meetingId: meeting.id,
+                calendarTitle: fullMeeting.title,
+                aiTitleNotUsed: notes.title
+              });
+            }
+
+            // Link notes back to calendar event if context exists
+            if (calendContext) {
+              calendarService.linkNotesToEvent(
+                calendContext.calendarEventId,
+                meeting.id,
+                calendContext.calendarProvider as 'google' | 'outlook' | 'icloud'
+              ).catch((err) => {
+                logger.error('Failed to link notes to calendar event', {
+                  calendarEventId: calendContext.calendarEventId,
+                  error: (err as Error).message,
+                });
+              });
+            }
+
+            mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
+              meetingId: meeting.id,
+              title: notes.title,
+              overview: notes.overview,
+            });
+          } else {
+            logger.info('Notes generation skipped (no notes returned)', { meetingId: meeting.id });
+            mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
+              meetingId: meeting.id,
+              title: fullMeeting.title || 'Untitled Meeting',
+              overview: '',
+            });
+          }
+        } catch (error) {
+          logger.error('Notes generation failed', { 
+            meetingId: meeting.id, 
+            error: (error as Error).message 
+          });
+          // Still emit completion event so renderer can navigate
+          mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
+            meetingId: meeting.id,
+            title: fullMeeting.title || 'Untitled Meeting',
+            overview: '',
+          });
+        }
+        mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+      } else {
+        logger.warn('No transcript segments to generate notes from');
+        mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+      }
     } else {
       logger.warn('No meeting or meetingId available for notes generation');
       mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
@@ -239,10 +455,31 @@ export function registerRecordingHandlers(
   });
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_PAUSE, async () => {
+    isPaused = true;
+    if (systemAudioService) {
+      systemAudioService.pause();
+    }
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'paused');
   });
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_RESUME, async () => {
+    isPaused = false;
+    if (systemAudioService) {
+      systemAudioService.resume();
+    }
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'recording');
   });
+
+  // REMOVED: Audio data handler for renderer mic capture
+  // Now using native microphone capture in the main process!
+  // The IPC_CHANNELS.AUDIO_DATA handler is no longer needed for mic audio.
+}
+
+// Expose transcription state for other handlers (e.g., audioHandlers)
+export function getActiveTranscriptionProvider(): ITranscriptionProvider | null {
+  return transcriptionProvider;
+}
+
+export function isRecordingPaused(): boolean {
+  return isPaused;
 }

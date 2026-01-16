@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { AppSettings } from '@shared/types';
-import { Calendar } from 'lucide-react';
+import { Calendar, Unlink } from 'lucide-react';
 
 // TODO(refactor): Extract CalendarConnectionButton component - 3 near-identical buttons
 // for Google/Outlook/iCloud with only provider name changing (lines 341-448)
@@ -12,6 +12,7 @@ export default function SettingsView() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [connectingProvider, setConnectingProvider] = useState<'google' | 'outlook' | 'icloud' | null>(null);
+  const [connectingCRM, setConnectingCRM] = useState<'salesforce' | 'hubspot' | null>(null);
   const [connectedCalendars, setConnectedCalendars] = useState<{
     google: boolean;
     outlook: boolean;
@@ -21,6 +22,15 @@ export default function SettingsView() {
     outlook: false,
     icloud: false,
   });
+  const [connectedCRMs, setConnectedCRMs] = useState<{
+    salesforce: boolean;
+    hubspot: boolean;
+  }>({
+    salesforce: false,
+    hubspot: false,
+  });
+  const [googleCalendars, setGoogleCalendars] = useState<Array<{ id: string; name: string }>>([]);
+  const [visibleGoogleIds, setVisibleGoogleIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (settings) {
@@ -30,8 +40,29 @@ export default function SettingsView() {
         outlook: !!settings.calendarConnections?.outlook,
         icloud: !!settings.calendarConnections?.icloud,
       });
+      setConnectedCRMs({
+        salesforce: !!settings.crmConnections?.salesforce,
+        hubspot: !!settings.crmConnections?.hubspot,
+      });
+      setVisibleGoogleIds(settings.visibleCalendars?.google || []);
     }
   }, [settings]);
+
+  useEffect(() => {
+    async function loadCalendars() {
+      try {
+        if (connectedCalendars.google) {
+          const list = await window.kakarot.calendar.listCalendars('google');
+          setGoogleCalendars(list);
+        } else {
+          setGoogleCalendars([]);
+        }
+      } catch (err) {
+        console.warn('Failed to load calendars', err);
+      }
+    }
+    loadCalendars();
+  }, [connectedCalendars.google]);
 
   const handleChange = (key: keyof AppSettings, value: string | boolean) => {
     if (!localSettings) return;
@@ -129,6 +160,65 @@ export default function SettingsView() {
     const path = prompt('Enter the path to your knowledge base folder:');
     if (path) {
       handleChange('knowledgeBasePath', path);
+    }
+  };
+
+  const handleConnectCRM = async (provider: 'salesforce' | 'hubspot') => {
+    if (!localSettings) return;
+
+    setConnectingCRM(provider);
+    setSaveMessage('');
+
+    try {
+      // In a real implementation, this would trigger OAuth flow via IPC
+      const result = await window.kakarot.crm?.connect(provider);
+      if (result) {
+        const nextConnections = {
+          ...(localSettings.crmConnections || {}),
+          [provider]: result,
+        };
+        const nextSettings = { ...localSettings, crmConnections: nextConnections };
+        setLocalSettings(nextSettings);
+        setSettings(nextSettings);
+        setConnectedCRMs({
+          ...connectedCRMs,
+          [provider]: true,
+        });
+        setSaveMessage(`${provider.charAt(0).toUpperCase() + provider.slice(1)} connected`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setSaveMessage(`Failed to connect ${provider}: ${message}`);
+    } finally {
+      setConnectingCRM(null);
+      setTimeout(() => setSaveMessage(''), 5000);
+    }
+  };
+
+  const handleDisconnectCRM = async (provider: 'salesforce' | 'hubspot') => {
+    if (!localSettings) return;
+
+    setConnectingCRM(provider);
+    setSaveMessage('');
+
+    try {
+      await window.kakarot.crm?.disconnect(provider);
+      const nextConnections = { ...(localSettings.crmConnections || {}) };
+      delete nextConnections[provider];
+      const nextSettings = { ...localSettings, crmConnections: nextConnections };
+      setLocalSettings(nextSettings);
+      setSettings(nextSettings);
+      setConnectedCRMs({
+        ...connectedCRMs,
+        [provider]: false,
+      });
+      setSaveMessage(`${provider.charAt(0).toUpperCase() + provider.slice(1)} disconnected`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setSaveMessage(`Failed to disconnect ${provider}: ${message}`);
+    } finally {
+      setConnectingCRM(null);
+      setTimeout(() => setSaveMessage(''), 5000);
     }
   };
 
@@ -449,6 +539,170 @@ export default function SettingsView() {
               )}
             </button>
           </div>
+        </section>
+
+        {/* Visible Calendars */}
+        {connectedCalendars.google && (
+          <section className="space-y-4">
+            <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
+              Visible Calendars
+            </h2>
+            <div className="space-y-2">
+              {googleCalendars.length === 0 && (
+                <p className="text-sm text-gray-400">No calendars found</p>
+              )}
+              {googleCalendars.map((cal) => {
+                const enabled = visibleGoogleIds.includes(cal.id);
+                return (
+                  <div key={cal.id} className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-700 bg-gray-800">
+                    <div className="flex items-center gap-3">
+                      <span className="w-3 h-3 rounded-sm bg-emerald-500" />
+                      <p className="text-sm text-white">{cal.name}</p>
+                    </div>
+                    <ToggleSwitch
+                      enabled={enabled}
+                      onChange={(on) => {
+                        const next = on
+                          ? Array.from(new Set([...visibleGoogleIds, cal.id]))
+                          : visibleGoogleIds.filter((id) => id !== cal.id);
+                        setVisibleGoogleIds(next);
+                        const nextSettings = { ...localSettings!, visibleCalendars: { ...(localSettings!.visibleCalendars || {}), google: next } };
+                        setLocalSettings(nextSettings);
+                        window.kakarot.calendar.setVisibleCalendars('google', next).catch(() => {});
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* CRM Integrations */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
+            CRM Integrations
+          </h2>
+          <p className="text-sm text-gray-400">
+            Connect your CRM to automatically push meeting notes to contact records.
+          </p>
+
+          <div className="space-y-3">
+            {/* Salesforce */}
+            <button
+              onClick={() =>
+                connectedCRMs.salesforce
+                  ? handleDisconnectCRM('salesforce')
+                  : handleConnectCRM('salesforce')
+              }
+              disabled={connectingCRM === 'salesforce'}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
+                connectedCRMs.salesforce
+                  ? 'border-green-500/50 bg-green-500/10'
+                  : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 bg-gradient-to-br from-blue-400 to-blue-600 rounded text-white text-xs font-bold flex items-center justify-center">
+                  SF
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium text-white">
+                    {connectedCRMs.salesforce ? 'Salesforce Connected' : 'Connect Salesforce'}
+                  </p>
+                  {connectedCRMs.salesforce && (
+                    <p className="text-xs text-gray-500">Notes will be synced to contact records</p>
+                  )}
+                </div>
+              </div>
+              {connectedCRMs.salesforce ? (
+                <span className="text-sm text-green-400">
+                  {connectingCRM === 'salesforce' ? 'Disconnecting...' : 'Disconnect'}
+                </span>
+              ) : (
+                <span className="text-sm text-primary-400">
+                  {connectingCRM === 'salesforce' ? 'Connecting...' : '+ Connect'}
+                </span>
+              )}
+            </button>
+
+            {/* HubSpot */}
+            <button
+              onClick={() =>
+                connectedCRMs.hubspot
+                  ? handleDisconnectCRM('hubspot')
+                  : handleConnectCRM('hubspot')
+              }
+              disabled={connectingCRM === 'hubspot'}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
+                connectedCRMs.hubspot
+                  ? 'border-green-500/50 bg-green-500/10'
+                  : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 bg-gradient-to-br from-orange-400 to-orange-600 rounded text-white text-xs font-bold flex items-center justify-center">
+                  HS
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium text-white">
+                    {connectedCRMs.hubspot ? 'HubSpot Connected' : 'Connect HubSpot'}
+                  </p>
+                  {connectedCRMs.hubspot && (
+                    <p className="text-xs text-gray-500">Notes will be synced to contact records</p>
+                  )}
+                </div>
+              </div>
+              {connectedCRMs.hubspot ? (
+                <span className="text-sm text-green-400">
+                  {connectingCRM === 'hubspot' ? 'Disconnecting...' : 'Disconnect'}
+                </span>
+              ) : (
+                <span className="text-sm text-primary-400">
+                  {connectingCRM === 'hubspot' ? 'Connecting...' : '+ Connect'}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* CRM Notes Behavior */}
+          {(connectedCRMs.salesforce || connectedCRMs.hubspot) && (
+            <div>
+              <label className="block text-sm text-gray-300 mb-3">
+                When sending notes to CRM
+              </label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-700 bg-gray-800 cursor-pointer hover:border-gray-600 transition">
+                  <input
+                    type="radio"
+                    name="crmNotes"
+                    value="always"
+                    checked={localSettings?.crmNotesBehavior === 'always' || localSettings?.crmNotesBehavior === undefined}
+                    onChange={(e) => handleChange('crmNotesBehavior', e.target.value as any)}
+                    className="w-4 h-4 cursor-pointer"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-white">Send All Notes Automatically</p>
+                    <p className="text-xs text-gray-500">Notes are always pushed to participant records</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-700 bg-gray-800 cursor-pointer hover:border-gray-600 transition">
+                  <input
+                    type="radio"
+                    name="crmNotes"
+                    value="ask"
+                    checked={localSettings?.crmNotesBehavior === 'ask'}
+                    onChange={(e) => handleChange('crmNotesBehavior', e.target.value as any)}
+                    className="w-4 h-4 cursor-pointer"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-white">Ask Before Sending</p>
+                    <p className="text-xs text-gray-500">You'll be prompted after each meeting</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Save button */}

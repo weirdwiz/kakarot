@@ -1,21 +1,30 @@
 import { AssemblyAI } from 'assemblyai';
 import type { StreamingTranscriber } from 'assemblyai';
-import { BaseDualStreamProvider } from './BaseDualStreamProvider';
+import type { TranscriptSegment } from '@shared/types';
+import type { ITranscriptionProvider, TranscriptCallback } from './TranscriptionProvider';
 import { createLogger } from '../../core/logger';
 
 const logger = createLogger('AssemblyAI');
 
-export class AssemblyAIProvider extends BaseDualStreamProvider {
+export class AssemblyAIProvider implements ITranscriptionProvider {
   readonly name = 'AssemblyAI';
 
   private client: AssemblyAI;
   private micTranscriber: StreamingTranscriber | null = null;
   private systemTranscriber: StreamingTranscriber | null = null;
+  private transcriptCallback: TranscriptCallback | null = null;
+  private startTime: number = 0;
+  private micConnected: boolean = false;
+  private systemConnected: boolean = false;
+  private isDisconnected: boolean = false;
 
   constructor(apiKey: string) {
-    super();
     logger.debug('Initializing', { keyPresent: !!apiKey });
     this.client = new AssemblyAI({ apiKey });
+  }
+
+  onTranscript(callback: TranscriptCallback): void {
+    this.transcriptCallback = callback;
   }
 
   async connect(): Promise<void> {
@@ -53,10 +62,15 @@ export class AssemblyAIProvider extends BaseDualStreamProvider {
   ): void {
     transcriber.on('open', () => {
       logger.debug('Transcriber opened', { source });
-      this.setConnectionState(source, true);
+      if (source === 'mic') {
+        this.micConnected = true;
+      } else {
+        this.systemConnected = true;
+      }
     });
 
     transcriber.on('turn', (turn) => {
+      if (this.isDisconnected) return;
       if (!this.transcriptCallback) return;
       if (!turn.transcript || turn.transcript.trim() === '') return;
 
@@ -80,7 +94,11 @@ export class AssemblyAIProvider extends BaseDualStreamProvider {
 
     transcriber.on('close', (code, reason) => {
       logger.warn('Transcriber closed', { source, code, reason });
-      this.setConnectionState(source, false);
+      if (source === 'mic') {
+        this.micConnected = false;
+      } else {
+        this.systemConnected = false;
+      }
     });
   }
 
@@ -90,7 +108,7 @@ export class AssemblyAIProvider extends BaseDualStreamProvider {
     source: 'mic' | 'system',
     isFinal: boolean,
     words?: Array<{ text: string; confidence: number; start: number; end: number; word_is_final: boolean }>
-  ) {
+  ): TranscriptSegment {
     const mappedWords = (words || []).map((w) => ({
       text: w.text,
       confidence: w.confidence,
@@ -99,20 +117,33 @@ export class AssemblyAIProvider extends BaseDualStreamProvider {
       end: w.end,
     }));
 
-    return this.createBaseSegment(id, text, source, isFinal, 0.95, mappedWords);
+    return {
+      id,
+      text,
+      timestamp: Date.now() - this.startTime,
+      source,
+      confidence: 0.95,
+      isFinal,
+      words: mappedWords,
+    };
   }
 
-  protected sendToMic(audioData: ArrayBuffer): void {
-    this.micTranscriber?.sendAudio(audioData);
-  }
+  sendAudio(audioData: ArrayBuffer, source: 'mic' | 'system'): void {
+    const transcriber = source === 'mic' ? this.micTranscriber : this.systemTranscriber;
+    const isConnected = source === 'mic' ? this.micConnected : this.systemConnected;
 
-  protected sendToSystem(audioData: ArrayBuffer): void {
-    this.systemTranscriber?.sendAudio(audioData);
+    if (transcriber && isConnected) {
+      transcriber.sendAudio(audioData);
+    }
   }
 
   async disconnect(): Promise<void> {
     logger.info('Disconnecting');
+    this.isDisconnected = true;
     const closePromises: Promise<void>[] = [];
+
+    this.micConnected = false;
+    this.systemConnected = false;
 
     if (this.micTranscriber) {
       closePromises.push(this.micTranscriber.close());
@@ -125,7 +156,7 @@ export class AssemblyAIProvider extends BaseDualStreamProvider {
     }
 
     await Promise.all(closePromises);
-    this.resetState();
+    this.transcriptCallback = null;
     logger.info('Disconnected');
   }
 }

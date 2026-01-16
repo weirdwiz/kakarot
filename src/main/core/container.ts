@@ -1,9 +1,13 @@
-import { MeetingRepository, CalloutRepository, SettingsRepository } from '../data/repositories';
+import { MeetingRepository, CalloutRepository, SettingsRepository, PeopleRepository } from '../data/repositories';
 import { OpenAIProvider } from '../providers/OpenAIProvider';
 import { createLogger } from './logger';
 import { CalendarService } from '../services/CalendarService';
 import { CalloutService } from '../services/CalloutService';
 import { NoteGenerationService } from '../services/NoteGenerationService';
+import { HubSpotService } from '../services/HubSpotService';
+import { SalesforceService } from '../services/SalesforceService';
+import { MeetingNotificationService } from '../services/MeetingNotificationService';
+import { PrepService } from '../services/PrepService';
 
 const logger = createLogger('Container');
 
@@ -11,10 +15,15 @@ export interface AppContainer {
   meetingRepo: MeetingRepository;
   calloutRepo: CalloutRepository;
   settingsRepo: SettingsRepository;
+  peopleRepo: PeopleRepository;
   aiProvider: OpenAIProvider | null;
   calendarService: CalendarService;
   calloutService: CalloutService;
   noteGenerationService: NoteGenerationService;
+  hubSpotService: HubSpotService;
+  salesforceService: SalesforceService;
+  meetingNotificationService: MeetingNotificationService;
+  prepService: PrepService;
 }
 
 let container: AppContainer | null = null;
@@ -24,13 +33,38 @@ export function initializeContainer(): AppContainer {
   const meetingRepo = new MeetingRepository();
   const calloutRepo = new CalloutRepository();
   const settingsRepo = new SettingsRepository();
+  const peopleRepo = new PeopleRepository();
   const calendarService = new CalendarService(settingsRepo);
+  
+  // Inject peopleRepo into meetingRepo for attendee syncing
+  meetingRepo.setPeopleRepository(peopleRepo);
+  
+  // Inject People API fetcher for smart name resolution
+  meetingRepo.setPeopleApiFetcher((email: string) => 
+    calendarService.fetchPersonNameFromGoogle(email)
+  );
 
   // Initialize default settings
   settingsRepo.initializeDefaults();
 
   // Create AI provider if API key is available
   let settings = settingsRepo.getSettings();
+
+  // Sanitize: perma-remove Birthdays calendar from visible calendars if previously stored
+  try {
+    const BIRTHDAYS_ID = 'addressbook#contacts@group.v.calendar.google.com';
+    const googleVisible = settings.visibleCalendars?.google || [];
+    const hasBirthdays = googleVisible.some((id) => typeof id === 'string' && id.includes(BIRTHDAYS_ID));
+    if (hasBirthdays) {
+      const filtered = googleVisible.filter((id) => !id.includes(BIRTHDAYS_ID));
+      const nextVisible = { ...(settings.visibleCalendars || {}), google: filtered };
+      settingsRepo.updateSettings({ visibleCalendars: nextVisible });
+      settings = settingsRepo.getSettings();
+      logger.info('Sanitized visible calendars: removed Birthdays calendar');
+    }
+  } catch (err) {
+    logger.warn('Failed to sanitize visible calendars', { error: (err as Error).message });
+  }
 
   // Force OpenAI API base URL if still pointing to RouteLLM
   if (settings.openAiBaseUrl && /routellm\.abacus\.ai/i.test(settings.openAiBaseUrl)) {
@@ -58,14 +92,29 @@ export function initializeContainer(): AppContainer {
   // Initialize callout service
   const calloutService = new CalloutService();
 
+  // Initialize CRM services
+  const hubSpotService = new HubSpotService();
+  const salesforceService = new SalesforceService();
+
+  // Initialize meeting notification service
+  const meetingNotificationService = new MeetingNotificationService(calendarService);
+
+  // Initialize prep service
+  const prepService = new PrepService();
+
   container = {
     meetingRepo,
     calloutRepo,
     settingsRepo,
+    peopleRepo,
     aiProvider,
     calendarService,
     calloutService,
     noteGenerationService,
+    hubSpotService,
+    salesforceService,
+    meetingNotificationService,
+    prepService,
   };
 
   logger.info('Container initialized');

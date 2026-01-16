@@ -2,9 +2,11 @@ import React, { useEffect, useCallback, useState } from 'react';
 import { useAppStore } from './stores/appStore';
 import { useOnboardingStore } from './stores/onboardingStore';
 import RecordingView from './components/RecordingView';
+import PrepView from './components/PrepView';
 import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
-import PrepView from './components/PrepView';
+import InteractView from './components/InteractView';
+import PeopleView from './components/PeopleView';
 import Sidebar from './components/Sidebar';
 import OnboardingFlow from './components/onboarding/OnboardingFlow';
 import type { AudioLevels } from '../shared/types';
@@ -71,7 +73,28 @@ export default function App() {
       <div className="flex-1 flex flex-col">
         {/* Fixed Header */}
         <header className="sticky top-0 z-30 backdrop-blur-md bg-white/70 dark:bg-[#0C0C0C]/80 border-b border-slate-200 dark:border-[#1A1A1A] drag-region">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-[48px] flex items-center justify-center">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-[48px] flex items-center justify-between">
+            {/* Back button (left, next to traffic lights area) */}
+            <div className="w-32 flex items-center no-drag">
+              <button
+                className="px-3 py-1.5 rounded-md text-sm text-slate-700 dark:text-slate-300 hover:bg-white/60 hover:dark:bg-white/5"
+                onClick={() => {
+                  const state = useAppStore.getState();
+                  const isLive = state.recordingState === 'recording' || state.recordingState === 'paused' || state.recordingState === 'processing';
+                  // Navigate to home/bento view; if live, keep recording running but swap to home shell
+                  state.setView('recording');
+                  setPillarTab('notes');
+                  state.setActiveCalendarContext(null);
+                  state.setCalendarContext(null);
+                  state.setSelectedMeeting(null);
+                  state.setShowRecordingHome(isLive);
+                }}
+              >
+                <span className="inline-flex items-center gap-1">
+                  ← Back
+                </span>
+              </button>
+            </div>
             {/* Navigation Pills (Center) */}
             <div className="flex-1 flex justify-center no-drag">
               <div className="flex items-center gap-2 px-2 py-2 rounded-full border border-white/30 dark:border-white/10 bg-white/70 dark:bg-[#0C0C0C]/70">
@@ -92,30 +115,26 @@ export default function App() {
             </div>
 
             {/* Theme Toggle (Right) */}
-            <div className="ml-4 no-drag"><ThemeToggle /></div>
+            <div className="w-32 flex justify-end no-drag"><ThemeToggle /></div>
           </div>
         </header>
 
         {/* Scrollable Content */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
-            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121212] shadow-soft-card">
-              <div className="p-4 sm:p-6">
+        <main className={`flex-1 ${view === 'history' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+          <div className={`max-w-6xl mx-auto px-4 sm:px-6 ${view === 'history' ? 'h-full' : 'py-6'}`}>
+            <div className={`rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121212] shadow-soft-card ${view === 'history' ? 'h-full' : ''}`}>
+              <div className={`${view === 'history' ? 'h-full p-0' : 'p-4 sm:p-6'}`}>
                 {view === 'recording' && (
                   pillarTab === 'notes' ? (
                     <RecordingView onSelectTab={setPillarTab} />
                   ) : pillarTab === 'prep' ? (
                     <PrepView />
                   ) : (
-                    <div className="h-[60vh] flex items-center justify-center text-center text-slate-500 dark:text-slate-400">
-                      <div>
-                        <p className="text-lg font-medium mb-2">Interact Space</p>
-                        <p className="text-sm">This area is reserved for future features.</p>
-                      </div>
-                    </div>
+                    <InteractView />
                   )
                 )}
                 {view === 'history' && <HistoryView />}
+                {view === 'people' && <PeopleView />}
                 {view === 'settings' && <SettingsView />}
               </div>
             </div>

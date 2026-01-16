@@ -47,14 +47,49 @@ export class CalendarService {
           tokenUrl: 'https://oauth2.googleapis.com/token',
           clientId,
           clientSecret,
-          scope: 'https://www.googleapis.com/auth/calendar.readonly',
+          scope: 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/contacts.readonly',
           extraAuthParams: {
             access_type: 'offline',
             prompt: 'consent',
           },
         });
 
+        // Fetch user profile from Google
+        try {
+          const axios = (await import('axios')).default;
+          const profileResponse = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
+            headers: { Authorization: `Bearer ${tokens.accessToken}` },
+          });
+          tokens.userName = profileResponse.data.name;
+          tokens.userEmail = profileResponse.data.email;
+          tokens.userPhoto = profileResponse.data.picture;
+          
+          // Store in settings
+          this.settingsRepo.updateSettings({
+            userProfile: {
+              name: profileResponse.data.name,
+              email: profileResponse.data.email,
+              photo: profileResponse.data.picture,
+              provider: 'google',
+            },
+          });
+        } catch (err) {
+          logger.warn('Failed to fetch Google user profile', { error: (err as Error).message });
+        }
+
         const updated = this.persistConnection('google', tokens);
+
+        // Auto-populate visible calendars on first connection (after persistence)
+        try {
+          const calendarList = await this.listCalendars('google');
+          if (calendarList.length > 0) {
+            await this.setVisibleCalendars('google', calendarList.map(cal => cal.id));
+            logger.info('Auto-populated visible Google calendars', { count: calendarList.length });
+          }
+        } catch (err) {
+          logger.warn('Failed to auto-populate visible Google calendars', { error: (err as Error).message });
+        }
+
         logger.info('Google calendar connected');
         return updated;
       }
@@ -71,8 +106,39 @@ export class CalendarService {
           tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
           clientId,
           clientSecret,
-          scope: 'offline_access Calendars.Read',
+          scope: 'offline_access Calendars.Read User.Read',
         });
+
+        // Fetch user profile from Microsoft Graph
+        try {
+          const axios = (await import('axios')).default;
+          const profileResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
+            headers: { Authorization: `Bearer ${tokens.accessToken}` },
+          });
+          const photoResponse = await axios.get('https://graph.microsoft.com/v1.0/me/photo/$value', {
+            headers: { Authorization: `Bearer ${tokens.accessToken}` },
+            responseType: 'arraybuffer',
+          }).catch(() => null);
+          
+          tokens.userName = profileResponse.data.displayName;
+          tokens.userEmail = profileResponse.data.mail || profileResponse.data.userPrincipalName;
+          if (photoResponse) {
+            const base64Photo = Buffer.from(photoResponse.data).toString('base64');
+            tokens.userPhoto = `data:image/jpeg;base64,${base64Photo}`;
+          }
+          
+          // Store in settings
+          this.settingsRepo.updateSettings({
+            userProfile: {
+              name: tokens.userName,
+              email: tokens.userEmail,
+              photo: tokens.userPhoto,
+              provider: 'outlook',
+            },
+          });
+        } catch (err) {
+          logger.warn('Failed to fetch Outlook user profile', { error: (err as Error).message });
+        }
 
         const updated = this.persistConnection('outlook', tokens);
         logger.info('Outlook calendar connected');
@@ -177,8 +243,8 @@ export class CalendarService {
 
     // Dev logging
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[OAuth ${config.provider}] Starting OAuth flow`);
-      console.log(`[OAuth ${config.provider}] Redirect URI: ${redirectUri}`);
+      logger.info(`[OAuth ${config.provider}] Starting OAuth flow`);
+      logger.info(`[OAuth ${config.provider}] Redirect URI: ${redirectUri}`);
     }
 
     await shell.openExternal(authUrl.toString());
@@ -189,7 +255,7 @@ export class CalendarService {
 
     // Dev logging
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[OAuth ${config.provider}] Received authorization code`);
+      logger.info(`[OAuth ${config.provider}] Received authorization code`);
     }
 
     const body = new URLSearchParams({
@@ -229,8 +295,8 @@ export class CalendarService {
 
     // Dev logging
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[OAuth ${config.provider}] ✓ Tokens received successfully`);
-      console.log(`[OAuth ${config.provider}] Expires in: ${tokenJson.expires_in}s`);
+      logger.info(`[OAuth ${config.provider}] ✓ Tokens received successfully`);
+      logger.info(`[OAuth ${config.provider}] Expires in: ${tokenJson.expires_in}s`);
     }
 
     return tokens;
@@ -333,10 +399,15 @@ export class CalendarService {
     return refreshed;
   }
 
-  private async fetchGoogleEvents(tokens: OAuthTokens, start: Date, end: Date): Promise<CalendarEvent[]> {
+  private async fetchGoogleEvents(tokens: OAuthTokens, start: Date, end: Date, calendarId: string = 'primary'): Promise<CalendarEvent[]> {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     if (!clientId || !clientSecret) return [];
+
+    // Perma-remove Birthdays calendar events
+    if (calendarId && calendarId.includes('addressbook#contacts@group.v.calendar.google.com')) {
+      return [];
+    }
 
     const freshTokens = await this.ensureFreshToken('google', tokens, {
       tokenUrl: 'https://oauth2.googleapis.com/token',
@@ -344,11 +415,12 @@ export class CalendarService {
       clientSecret,
     });
 
-    const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
+    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`);
     url.searchParams.set('timeMin', start.toISOString());
     url.searchParams.set('timeMax', end.toISOString());
     url.searchParams.set('singleEvents', 'true');
     url.searchParams.set('orderBy', 'startTime');
+    url.searchParams.set('conferenceDataVersion', '1');
 
     const response = await fetch(url, {
       headers: {
@@ -362,16 +434,50 @@ export class CalendarService {
     }
 
     const data = await response.json();
-    const events: CalendarEvent[] = (data.items || []).map((item: any) => ({
-      id: item.id,
-      title: item.summary || 'Untitled',
-      start: new Date(item.start?.dateTime || item.start?.date),
-      end: new Date(item.end?.dateTime || item.end?.date || item.start?.dateTime || item.start?.date),
-      provider: 'google',
-      location: item.location,
-      attendees: item.attendees?.map((a: any) => a.email) ?? [],
-      description: item.description,
-    }));
+    const events: CalendarEvent[] = (data.items || [])
+      .filter((item: any) => {
+        // Filter out events from the Birthdays calendar by checking organizer
+        const organizerEmail = item.organizer?.email || '';
+        const creatorEmail = item.creator?.email || '';
+        const isBirthdaysCalendar = 
+          organizerEmail.includes('addressbook#contacts@group.v.calendar.google.com') ||
+          creatorEmail.includes('addressbook#contacts@group.v.calendar.google.com');
+        
+        // Filter out non-standard event types (outOfOffice, workingLocation, focusTime)
+        // Only include events with eventType 'default'
+        const eventType = item.eventType || 'default';
+        const isStandardEvent = eventType === 'default';
+        
+        return !isBirthdaysCalendar && isStandardEvent;
+      })
+      .map((item: any) => {
+        // Extract meeting link from conferenceData.entryPoints
+        let meetingLink = item.location;
+        if (item.conferenceData?.entryPoints) {
+          const videoEntry = item.conferenceData.entryPoints.find(
+            (entry: any) => entry.entryPointType === 'video'
+          );
+          if (videoEntry?.uri) {
+            meetingLink = videoEntry.uri;
+          }
+        }
+        
+        const attendees = item.attendees?.map((a: any) => ({
+          email: a.email,
+          name: a.displayName,
+        })) ?? [];
+
+        return {
+          id: item.id,
+          title: item.summary || 'Untitled',
+          start: new Date(item.start?.dateTime || item.start?.date),
+          end: new Date(item.end?.dateTime || item.end?.date || item.start?.dateTime || item.start?.date),
+          provider: 'google',
+          location: meetingLink,
+          attendees,
+          description: item.description,
+        };
+      });
 
     return events;
   }
@@ -405,16 +511,37 @@ export class CalendarService {
     }
 
     const data = await response.json();
-    const events: CalendarEvent[] = (data.value || []).map((item: any) => ({
-      id: item.id,
-      title: item.subject || 'Untitled',
-      start: new Date(item.start?.dateTime || item.start),
-      end: new Date(item.end?.dateTime || item.end),
-      provider: 'outlook',
-      location: item.location?.displayName,
-      attendees: item.attendees?.map((a: any) => a.emailAddress?.address) ?? [],
-      description: item.bodyPreview,
-    }));
+    const events: CalendarEvent[] = (data.value || [])
+      .filter((item: any) => {
+        // Filter out non-standard event types (outOfOffice, workingLocation, focusTime)
+        // Only include events with type 'default'
+        const eventType = item.type || 'default';
+        const isStandardEvent = eventType === 'default';
+        return isStandardEvent;
+      })
+      .map((item: any) => {
+        // Extract meeting link from onlineMeeting or location
+        let meetingLink = item.location?.displayName;
+        if (item.onlineMeeting?.joinUrl) {
+          meetingLink = item.onlineMeeting.joinUrl;
+        } else if (item.isOnlineMeeting && item.onlineMeetingUrl) {
+          meetingLink = item.onlineMeetingUrl;
+        }
+        
+        return {
+          id: item.id,
+          title: item.subject || 'Untitled',
+          start: new Date(item.start?.dateTime || item.start),
+          end: new Date(item.end?.dateTime || item.end),
+          provider: 'outlook',
+          location: meetingLink,
+          attendees: item.attendees?.map((a: any) => ({
+            email: a.emailAddress?.address,
+            name: a.emailAddress?.name,
+          })) ?? [],
+          description: item.bodyPreview,
+        };
+      });
 
     return events;
   }
@@ -433,8 +560,18 @@ export class CalendarService {
 
     if (settings.calendarConnections.google) {
       try {
-        const events = await this.fetchGoogleEvents(settings.calendarConnections.google, now, oneWeekFromNow);
-        results.push(...events);
+        const visible = settings.visibleCalendars?.google;
+        if (visible && visible.length > 0) {
+          for (const calId of visible) {
+            // Skip Birthdays calendar entirely
+            if (calId.includes('addressbook#contacts@group.v.calendar.google.com')) continue;
+            const events = await this.fetchGoogleEvents(settings.calendarConnections.google, now, oneWeekFromNow, calId);
+            results.push(...events);
+          }
+        } else {
+          const events = await this.fetchGoogleEvents(settings.calendarConnections.google, now, oneWeekFromNow);
+          results.push(...events);
+        }
       } catch (err) {
         logger.error('Failed to fetch Google upcoming events', { error: (err as Error).message });
       }
@@ -450,6 +587,74 @@ export class CalendarService {
     }
 
     return results.sort((a, b) => a.start.getTime() - b.start.getTime());
+  }
+
+  async listCalendars(provider: Provider): Promise<Array<{ id: string; name: string }>> {
+    const settings = this.settingsRepo.getSettings();
+    if (provider === 'google' && settings.calendarConnections.google) {
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      if (!clientId || !clientSecret) return [];
+      const tokens = await this.ensureFreshToken('google', settings.calendarConnections.google, {
+        tokenUrl: 'https://oauth2.googleapis.com/token',
+        clientId,
+        clientSecret,
+      });
+      const url = new URL('https://www.googleapis.com/calendar/v3/users/me/calendarList');
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${tokens.accessToken}` } });
+      if (!resp.ok) {
+        logger.warn('Failed to list google calendars', { status: resp.status });
+        return [];
+      }
+      const data = await resp.json();
+      // Filter to show only "My calendars" according to Google Calendar rules:
+      // - Include if primary
+      // - Include if accessRole is 'owner' or 'writer'
+      // - Exclude read-only roles ('reader', 'freeBusyReader')
+      // - Optional: respect user's sidebar selection when env flag is set
+      const onlySelected = process.env.GOOGLE_CALENDAR_ONLY_SELECTED === 'true';
+      const filtered = (data.items || []).filter((c: any) => {
+        const role = (c.accessRole as string | undefined) || '';
+        const isPrimary = !!c.primary;
+        const writable = role === 'owner' || role === 'writer';
+        const isBirthdays = typeof c.id === 'string' && c.id.includes('addressbook#contacts@group.v.calendar.google.com');
+
+        // Perma-remove Birthdays calendar from listing
+        if (isBirthdays) return false;
+
+        // Always include primary calendar
+        if (isPrimary) return onlySelected ? !!c.selected : true;
+
+        // Include writable calendars only (exclude other read-only calendars)
+        if (writable) return onlySelected ? !!c.selected : true;
+
+        return false;
+      });
+
+      return filtered.map((c: any) => ({ id: c.id, name: c.summary }));
+    }
+    if (provider === 'outlook' && settings.calendarConnections.outlook) {
+      // Optional: implement in future
+      return [];
+    }
+    if (provider === 'icloud' && settings.calendarConnections.icloud) {
+      // Optional: implement in future
+      return [];
+    }
+    return [];
+  }
+
+  async setVisibleCalendars(provider: Provider, ids: string[]): Promise<void> {
+    const settings = this.settingsRepo.getSettings();
+    const visible = settings.visibleCalendars || {};
+    // Perma-remove Birthdays calendar from visibility selections
+    let filteredIds = ids;
+    if (provider === 'google') {
+      filteredIds = ids.filter((id) => !id.includes('addressbook#contacts@group.v.calendar.google.com'));
+    }
+    const next = { ...visible, [provider]: filteredIds } as typeof visible;
+    this.settingsRepo.updateSettings({ visibleCalendars: next });
+    logger.info('Updated visible calendars', { provider, count: filteredIds.length });
   }
 
   /**
@@ -522,6 +727,55 @@ export class CalendarService {
     }
     
     return null;
+  }
+
+  /**
+   * Fetch person's name from Google People API using their email
+   * Returns null if not found or on error
+   */
+  async fetchPersonNameFromGoogle(email: string): Promise<string | null> {
+    const settings = this.settingsRepo.getSettings();
+    if (!settings.calendarConnections.google) return null;
+
+    try {
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      if (!clientId || !clientSecret) return null;
+
+      const tokens = await this.ensureFreshToken('google', settings.calendarConnections.google, {
+        tokenUrl: 'https://oauth2.googleapis.com/token',
+        clientId,
+        clientSecret,
+      });
+
+      // Search for person by email using People API
+      const url = new URL('https://people.googleapis.com/v1/people:searchContacts');
+      url.searchParams.set('query', email);
+      url.searchParams.set('readMask', 'names,emailAddresses');
+
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${tokens.accessToken}` },
+      });
+
+      if (!response.ok) {
+        logger.debug('People API search failed', { email, status: response.status });
+        return null;
+      }
+
+      const data = await response.json();
+      const results = data.results || [];
+      
+      if (results.length > 0 && results[0].person?.names?.[0]?.displayName) {
+        const displayName = results[0].person.names[0].displayName;
+        logger.info('Fetched name from People API', { email, name: displayName });
+        return displayName;
+      }
+
+      return null;
+    } catch (error) {
+      logger.debug('Failed to fetch person from People API', { email, error: (error as Error).message });
+      return null;
+    }
   }
 
   /**
