@@ -58,14 +58,14 @@ CFLAGS_OBJCC_Debug := \
 	-fobjc-arc
 
 INCS_Debug := \
-	-I/Users/moxo/.electron-gyp/33.4.11/include/node \
-	-I/Users/moxo/.electron-gyp/33.4.11/src \
-	-I/Users/moxo/.electron-gyp/33.4.11/deps/openssl/config \
-	-I/Users/moxo/.electron-gyp/33.4.11/deps/openssl/openssl/include \
-	-I/Users/moxo/.electron-gyp/33.4.11/deps/uv/include \
-	-I/Users/moxo/.electron-gyp/33.4.11/deps/zlib \
-	-I/Users/moxo/.electron-gyp/33.4.11/deps/v8/include \
-	-I/Users/moxo/Desktop/kakarot-master/node_modules/node-addon-api
+	-I/Users/weirdwiz/.electron-gyp/33.4.11/include/node \
+	-I/Users/weirdwiz/.electron-gyp/33.4.11/src \
+	-I/Users/weirdwiz/.electron-gyp/33.4.11/deps/openssl/config \
+	-I/Users/weirdwiz/.electron-gyp/33.4.11/deps/openssl/openssl/include \
+	-I/Users/weirdwiz/.electron-gyp/33.4.11/deps/uv/include \
+	-I/Users/weirdwiz/.electron-gyp/33.4.11/deps/zlib \
+	-I/Users/weirdwiz/.electron-gyp/33.4.11/deps/v8/include \
+	-I/Users/weirdwiz/src/kakarot/node_modules/node-addon-api
 
 DEFS_Release := \
 	'-DNODE_GYP_MODULE_NAME=audio_capture_native' \
@@ -121,14 +121,14 @@ CFLAGS_OBJCC_Release := \
 	-fobjc-arc
 
 INCS_Release := \
-	-I/Users/moxo/.electron-gyp/33.4.11/include/node \
-	-I/Users/moxo/.electron-gyp/33.4.11/src \
-	-I/Users/moxo/.electron-gyp/33.4.11/deps/openssl/config \
-	-I/Users/moxo/.electron-gyp/33.4.11/deps/openssl/openssl/include \
-	-I/Users/moxo/.electron-gyp/33.4.11/deps/uv/include \
-	-I/Users/moxo/.electron-gyp/33.4.11/deps/zlib \
-	-I/Users/moxo/.electron-gyp/33.4.11/deps/v8/include \
-	-I/Users/moxo/Desktop/kakarot-master/node_modules/node-addon-api
+	-I/Users/weirdwiz/.electron-gyp/33.4.11/include/node \
+	-I/Users/weirdwiz/.electron-gyp/33.4.11/src \
+	-I/Users/weirdwiz/.electron-gyp/33.4.11/deps/openssl/config \
+	-I/Users/weirdwiz/.electron-gyp/33.4.11/deps/openssl/openssl/include \
+	-I/Users/weirdwiz/.electron-gyp/33.4.11/deps/uv/include \
+	-I/Users/weirdwiz/.electron-gyp/33.4.11/deps/zlib \
+	-I/Users/weirdwiz/.electron-gyp/33.4.11/deps/v8/include \
+	-I/Users/weirdwiz/src/kakarot/node_modules/node-addon-api
 
 OBJS := \
 	$(obj).target/$(TARGET)/native/aec/audio_capture.o \
@@ -149,25 +149,25 @@ $(OBJS): GYP_OBJCXXFLAGS := $(DEFS_$(BUILDTYPE)) $(INCS_$(BUILDTYPE))  $(CFLAGS_
 
 # Suffix rules, putting all outputs into $(obj).
 
-$(obj).$(TOOLSET)/$(TARGET)/%.o: $(srcdir)/%.cpp FORCE_DO_CMD
-	@$(call do_cmd,cxx,1)
-
 $(obj).$(TOOLSET)/$(TARGET)/%.o: $(srcdir)/%.mm FORCE_DO_CMD
 	@$(call do_cmd,objcxx,1)
 
-# Try building from generated source, too.
-
-$(obj).$(TOOLSET)/$(TARGET)/%.o: $(obj).$(TOOLSET)/%.cpp FORCE_DO_CMD
+$(obj).$(TOOLSET)/$(TARGET)/%.o: $(srcdir)/%.cpp FORCE_DO_CMD
 	@$(call do_cmd,cxx,1)
+
+# Try building from generated source, too.
 
 $(obj).$(TOOLSET)/$(TARGET)/%.o: $(obj).$(TOOLSET)/%.mm FORCE_DO_CMD
 	@$(call do_cmd,objcxx,1)
 
-$(obj).$(TOOLSET)/$(TARGET)/%.o: $(obj)/%.cpp FORCE_DO_CMD
+$(obj).$(TOOLSET)/$(TARGET)/%.o: $(obj).$(TOOLSET)/%.cpp FORCE_DO_CMD
 	@$(call do_cmd,cxx,1)
 
 $(obj).$(TOOLSET)/$(TARGET)/%.o: $(obj)/%.mm FORCE_DO_CMD
 	@$(call do_cmd,objcxx,1)
+
+$(obj).$(TOOLSET)/$(TARGET)/%.o: $(obj)/%.cpp FORCE_DO_CMD
+	@$(call do_cmd,cxx,1)
 
 # End of this set of suffix rules
 ### Rules for final target.

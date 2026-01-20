@@ -557,11 +557,26 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
         {/* Recording controls and titles - Show when recording, paused, or generating notes */}
         {!isIdle && !showBentoWhileLive && (
           <div className="space-y-3">
-            {/* Recording Title */}
+            {/* Recording Status with Visual Indicator */}
             <div className="space-y-2">
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                {isRecording && 'Recording in progress... keep the conversation flowing'}
-                {isPaused && 'Recording paused — resume when ready'}
+              <div className="flex items-center gap-2">
+                {isRecording && (
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                  </span>
+                )}
+                {isPaused && (
+                  <span className="inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
+                )}
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                  {isRecording && 'Recording in progress'}
+                  {isPaused && 'Recording paused'}
+                </p>
+              </div>
+              <p className="text-xs text-slate-400 dark:text-slate-500">
+                {isRecording && 'Keep the conversation flowing — your notes are being captured'}
+                {isPaused && 'Resume when ready to continue capturing'}
               </p>
               <div className="flex items-center gap-2">
                 <input
