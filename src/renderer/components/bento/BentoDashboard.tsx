@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import type { CalendarEvent, Meeting, AppSettings } from '@shared/types';
 import { useAppStore } from '@renderer/stores/appStore';
 import CompactMeetingBar from './CompactMeetingBar';
@@ -15,7 +15,8 @@ interface BentoDashboardProps {
 type CompletedMeeting = Meeting & { endedAt: Date };
 
 export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents, onStartNotes, onSelectTab }: BentoDashboardProps): JSX.Element {
-  const { setView, setSelectedMeeting, setCalendarContext, setActiveCalendarContext } = useAppStore();
+  const { setView, setSelectedMeeting, setCalendarContext, setActiveCalendarContext, recordingState } = useAppStore();
+  const prevRecordingState = useRef(recordingState);
   const [liveEvents, setLiveEvents] = useState<CalendarEvent[]>([]);
   const [dismissedEventIds, setDismissedEventIds] = useState<Set<string>>(() => {
     try {
@@ -103,6 +104,17 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
       if (unsubscribe) unsubscribe();
     };
   }, [loadPreviousMeetings]);
+
+  // Refresh previous meetings when recording ends (transitions from recording to idle)
+  useEffect(() => {
+    if (prevRecordingState.current === 'recording' && recordingState === 'idle') {
+      // Small delay to allow database to update
+      setTimeout(() => {
+        loadPreviousMeetings();
+      }, 300);
+    }
+    prevRecordingState.current = recordingState;
+  }, [recordingState, loadPreviousMeetings]);
 
   const handleViewNotes = async (meetingId: string) => {
     try {
