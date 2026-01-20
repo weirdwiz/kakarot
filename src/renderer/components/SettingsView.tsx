@@ -155,9 +155,7 @@ export default function SettingsView() {
   };
 
   const handleSelectKnowledgePath = async () => {
-    // In a real implementation, this would open a file dialog
-    // For now, we'll use a prompt
-    const path = prompt('Enter the path to your knowledge base folder:');
+    const path = await window.kakarot.dialog.selectFolder();
     if (path) {
       handleChange('knowledgeBasePath', path);
     }

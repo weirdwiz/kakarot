@@ -8,6 +8,7 @@ import { registerPeopleHandlers } from './peopleHandlers';
 import { registerCRMHandlers, setCRMHandlersMainWindow } from './crmHandlers';
 import { registerChatHandlers } from './chatHandlers';
 import { registerPrepHandlers } from './prepHandlers';
+import { registerDialogHandlers } from './dialogHandlers';
 import { createLogger } from '../core/logger';
 
 const logger = createLogger('Handlers');
@@ -26,6 +27,7 @@ export function registerAllHandlers(
   registerCRMHandlers();
   registerChatHandlers();
   registerPrepHandlers();
+  registerDialogHandlers();
 
   logger.info('All IPC handlers registered');
 }

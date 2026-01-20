@@ -83,4 +83,7 @@ export const IPC_CHANNELS = {
   CRM_DISCONNECT: 'crm:disconnect',
   CRM_PUSH_NOTES: 'crm:pushNotes',
   CRM_MEETING_COMPLETE: 'crm:meetingComplete',
+
+  // Dialog
+  DIALOG_SELECT_FOLDER: 'dialog:selectFolder',
 } as const;

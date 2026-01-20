@@ -200,6 +200,12 @@ contextBridge.exposeInMainWorld('kakarot', {
       return () => ipcRenderer.removeListener('dev:reset-onboarding', handler);
     },
   },
+
+  // Dialog
+  dialog: {
+    selectFolder: (): Promise<string | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.DIALOG_SELECT_FOLDER),
+  },
 });
 
 // TypeScript declaration for window.kakarot
@@ -292,6 +298,9 @@ declare global {
       };
       dev: {
         onResetOnboarding: (callback: () => void) => () => void;
+      };
+      dialog: {
+        selectFolder: () => Promise<string | null>;
       };
     };
   }
