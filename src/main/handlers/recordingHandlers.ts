@@ -8,7 +8,7 @@ import { CalloutService } from '../services/CalloutService';
 import { AECProcessor } from '../audio/native/AECProcessor';
 import { AECSync } from '../audio/AECSync';
 import { showCalloutWindow } from '../windows/calloutWindow';
-import { AUDIO_CONFIG } from '../config/constants';
+import { AUDIO_CONFIG, matchesQuestionPattern } from '../config/constants';
 import { getDatabase, saveDatabase } from '../data/database';
 import type { CalendarAttendee } from '@shared/types';
 
@@ -118,19 +118,25 @@ export function registerRecordingHandlers(
         meetingId: meetingRepo.getCurrentMeetingId(),
       });
 
-      // Store final segments
+      // Store final segments and process callout logic
       if (isFinal) {
         meetingRepo.addTranscriptSegment(segment);
-      }
 
-      // Check for questions from system audio
-      if (isFinal && segment.source === 'system') {
-        calloutService.checkForQuestion(segment.text).then((callout) => {
-          if (callout) {
+        // Add to callout service sliding window for context
+        calloutService.addTranscriptSegment(segment);
+
+        // Check for questions from system audio (other speakers)
+        if (segment.source === 'system' && matchesQuestionPattern(segment.text)) {
+          calloutService.scheduleCallout(segment.text, (callout) => {
             calloutWindow.webContents.send(IPC_CHANNELS.CALLOUT_SHOW, callout);
             showCalloutWindow();
-          }
-        });
+          });
+        }
+
+        // Check if mic response should cancel pending callout
+        if (segment.source === 'mic') {
+          calloutService.checkForMicResponse(segment.text);
+        }
       }
     });
 
@@ -309,6 +315,9 @@ export function registerRecordingHandlers(
 
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'processing');
 
+    // Cancel any pending callouts immediately to prevent timer firing during cleanup
+    calloutService.reset();
+
     // CRITICAL: Stop audio capture FIRST before cleaning up AEC resources
     // This prevents race conditions where callbacks try to access null AEC objects
 
@@ -456,6 +465,8 @@ export function registerRecordingHandlers(
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_PAUSE, async () => {
     isPaused = true;
+    // Cancel pending callouts - don't show callouts while paused
+    calloutService.cancelPendingCallout();
     if (systemAudioService) {
       systemAudioService.pause();
     }

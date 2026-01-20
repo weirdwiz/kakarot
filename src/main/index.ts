@@ -7,6 +7,9 @@ import { initializeDatabase, closeDatabase } from './data/database';
 import { initializeContainer, getContainer } from './core/container';
 import { registerAllHandlers } from './handlers';
 import { createLogger } from './core/logger';
+import { showCalloutWindow } from './windows/calloutWindow';
+import { IPC_CHANNELS } from '@shared/ipcChannels';
+import type { Callout } from '@shared/types';
 
 // Load .env from project root
 config({ path: resolve(__dirname, '../../.env') });
@@ -52,7 +55,7 @@ async function createWindows() {
   const container = getContainer();
   container.meetingNotificationService.start();
 
-  // Dev-only: Register keyboard shortcut to reset onboarding (Cmd/Ctrl+Shift+O)
+  // Dev-only: Register keyboard shortcuts
   if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
     const resetShortcut = process.platform === 'darwin' ? 'Cmd+Shift+O' : 'Ctrl+Shift+O';
     globalShortcut.register(resetShortcut, () => {
@@ -60,6 +63,25 @@ async function createWindows() {
       mainWindow?.webContents.send('dev:reset-onboarding');
     });
     logger.info('Dev: Registered onboarding reset shortcut', { shortcut: resetShortcut });
+
+    // Dev-only: Trigger test callout (Cmd/Ctrl+Option+T)
+    const calloutShortcut = process.platform === 'darwin' ? 'Cmd+Option+T' : 'Ctrl+Alt+T';
+    globalShortcut.register(calloutShortcut, () => {
+      logger.info('Dev: Triggering test callout');
+      const testCallout: Callout = {
+        id: 'test-' + Date.now(),
+        meetingId: 'test-meeting',
+        triggeredAt: new Date(),
+        question: 'What is the timeline for the next release?',
+        context: 'Test context',
+        suggestedResponse: 'Based on our sprint planning, we are targeting mid-February for the beta release, with the full release planned for early March.',
+        sources: [],
+        dismissed: false,
+      };
+      calloutWindow?.webContents.send(IPC_CHANNELS.CALLOUT_SHOW, testCallout);
+      showCalloutWindow();
+    });
+    logger.info('Dev: Registered test callout shortcut', { shortcut: calloutShortcut });
   }
 
   logger.info('Application initialized');

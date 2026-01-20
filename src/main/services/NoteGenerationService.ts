@@ -1,7 +1,7 @@
 import { buildNoteGenerationMessages } from '../prompts/summaryPrompts';
 import { createLogger } from '../core/logger';
 import { getSpeakerLabel } from '@shared/utils/formatters';
-import type { OpenAIProvider } from '../providers/OpenAIProvider';
+import type { AIProvider } from '../providers/OpenAIProvider';
 import type { Meeting, TranscriptSegment } from '@shared/types';
 
 const logger = createLogger('NoteGenerationService');
@@ -13,7 +13,7 @@ export interface GeneratedNotes {
 }
 
 export class NoteGenerationService {
-  constructor(private getAIProvider: () => OpenAIProvider | null) {}
+  constructor(private getAIProvider: () => AIProvider | null) {}
 
   async generateNotes(meeting: Meeting): Promise<GeneratedNotes | null> {
     const aiProvider = this.getAIProvider();

@@ -32,9 +32,17 @@ export const QUESTION_PATTERNS = [
 
 // Callout service configuration
 export const CALLOUT_CONFIG = {
-  MAX_CONTEXT_SEGMENTS: 20,
+  MAX_CONTEXT_SEGMENTS: 50,
   MAX_PAST_MEETINGS: 3,
   MAX_KNOWLEDGE_RESULTS: 3,
+} as const;
+
+// Callout timer configuration (attention detection)
+export const CALLOUT_TIMER_CONFIG = {
+  /** Delay before generating callout after question detected (ms) */
+  DELAY_MS: 5000,
+  /** Minimum words in mic transcript to cancel pending callout */
+  MIN_RESPONSE_WORDS: 3,
 } as const;
 
 // Audio configuration

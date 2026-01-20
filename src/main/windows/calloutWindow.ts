@@ -1,22 +1,31 @@
 import { BrowserWindow, screen } from 'electron';
 import { join } from 'path';
+import { createLogger } from '../core/logger';
+
+const logger = createLogger('CalloutWindow');
 
 let calloutWindow: BrowserWindow | null = null;
 
 export function createCalloutWindow(): BrowserWindow {
   // Position in bottom-right corner of primary display
   const display = screen.getPrimaryDisplay();
-  const { width: screenWidth, height: screenHeight } = display.workAreaSize;
+  const { x: displayX, y: displayY, width: displayWidth, height: displayHeight } = display.workArea;
 
-  const windowWidth = 380;
-  const windowHeight = 160;
-  const margin = 20;
+  const windowWidth = 450;
+  const windowHeight = 280;
+  const margin = 30;
+
+  // Position in top-right corner
+  const x = displayX + displayWidth - windowWidth - margin;
+  const y = displayY + margin;
+
+  logger.info('Creating callout window', { displayX, displayY, displayWidth, displayHeight, x, y });
 
   calloutWindow = new BrowserWindow({
     width: windowWidth,
     height: windowHeight,
-    x: screenWidth - windowWidth - margin,
-    y: screenHeight - windowHeight - margin,
+    x,
+    y,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -42,8 +51,14 @@ export function createCalloutWindow(): BrowserWindow {
 }
 
 export function showCalloutWindow(): void {
+  logger.info('showCalloutWindow called', {
+    windowExists: !!calloutWindow,
+    isVisible: calloutWindow?.isVisible(),
+    bounds: calloutWindow?.getBounds()
+  });
   if (calloutWindow && !calloutWindow.isVisible()) {
     calloutWindow.showInactive();
+    logger.info('Callout window shown');
   }
 }
 

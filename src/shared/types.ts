@@ -158,6 +158,8 @@ export interface AppSettings {
     name?: string;
     email?: string;
     photo?: string;
+    position?: string;
+    company?: string;
     provider?: 'google' | 'outlook' | 'icloud';
   };
   // Calendar connections and optional OAuth config

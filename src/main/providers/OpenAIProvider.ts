@@ -16,6 +16,11 @@ export interface ChatOptions {
   responseFormat?: 'text' | 'json';
 }
 
+// Common interface for AI providers
+export interface AIProvider {
+  chat(messages: ChatMessage[], options?: ChatOptions): Promise<string>;
+}
+
 export interface OpenAIProviderConfig {
   apiKey?: string;
   tokenProvider?: () => Promise<string | null>;

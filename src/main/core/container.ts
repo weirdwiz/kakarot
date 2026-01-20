@@ -1,5 +1,6 @@
 import { MeetingRepository, CalloutRepository, SettingsRepository, PeopleRepository } from '../data/repositories';
 import { OpenAIProvider } from '../providers/OpenAIProvider';
+import { GeminiProvider } from '../providers/GeminiProvider';
 import { createLogger } from './logger';
 import { CalendarService } from '../services/CalendarService';
 import { CalloutService } from '../services/CalloutService';
@@ -16,7 +17,7 @@ export interface AppContainer {
   calloutRepo: CalloutRepository;
   settingsRepo: SettingsRepository;
   peopleRepo: PeopleRepository;
-  aiProvider: OpenAIProvider | null;
+  aiProvider: OpenAIProvider | GeminiProvider | null;
   calendarService: CalendarService;
   calloutService: CalloutService;
   noteGenerationService: NoteGenerationService;
@@ -66,24 +67,37 @@ export function initializeContainer(): AppContainer {
     logger.warn('Failed to sanitize visible calendars', { error: (err as Error).message });
   }
 
-  // Force OpenAI API base URL if still pointing to RouteLLM
-  if (settings.openAiBaseUrl && /routellm\.abacus\.ai/i.test(settings.openAiBaseUrl)) {
-    settingsRepo.updateSettings({
-      openAiBaseUrl: 'https://api.openai.com/v1',
-      openAiModel: settings.openAiModel || 'gpt-4o',
+  // Use Gemini by default if API key is available, otherwise fall back to OpenAI
+  const geminiApiKey = process.env.GEMINI_API_KEY;
+  const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+
+  let aiProvider: OpenAIProvider | GeminiProvider | null = null;
+
+  if (geminiApiKey) {
+    aiProvider = new GeminiProvider({
+      apiKey: geminiApiKey,
+      model: geminiModel,
     });
-    settings = settingsRepo.getSettings();
+    logger.info('Using Gemini as AI provider', { model: geminiModel });
+  } else if (settings.openAiApiKey) {
+    // Force OpenAI API base URL if still pointing to RouteLLM
+    if (settings.openAiBaseUrl && /routellm\.abacus\.ai/i.test(settings.openAiBaseUrl)) {
+      settingsRepo.updateSettings({
+        openAiBaseUrl: 'https://api.openai.com/v1',
+        openAiModel: settings.openAiModel || 'gpt-4o',
+      });
+      settings = settingsRepo.getSettings();
+    }
+    aiProvider = new OpenAIProvider({
+      apiKey: settings.openAiApiKey,
+      baseURL: settings.openAiBaseUrl || undefined,
+      defaultModel: settings.openAiModel || undefined,
+    });
+    logger.info('Using OpenAI as AI provider');
   }
-  const aiProvider = settings.openAiApiKey
-    ? new OpenAIProvider({
-        apiKey: settings.openAiApiKey,
-        baseURL: settings.openAiBaseUrl || undefined,
-        defaultModel: settings.openAiModel || undefined,
-      })
-    : null;
 
   if (!aiProvider) {
-    logger.warn('OpenAI API key not configured - AI features disabled');
+    logger.warn('No AI API key configured - AI features disabled');
   }
 
   // Initialize note generation service with aiProvider getter (avoids circular dependency)
