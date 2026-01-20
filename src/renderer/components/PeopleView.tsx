@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Search, Mail, Building2, Calendar, Clock, FileText, Edit2, X, Check } from 'lucide-react';
 import type { Person } from '@shared/types';
 import { formatDuration } from '../lib/formatters';
+import { PersonListSkeleton } from './Skeleton';
 
 export default function PeopleView() {
   const [people, setPeople] = useState<Person[]>([]);
@@ -147,7 +148,7 @@ export default function PeopleView() {
         {/* People list */}
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="p-4 text-center text-gray-500">Loading...</div>
+            <PersonListSkeleton count={6} />
           ) : people.length === 0 ? (
             <div className="p-6 text-center">
               <div className="text-gray-400 mb-2">

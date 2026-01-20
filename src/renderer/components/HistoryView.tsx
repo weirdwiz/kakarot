@@ -3,6 +3,7 @@ import { useAppStore } from '../stores/appStore';
 import type { Meeting } from '@shared/types';
 import { Search, Trash2, Folder, Calendar as CalendarIcon, Users, Share2, Copy, Link, Mail, MessageCircle, Send, X } from 'lucide-react';
 import { formatDuration, formatTimestamp, getSpeakerLabel } from '../lib/formatters';
+import { MeetingListSkeleton } from './Skeleton';
 import slackLogo from '../assets/slack.png';
 
 export default function HistoryView() {
@@ -236,7 +237,7 @@ export default function HistoryView() {
         {/* Meeting list */}
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="p-4 text-center text-slate-500">Loading...</div>
+            <MeetingListSkeleton count={6} />
           ) : meetings.length === 0 ? (
             <div className="p-4 text-center text-slate-500">No meetings yet</div>
           ) : (
