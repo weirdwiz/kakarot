@@ -1,11 +1,12 @@
 import { create } from 'zustand';
-import type {
-  Meeting,
-  TranscriptSegment,
-  RecordingState,
-  AudioLevels,
-  AppSettings,
-  CalendarEvent,
+import {
+  DEFAULT_SETTINGS,
+  type Meeting,
+  type TranscriptSegment,
+  type RecordingState,
+  type AudioLevels,
+  type AppSettings,
+  type CalendarEvent,
 } from '@shared/types';
 
 interface AppState {
@@ -30,8 +31,8 @@ interface AppState {
   // Notes
   lastCompletedNoteId: string | null; // ID of last generated notes for navigation
 
-  // Settings
-  settings: AppSettings | null;
+  // Settings (always initialized with defaults)
+  settings: AppSettings;
 
   // UI state
   view: 'recording' | 'history' | 'people' | 'settings';
@@ -67,7 +68,7 @@ export const useAppStore = create<AppState>((set) => ({
   calendarContext: null,
   activeCalendarContext: null,
   lastCompletedNoteId: null,
-  settings: null,
+  settings: DEFAULT_SETTINGS,
   view: 'recording',
   showRecordingHome: false,
 
@@ -118,7 +119,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   setLastCompletedNoteId: (lastCompletedNoteId) => set({ lastCompletedNoteId }),
 
-  setSettings: (settings) => set({ settings }),
+  setSettings: (settings) => set({ settings: { ...DEFAULT_SETTINGS, ...settings } }),
 
   setView: (view) => set({ view }),
 

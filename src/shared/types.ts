@@ -190,6 +190,24 @@ export interface AppSettings {
   customMeetingTypes?: string[];
 }
 
+// Default settings for renderer (without process.env dependencies)
+export const DEFAULT_SETTINGS: AppSettings = {
+  assemblyAiApiKey: '',
+  deepgramApiKey: '',
+  openAiApiKey: '',
+  openAiBaseUrl: 'https://api.openai.com/v1',
+  openAiModel: 'gpt-4o',
+  knowledgeBasePath: '',
+  autoDetectQuestions: true,
+  showFloatingCallout: true,
+  transcriptionLanguage: 'en',
+  transcriptionProvider: 'assemblyai',
+  useHostedTokens: false,
+  authApiBaseUrl: '',
+  hostedAuthToken: '',
+  calendarConnections: {},
+};
+
 // Mapping between calendar events and notes/recordings
 export interface CalendarEventMapping {
   calendarEventId: string;
