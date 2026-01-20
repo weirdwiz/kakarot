@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { Meeting } from '@shared/types';
 import { Search, Trash2, Folder, Calendar as CalendarIcon, Users, Share2, Copy, Link, Mail, MessageCircle, Send, X } from 'lucide-react';
-import { formatDuration, formatTimestamp, getSpeakerLabel } from '../lib/formatters';
+import { formatDuration, formatTimestamp, getSpeakerLabel, getAvatarColor, getInitials } from '../lib/formatters';
 import { MeetingListSkeleton } from './Skeleton';
 import slackLogo from '../assets/slack.png';
 
@@ -20,25 +20,6 @@ export default function HistoryView() {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const shareRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLInputElement | null>(null);
-
-  const getAvatarColor = (email: string) => {
-    const colors = [
-      'bg-blue-500',
-      'bg-green-500',
-      'bg-purple-500',
-      'bg-pink-500',
-      'bg-indigo-500',
-      'bg-yellow-500',
-      'bg-red-500',
-      'bg-teal-500',
-    ];
-    const hash = email.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return colors[hash % colors.length];
-  };
-
-  const getInitials = (email: string) => {
-    return email[0].toUpperCase();
-  };
 
   const loadMeetings = useCallback(async () => {
     setIsLoading(true);
@@ -215,6 +196,23 @@ export default function HistoryView() {
     return `${day}, ${month}/${dayOfMonth}/${year} - ${hours}:${minutes}`;
   };
 
+  const getAttendeesLabel = (meeting: Meeting): string => {
+    const { attendeeEmails, participants } = meeting;
+
+    if (attendeeEmails && attendeeEmails.length > 0) {
+      const count = attendeeEmails.length;
+      return `${count} Attendee${count > 1 ? 's' : ''}`;
+    }
+
+    if (participants && participants.length > 0) {
+      const display = participants.slice(0, 2).join(', ');
+      const overflow = participants.length > 2 ? ` +${participants.length - 2}` : '';
+      return display + overflow;
+    }
+
+    return 'Add attendees';
+  };
+
   return (
     <div className="h-full flex bg-[#050505] text-slate-100 rounded-2xl border border-[#1A1A1A] shadow-[0_8px_30px_rgba(0,0,0,0.35)] overflow-hidden">
       {/* Meeting list sidebar */}
@@ -347,11 +345,7 @@ export default function HistoryView() {
                     >
                       <Users className="w-4 h-4 text-slate-400" />
                       <div className="text-sm text-slate-200 whitespace-nowrap">
-                        {selectedMeeting.attendeeEmails && selectedMeeting.attendeeEmails.length > 0
-                          ? `${selectedMeeting.attendeeEmails.length} Attendee${selectedMeeting.attendeeEmails.length > 1 ? 's' : ''}`
-                          : selectedMeeting.participants && selectedMeeting.participants.length > 0
-                          ? selectedMeeting.participants.slice(0, 2).join(', ') + (selectedMeeting.participants.length > 2 ? ` +${selectedMeeting.participants.length - 2}` : '')
-                          : 'Add attendees'}
+                        {getAttendeesLabel(selectedMeeting)}
                       </div>
                     </button>
                     <div className="flex flex-none items-center gap-2 rounded-lg border border-[#1A1A1A] bg-[#171717] px-3 py-2 whitespace-nowrap">

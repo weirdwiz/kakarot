@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { AppSettings } from '@shared/types';
-import { Calendar, Unlink } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 
-// TODO(refactor): Extract CalendarConnectionButton component - 3 near-identical buttons
-// for Google/Outlook/iCloud with only provider name changing (lines 341-448)
-// Also: handleConnectCalendar/handleDisconnectCalendar have duplicated try/catch patterns
 export default function SettingsView() {
   const { settings, setSettings } = useAppStore();
   const [localSettings, setLocalSettings] = useState<AppSettings | null>(null);
@@ -470,113 +467,33 @@ export default function SettingsView() {
           </p>
 
           <div className="space-y-3">
-            {/* Google Calendar */}
-            <button
-              onClick={() =>
-                connectedCalendars.google
-                  ? handleDisconnectCalendar('google')
-                  : handleConnectCalendar('google')
-              }
-              disabled={connectingProvider === 'google'}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
-                connectedCalendars.google
-                  ? 'border-green-500/50 bg-green-500/10'
-                  : 'border-gray-700 bg-gray-800 hover:border-gray-600'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Calendar className="w-5 h-5 text-gray-400" />
-                <div className="text-left">
-                  <p className="text-sm font-medium text-white">
-                    {connectedCalendars.google ? 'Google Calendar Connected' : 'Connect Your Google Calendar'}
-                  </p>
-                  {connectedCalendars.google && (
-                    <p className="text-xs text-gray-500">Syncing your Google events</p>
-                  )}
-                </div>
-              </div>
-              {connectedCalendars.google ? (
-                <span className="text-sm text-green-400">
-                  {connectingProvider === 'google' ? 'Disconnecting...' : 'Disconnect'}
-                </span>
-              ) : (
-                <span className="text-sm text-primary-400">
-                  {connectingProvider === 'google' ? 'Connecting...' : '+ Connect'}
-                </span>
-              )}
-            </button>
-
-            {/* Outlook Calendar */}
-            <button
-              onClick={() =>
-                connectedCalendars.outlook
-                  ? handleDisconnectCalendar('outlook')
-                  : handleConnectCalendar('outlook')
-              }
-              disabled={connectingProvider === 'outlook'}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
-                connectedCalendars.outlook
-                  ? 'border-green-500/50 bg-green-500/10'
-                  : 'border-gray-700 bg-gray-800 hover:border-gray-600'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Calendar className="w-5 h-5 text-gray-400" />
-                <div className="text-left">
-                  <p className="text-sm font-medium text-white">
-                    {connectedCalendars.outlook ? 'Outlook Calendar Connected' : 'Connect Your Outlook Calendar'}
-                  </p>
-                  {connectedCalendars.outlook && (
-                    <p className="text-xs text-gray-500">Syncing your Outlook events</p>
-                  )}
-                </div>
-              </div>
-              {connectedCalendars.outlook ? (
-                <span className="text-sm text-green-400">
-                  {connectingProvider === 'outlook' ? 'Disconnecting...' : 'Disconnect'}
-                </span>
-              ) : (
-                <span className="text-sm text-primary-400">
-                  {connectingProvider === 'outlook' ? 'Connecting...' : '+ Connect'}
-                </span>
-              )}
-            </button>
-
-            {/* iCloud Calendar */}
-            <button
-              onClick={() =>
-                connectedCalendars.icloud
-                  ? handleDisconnectCalendar('icloud')
-                  : handleConnectCalendar('icloud')
-              }
-              disabled={connectingProvider === 'icloud'}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
-                connectedCalendars.icloud
-                  ? 'border-green-500/50 bg-green-500/10'
-                  : 'border-gray-700 bg-gray-800 hover:border-gray-600'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Calendar className="w-5 h-5 text-gray-400" />
-                <div className="text-left">
-                  <p className="text-sm font-medium text-white">
-                    {connectedCalendars.icloud ? 'iCloud Calendar Connected' : 'Connect Your iCloud Calendar'}
-                  </p>
-                  {connectedCalendars.icloud && (
-                    <p className="text-xs text-gray-500">Syncing your iCloud events</p>
-                  )}
-                </div>
-              </div>
-              {connectedCalendars.icloud ? (
-                <span className="text-sm text-green-400">
-                  {connectingProvider === 'icloud' ? 'Disconnecting...' : 'Disconnect'}
-                </span>
-              ) : (
-                <span className="text-sm text-primary-400">
-                  {connectingProvider === 'icloud' ? 'Connecting...' : '+ Connect'}
-                </span>
-              )}
-            </button>
+            <CalendarConnectionButton
+              provider="google"
+              label="Google Calendar"
+              isConnected={connectedCalendars.google}
+              isLoading={connectingProvider === 'google'}
+              onConnect={() => handleConnectCalendar('google')}
+              onDisconnect={() => handleDisconnectCalendar('google')}
+              icon={<Calendar className="w-5 h-5 text-gray-400" />}
+            />
+            <CalendarConnectionButton
+              provider="outlook"
+              label="Outlook Calendar"
+              isConnected={connectedCalendars.outlook}
+              isLoading={connectingProvider === 'outlook'}
+              onConnect={() => handleConnectCalendar('outlook')}
+              onDisconnect={() => handleDisconnectCalendar('outlook')}
+              icon={<Calendar className="w-5 h-5 text-gray-400" />}
+            />
+            <CalendarConnectionButton
+              provider="icloud"
+              label="iCloud Calendar"
+              isConnected={connectedCalendars.icloud}
+              isLoading={connectingProvider === 'icloud'}
+              onConnect={() => handleConnectCalendar('icloud')}
+              onDisconnect={() => handleDisconnectCalendar('icloud')}
+              icon={<Calendar className="w-5 h-5 text-gray-400" />}
+            />
           </div>
         </section>
 
@@ -782,6 +699,70 @@ function ToggleSwitch({ enabled, onChange }: ToggleSwitchProps) {
           enabled ? 'translate-x-6' : 'translate-x-1'
         }`}
       />
+    </button>
+  );
+}
+
+type CalendarProvider = 'google' | 'outlook' | 'icloud';
+
+interface CalendarConnectionButtonProps {
+  provider: CalendarProvider;
+  label: string;
+  isConnected: boolean;
+  isLoading: boolean;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  icon: React.ReactNode;
+}
+
+function CalendarConnectionButton({
+  provider,
+  label,
+  isConnected,
+  isLoading,
+  onConnect,
+  onDisconnect,
+  icon,
+}: CalendarConnectionButtonProps) {
+  const handleClick = () => {
+    if (isConnected) {
+      onDisconnect();
+    } else {
+      onConnect();
+    }
+  };
+
+  const getActionLabel = (): string => {
+    if (isConnected) {
+      return isLoading ? 'Disconnecting...' : 'Disconnect';
+    }
+    return isLoading ? 'Connecting...' : '+ Connect';
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={isLoading}
+      className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
+        isConnected
+          ? 'border-green-500/50 bg-green-500/10'
+          : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        {icon}
+        <div className="text-left">
+          <p className="text-sm font-medium text-white">
+            {isConnected ? `${label} Connected` : `Connect Your ${label}`}
+          </p>
+          {isConnected && (
+            <p className="text-xs text-gray-500">Syncing your {provider.charAt(0).toUpperCase() + provider.slice(1)} events</p>
+          )}
+        </div>
+      </div>
+      <span className={`text-sm ${isConnected ? 'text-green-400' : 'text-primary-400'}`}>
+        {getActionLabel()}
+      </span>
     </button>
   );
 }

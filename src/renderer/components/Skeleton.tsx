@@ -51,22 +51,25 @@ export function PersonCardSkeleton() {
   );
 }
 
-export function MeetingListSkeleton({ count = 5 }: { count?: number }) {
+interface ListSkeletonProps {
+  count?: number;
+  ItemComponent: React.ComponentType;
+}
+
+function ListSkeleton({ count = 5, ItemComponent }: ListSkeletonProps) {
   return (
     <>
       {Array.from({ length: count }).map((_, i) => (
-        <MeetingCardSkeleton key={i} />
+        <ItemComponent key={i} />
       ))}
     </>
   );
 }
 
+export function MeetingListSkeleton({ count = 5 }: { count?: number }) {
+  return <ListSkeleton count={count} ItemComponent={MeetingCardSkeleton} />;
+}
+
 export function PersonListSkeleton({ count = 5 }: { count?: number }) {
-  return (
-    <>
-      {Array.from({ length: count }).map((_, i) => (
-        <PersonCardSkeleton key={i} />
-      ))}
-    </>
-  );
+  return <ListSkeleton count={count} ItemComponent={PersonCardSkeleton} />;
 }

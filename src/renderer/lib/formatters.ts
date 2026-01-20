@@ -10,4 +10,8 @@ export {
   formatDateTimeContext,
   isToday,
   isTomorrow,
+  getAvatarColor,
+  getInitials,
+  formatRelativeTime,
+  formatLastMeeting,
 } from '@shared/utils/formatters';

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Search, Mail, Building2, Calendar, Clock, FileText, Edit2, X, Check } from 'lucide-react';
 import type { Person } from '@shared/types';
-import { formatDuration } from '../lib/formatters';
+import { formatDuration, getAvatarColor, getInitials, formatLastMeeting } from '../lib/formatters';
 import { PersonListSkeleton } from './Skeleton';
 
 export default function PeopleView() {
@@ -80,44 +80,8 @@ export default function PeopleView() {
     setEditValue('');
   };
 
-  const getInitials = (person: Person) => {
-    if (person.name) {
-      return person.name
-        .split(' ')
-        .map(n => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2);
-    }
-    return person.email[0].toUpperCase();
-  };
-
-  const getAvatarColor = (email: string) => {
-    const colors = [
-      'bg-blue-500',
-      'bg-green-500',
-      'bg-purple-500',
-      'bg-pink-500',
-      'bg-indigo-500',
-      'bg-yellow-500',
-      'bg-red-500',
-      'bg-teal-500',
-    ];
-    const hash = email.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return colors[hash % colors.length];
-  };
-
-  const formatLastMeeting = (date: Date) => {
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays} days ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-    if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
-    return `${Math.floor(diffDays / 365)} years ago`;
+  const getPersonInitials = (person: Person): string => {
+    return getInitials(person.email, person.name);
   };
 
   return (
@@ -170,7 +134,7 @@ export default function PeopleView() {
               >
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 rounded-full ${getAvatarColor(person.email)} flex items-center justify-center text-white font-medium text-sm flex-shrink-0`}>
-                    {getInitials(person)}
+                    {getPersonInitials(person)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-sm font-medium text-gray-900 truncate">
@@ -208,7 +172,7 @@ export default function PeopleView() {
             <div className="p-6 border-b border-gray-200 bg-gradient-to-br from-gray-50 to-white">
               <div className="flex items-start gap-4">
                 <div className={`w-16 h-16 rounded-full ${getAvatarColor(selectedPerson.email)} flex items-center justify-center text-white font-medium text-xl flex-shrink-0`}>
-                  {getInitials(selectedPerson)}
+                  {getPersonInitials(selectedPerson)}
                 </div>
                 <div className="flex-1 min-w-0">
                   {editingField === 'name' ? (
