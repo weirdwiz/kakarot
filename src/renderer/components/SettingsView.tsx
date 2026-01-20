@@ -411,13 +411,54 @@ export default function SettingsView() {
               onChange={(e) => handleChange('transcriptionLanguage', e.target.value)}
               className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
-              <option value="en">English</option>
-              <option value="es">Spanish</option>
-              <option value="fr">French</option>
-              <option value="de">German</option>
-              <option value="it">Italian</option>
-              <option value="pt">Portuguese</option>
+              <option value="auto">Auto-detect</option>
+              <optgroup label="Common Languages">
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="it">Italian</option>
+                <option value="pt">Portuguese</option>
+                <option value="zh">Chinese (Mandarin)</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="hi">Hindi</option>
+                <option value="ar">Arabic</option>
+                <option value="ru">Russian</option>
+              </optgroup>
+              <optgroup label="European Languages">
+                <option value="nl">Dutch</option>
+                <option value="pl">Polish</option>
+                <option value="tr">Turkish</option>
+                <option value="sv">Swedish</option>
+                <option value="da">Danish</option>
+                <option value="fi">Finnish</option>
+                <option value="no">Norwegian</option>
+                <option value="cs">Czech</option>
+                <option value="el">Greek</option>
+                <option value="hu">Hungarian</option>
+                <option value="ro">Romanian</option>
+                <option value="uk">Ukrainian</option>
+              </optgroup>
+              <optgroup label="Asian Languages">
+                <option value="th">Thai</option>
+                <option value="vi">Vietnamese</option>
+                <option value="id">Indonesian</option>
+                <option value="ms">Malay</option>
+                <option value="tl">Tagalog</option>
+              </optgroup>
+              <optgroup label="Other Languages">
+                <option value="he">Hebrew</option>
+                <option value="bn">Bengali</option>
+                <option value="ta">Tamil</option>
+                <option value="te">Telugu</option>
+                <option value="mr">Marathi</option>
+                <option value="gu">Gujarati</option>
+              </optgroup>
             </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Language availability depends on transcription provider
+            </p>
           </div>
         </section>
 
