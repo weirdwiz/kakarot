@@ -6,8 +6,20 @@
     <!-- CSP relaxed for development - Vite needs ws: for HMR, blob: for modules -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' ws: wss:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' ws: wss: http://localhost:*;" />
     <title>Kakarot - AI Note Taker</title>
+    <!-- Apply dark mode before first render to prevent flash -->
+    <script>
+      (function() {
+        var theme = localStorage.getItem('kakarot-theme');
+        if (theme === 'dark' ||
+            (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      })();
+    </script>
   </head>
-  <body class="bg-gray-900 text-white">
+  <body class="bg-gray-900 text-white dark:bg-gray-900">
     <div id="root"></div>
     <script type="module" src="./main.tsx"></script>
   </body>
