@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { AppSettings } from '@shared/types';
 import { Calendar } from 'lucide-react';
+import { ConfirmDialog } from './ConfirmDialog';
 
 export default function SettingsView() {
   const { settings, setSettings } = useAppStore();
@@ -28,6 +29,12 @@ export default function SettingsView() {
   });
   const [googleCalendars, setGoogleCalendars] = useState<Array<{ id: string; name: string }>>([]);
   const [visibleGoogleIds, setVisibleGoogleIds] = useState<string[]>([]);
+  const [disconnectConfirm, setDisconnectConfirm] = useState<{
+    isOpen: boolean;
+    type: 'calendar' | 'crm' | null;
+    provider: string | null;
+    label: string;
+  }>({ isOpen: false, type: null, provider: null, label: '' });
 
   useEffect(() => {
     if (settings) {
@@ -108,6 +115,10 @@ export default function SettingsView() {
     }
   };
 
+  const showDisconnectConfirm = (type: 'calendar' | 'crm', provider: string, label: string) => {
+    setDisconnectConfirm({ isOpen: true, type, provider, label });
+  };
+
   const handleDisconnectCalendar = async (provider: 'google' | 'outlook' | 'icloud') => {
     if (!localSettings) return;
     setConnectingProvider(provider);
@@ -130,6 +141,17 @@ export default function SettingsView() {
     } finally {
       setConnectingProvider(null);
       setTimeout(() => setSaveMessage(''), 5000);
+    }
+  };
+
+  const confirmDisconnect = async () => {
+    const { type, provider } = disconnectConfirm;
+    setDisconnectConfirm({ isOpen: false, type: null, provider: null, label: '' });
+
+    if (type === 'calendar' && provider) {
+      await handleDisconnectCalendar(provider as 'google' | 'outlook' | 'icloud');
+    } else if (type === 'crm' && provider) {
+      await handleDisconnectCRM(provider as 'salesforce' | 'hubspot');
     }
   };
 
@@ -473,7 +495,7 @@ export default function SettingsView() {
               isConnected={connectedCalendars.google}
               isLoading={connectingProvider === 'google'}
               onConnect={() => handleConnectCalendar('google')}
-              onDisconnect={() => handleDisconnectCalendar('google')}
+              onDisconnect={() => showDisconnectConfirm('calendar', 'google', 'Google Calendar')}
               icon={<Calendar className="w-5 h-5 text-gray-400" />}
             />
             <CalendarConnectionButton
@@ -482,7 +504,7 @@ export default function SettingsView() {
               isConnected={connectedCalendars.outlook}
               isLoading={connectingProvider === 'outlook'}
               onConnect={() => handleConnectCalendar('outlook')}
-              onDisconnect={() => handleDisconnectCalendar('outlook')}
+              onDisconnect={() => showDisconnectConfirm('calendar', 'outlook', 'Outlook Calendar')}
               icon={<Calendar className="w-5 h-5 text-gray-400" />}
             />
             <CalendarConnectionButton
@@ -491,7 +513,7 @@ export default function SettingsView() {
               isConnected={connectedCalendars.icloud}
               isLoading={connectingProvider === 'icloud'}
               onConnect={() => handleConnectCalendar('icloud')}
-              onDisconnect={() => handleDisconnectCalendar('icloud')}
+              onDisconnect={() => showDisconnectConfirm('calendar', 'icloud', 'iCloud Calendar')}
               icon={<Calendar className="w-5 h-5 text-gray-400" />}
             />
           </div>
@@ -677,6 +699,17 @@ export default function SettingsView() {
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={disconnectConfirm.isOpen}
+        title={`Disconnect ${disconnectConfirm.label}`}
+        message={`Are you sure you want to disconnect ${disconnectConfirm.label}? You'll need to reconnect to sync events again.`}
+        confirmLabel="Disconnect"
+        cancelLabel="Cancel"
+        variant="warning"
+        onConfirm={confirmDisconnect}
+        onCancel={() => setDisconnectConfirm({ isOpen: false, type: null, provider: null, label: '' })}
+      />
     </div>
   );
 }

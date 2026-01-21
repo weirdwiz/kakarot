@@ -4,6 +4,7 @@ import type { Meeting } from '@shared/types';
 import { Search, Trash2, Folder, Calendar as CalendarIcon, Users, Share2, Copy, Link, Mail, MessageCircle, Send, X } from 'lucide-react';
 import { formatDuration, formatTimestamp, getSpeakerLabel, getAvatarColor, getInitials } from '../lib/formatters';
 import { MeetingListSkeleton } from './Skeleton';
+import { ConfirmDialog } from './ConfirmDialog';
 import slackLogo from '../assets/slack.png';
 
 export default function HistoryView() {
@@ -18,6 +19,10 @@ export default function HistoryView() {
   const [chatMessages, setChatMessages] = useState<Array<{role: 'user' | 'assistant', content: string}>>([]);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; meetingId: string | null }>({
+    isOpen: false,
+    meetingId: null,
+  });
   const shareRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -83,15 +88,19 @@ export default function HistoryView() {
     setSelectedMeeting(fullMeeting);
   };
 
-  const handleDeleteMeeting = async (id: string, e: React.MouseEvent) => {
+  const handleDeleteMeeting = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm('Are you sure you want to delete this meeting?')) {
-      await window.kakarot.meetings.delete(id);
-      if (selectedMeeting?.id === id) {
-        setSelectedMeeting(null);
-      }
-      loadMeetings();
+    setDeleteConfirm({ isOpen: true, meetingId: id });
+  };
+
+  const confirmDeleteMeeting = async () => {
+    if (!deleteConfirm.meetingId) return;
+    await window.kakarot.meetings.delete(deleteConfirm.meetingId);
+    if (selectedMeeting?.id === deleteConfirm.meetingId) {
+      setSelectedMeeting(null);
     }
+    setDeleteConfirm({ isOpen: false, meetingId: null });
+    loadMeetings();
   };
 
   const handleGenerateSummary = async () => {
@@ -614,6 +623,17 @@ export default function HistoryView() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        title="Delete Meeting"
+        message="Are you sure you want to delete this meeting? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={confirmDeleteMeeting}
+        onCancel={() => setDeleteConfirm({ isOpen: false, meetingId: null })}
+      />
     </div>
   );
 }
