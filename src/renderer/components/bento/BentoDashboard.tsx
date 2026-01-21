@@ -262,8 +262,8 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
         />
       </div>
 
-      {/* Two-column layout: Upcoming | Previous */}
-      <div className="flex-1 grid grid-cols-2 gap-2.5 min-h-0">
+      {/* Two-column layout: Upcoming | Previous (responsive) */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-2.5 min-h-0 overflow-auto">
         <UpcomingMeetingsList
           meetings={upcomingEventsWithoutNotes}
           onNavigateSettings={handleNavigateSettings}

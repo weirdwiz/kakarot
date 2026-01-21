@@ -87,7 +87,7 @@ export default function PeopleView() {
   return (
     <div className="h-full flex bg-white">
       {/* People list sidebar */}
-      <div className="w-80 border-r border-gray-200 flex flex-col bg-gray-50">
+      <div className="w-64 lg:w-80 border-r border-gray-200 flex flex-col bg-gray-50 flex-shrink-0">
         {/* Search */}
         <div className="p-4 border-b border-gray-200">
           <div className="mb-3">

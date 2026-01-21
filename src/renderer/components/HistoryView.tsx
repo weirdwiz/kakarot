@@ -225,7 +225,7 @@ export default function HistoryView() {
   return (
     <div className="h-full flex bg-[#050505] text-slate-100 rounded-2xl border border-[#1A1A1A] shadow-[0_8px_30px_rgba(0,0,0,0.35)] overflow-hidden">
       {/* Meeting list sidebar */}
-      <div className="w-96 border-r border-[#1A1A1A] flex flex-col bg-[#121212] overflow-hidden">
+      <div className="w-72 lg:w-96 border-r border-[#1A1A1A] flex flex-col bg-[#121212] overflow-hidden flex-shrink-0">
         {/* Search */}
         <div className="p-4 border-b border-[#1A1A1A]">
           <div className="relative">

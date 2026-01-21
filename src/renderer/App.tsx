@@ -68,7 +68,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-[#F3F4F6] dark:bg-[#050505]">
+    <div className="flex h-screen min-w-[640px] bg-[#F3F4F6] dark:bg-[#050505]">
       <Sidebar />
       <div className="flex-1 flex flex-col">
         {/* Fixed Header */}
