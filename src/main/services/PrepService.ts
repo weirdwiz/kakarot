@@ -246,7 +246,7 @@ export class PrepService {
     contexts: Record<string, ParticipantContext>
   ): string {
     const contextStrings = Object.entries(contexts)
-      .map(([key, context]) => {
+      .map(([_key, context]) => {
         const { participant, strength, recentTopics, keyPoints } = context;
         return `
 **${participant.name} (${participant.email || 'no-email'}) [${strength}]**

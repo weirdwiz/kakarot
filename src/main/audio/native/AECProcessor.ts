@@ -109,7 +109,9 @@ export class AECProcessor {
         logger.debug('Loaded native addon via bindings module');
       } catch (bindingsError) {
         // Fallback: try to require directly at runtime using multiple possible paths
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const fs = require('fs');
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const path = require('path');
         
         const errorMsg = bindingsError instanceof Error ? bindingsError.message : String(bindingsError);
@@ -169,6 +171,7 @@ export class AECProcessor {
         }
 
         logger.debug('Loading native addon using require()', { path: foundPath });
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         nativeModule = require(foundPath);
         logger.debug('Loaded native addon via direct require()');
       }
