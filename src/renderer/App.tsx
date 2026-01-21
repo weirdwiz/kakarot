@@ -11,6 +11,7 @@ import Sidebar from './components/Sidebar';
 import OnboardingFlow from './components/onboarding/OnboardingFlow';
 import type { AudioLevels } from '../shared/types';
 import ThemeToggle from './components/ThemeToggle';
+import ToastContainer from './components/Toast';
 
 export default function App() {
   const { view, setRecordingState, setAudioLevels, setPartialSegment, addTranscriptSegment, setSettings } =
@@ -141,6 +142,7 @@ export default function App() {
           </div>
         </main>
       </div>
+      <ToastContainer />
     </div>
   );
 }

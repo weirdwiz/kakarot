@@ -7,12 +7,16 @@ import { initializeDatabase, closeDatabase } from './data/database';
 import { initializeContainer, getContainer } from './core/container';
 import { registerAllHandlers } from './handlers';
 import { createLogger } from './core/logger';
+import { initializeErrorHandler } from './core/errorHandler';
 import { showCalloutWindow } from './windows/calloutWindow';
 import { IPC_CHANNELS } from '@shared/ipcChannels';
 import type { Callout } from '@shared/types';
 
 // Load .env from project root
 config({ path: resolve(__dirname, '../../.env') });
+
+// Initialize global error handlers early
+initializeErrorHandler();
 
 const logger = createLogger('Main');
 

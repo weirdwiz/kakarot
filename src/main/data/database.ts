@@ -158,6 +158,55 @@ function createTables(): void {
   logger.debug('Database tables created/verified');
 }
 
+// Transaction management
+let transactionDepth = 0;
+
+export function beginTransaction(): void {
+  const database = getDatabase();
+  if (transactionDepth === 0) {
+    database.run('BEGIN TRANSACTION');
+    logger.debug('Transaction started');
+  }
+  transactionDepth++;
+}
+
+export function commitTransaction(): void {
+  if (transactionDepth === 0) {
+    logger.warn('Commit called without active transaction');
+    return;
+  }
+  transactionDepth--;
+  if (transactionDepth === 0) {
+    const database = getDatabase();
+    database.run('COMMIT');
+    saveDatabase();
+    logger.debug('Transaction committed');
+  }
+}
+
+export function rollbackTransaction(): void {
+  if (transactionDepth === 0) {
+    logger.warn('Rollback called without active transaction');
+    return;
+  }
+  transactionDepth = 0;
+  const database = getDatabase();
+  database.run('ROLLBACK');
+  logger.debug('Transaction rolled back');
+}
+
+export async function withTransaction<T>(fn: () => T | Promise<T>): Promise<T> {
+  beginTransaction();
+  try {
+    const result = await fn();
+    commitTransaction();
+    return result;
+  } catch (error) {
+    rollbackTransaction();
+    throw error;
+  }
+}
+
 export function resultToObject(result: { columns: string[]; values: unknown[][] }): Record<string, unknown> {
   if (result.values.length === 0) return {};
   const obj: Record<string, unknown> = {};
