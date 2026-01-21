@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { AI_MODELS } from '../config/constants';
 import { createLogger } from '../core/logger';
+import { startTiming, endTiming } from '../utils/performance';
 
 const logger = createLogger('OpenAIProvider');
 
@@ -59,23 +60,33 @@ export class OpenAIProvider implements AIProvider {
   }
 
   async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<string> {
-    const client = await this.getClient();
-    const response = await client.chat.completions.create({
-      model: options.model || this.defaultModel,
-      messages,
-      temperature: options.temperature ?? 0.3,
-      max_tokens: options.maxTokens ?? 1000,
-      response_format: options.responseFormat === 'json' ? { type: 'json_object' } : undefined,
-    });
+    const timingId = startTiming('openai.chat', { model: options.model || this.defaultModel });
 
-    const content = response.choices[0]?.message?.content || '';
-    logger.debug('Chat completion', {
-      model: options.model || this.defaultModel,
-      inputTokens: response.usage?.prompt_tokens,
-      outputTokens: response.usage?.completion_tokens,
-    });
+    try {
+      const client = await this.getClient();
+      const response = await client.chat.completions.create({
+        model: options.model || this.defaultModel,
+        messages,
+        temperature: options.temperature ?? 0.3,
+        max_tokens: options.maxTokens ?? 1000,
+        response_format: options.responseFormat === 'json' ? { type: 'json_object' } : undefined,
+      });
 
-    return content;
+      const content = response.choices[0]?.message?.content || '';
+      const duration = endTiming(timingId);
+
+      logger.debug('Chat completion', {
+        model: options.model || this.defaultModel,
+        inputTokens: response.usage?.prompt_tokens,
+        outputTokens: response.usage?.completion_tokens,
+        durationMs: duration?.toFixed(0),
+      });
+
+      return content;
+    } catch (error) {
+      endTiming(timingId);
+      throw error;
+    }
   }
 
   async complete(prompt: string, model?: string): Promise<string> {

@@ -3,12 +3,12 @@ import { useAppStore } from '../stores/appStore';
 import type { AppSettings } from '@shared/types';
 import { Calendar } from 'lucide-react';
 import { ConfirmDialog } from './ConfirmDialog';
+import { toast } from '../stores/toastStore';
 
 export default function SettingsView() {
   const { settings, setSettings } = useAppStore();
   const [localSettings, setLocalSettings] = useState<AppSettings | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState('');
   const [connectingProvider, setConnectingProvider] = useState<'google' | 'outlook' | 'icloud' | null>(null);
   const [connectingCRM, setConnectingCRM] = useState<'salesforce' | 'hubspot' | null>(null);
   const [connectedCalendars, setConnectedCalendars] = useState<{
@@ -83,7 +83,6 @@ export default function SettingsView() {
     if (!localSettings) return;
 
     setConnectingProvider(provider);
-    setSaveMessage('');
 
     try {
       let payload: { appleId: string; appPassword: string } | undefined;
@@ -105,13 +104,12 @@ export default function SettingsView() {
         outlook: !!connections.outlook,
         icloud: !!connections.icloud,
       });
-      setSaveMessage(`${providerLabels[provider]} connected`);
+      toast.success(`${providerLabels[provider]} connected`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      setSaveMessage(`Failed to connect ${providerLabels[provider]}: ${message}`);
+      toast.error(`Failed to connect ${providerLabels[provider]}: ${message}`);
     } finally {
       setConnectingProvider(null);
-      setTimeout(() => setSaveMessage(''), 5000);
     }
   };
 
@@ -122,7 +120,6 @@ export default function SettingsView() {
   const handleDisconnectCalendar = async (provider: 'google' | 'outlook' | 'icloud') => {
     if (!localSettings) return;
     setConnectingProvider(provider);
-    setSaveMessage('');
 
     try {
       const connections = await window.kakarot.calendar.disconnect(provider);
@@ -134,13 +131,12 @@ export default function SettingsView() {
         outlook: !!connections.outlook,
         icloud: !!connections.icloud,
       });
-      setSaveMessage(`${providerLabels[provider]} disconnected`);
+      toast.success(`${providerLabels[provider]} disconnected`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      setSaveMessage(`Failed to disconnect ${providerLabels[provider]}: ${message}`);
+      toast.error(`Failed to disconnect ${providerLabels[provider]}: ${message}`);
     } finally {
       setConnectingProvider(null);
-      setTimeout(() => setSaveMessage(''), 5000);
     }
   };
 
@@ -159,17 +155,15 @@ export default function SettingsView() {
     if (!localSettings) return;
 
     setIsSaving(true);
-    setSaveMessage('');
 
     try {
       await window.kakarot.settings.update(localSettings);
       setSettings(localSettings);
-      setSaveMessage('Settings saved successfully');
+      toast.success('Settings saved');
     } catch {
-      setSaveMessage('Failed to save settings');
+      toast.error('Failed to save settings');
     } finally {
       setIsSaving(false);
-      setTimeout(() => setSaveMessage(''), 3000);
     }
   };
 
@@ -184,10 +178,8 @@ export default function SettingsView() {
     if (!localSettings) return;
 
     setConnectingCRM(provider);
-    setSaveMessage('');
 
     try {
-      // In a real implementation, this would trigger OAuth flow via IPC
       const result = await window.kakarot.crm?.connect(provider);
       if (result) {
         const nextConnections = {
@@ -201,14 +193,13 @@ export default function SettingsView() {
           ...connectedCRMs,
           [provider]: true,
         });
-        setSaveMessage(`${provider.charAt(0).toUpperCase() + provider.slice(1)} connected`);
+        toast.success(`${provider.charAt(0).toUpperCase() + provider.slice(1)} connected`);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      setSaveMessage(`Failed to connect ${provider}: ${message}`);
+      toast.error(`Failed to connect ${provider}: ${message}`);
     } finally {
       setConnectingCRM(null);
-      setTimeout(() => setSaveMessage(''), 5000);
     }
   };
 
@@ -216,7 +207,6 @@ export default function SettingsView() {
     if (!localSettings) return;
 
     setConnectingCRM(provider);
-    setSaveMessage('');
 
     try {
       await window.kakarot.crm?.disconnect(provider);
@@ -229,13 +219,12 @@ export default function SettingsView() {
         ...connectedCRMs,
         [provider]: false,
       });
-      setSaveMessage(`${provider.charAt(0).toUpperCase() + provider.slice(1)} disconnected`);
+      toast.success(`${provider.charAt(0).toUpperCase() + provider.slice(1)} disconnected`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      setSaveMessage(`Failed to disconnect ${provider}: ${message}`);
+      toast.error(`Failed to disconnect ${provider}: ${message}`);
     } finally {
       setConnectingCRM(null);
-      setTimeout(() => setSaveMessage(''), 5000);
     }
   };
 
@@ -684,16 +673,11 @@ export default function SettingsView() {
         </section>
 
         {/* Save button */}
-        <div className="flex items-center justify-between pt-4 border-t border-gray-700">
-          {saveMessage && (
-            <p className={`text-sm ${saveMessage.includes('Failed') ? 'text-red-400' : 'text-green-400'}`}>
-              {saveMessage}
-            </p>
-          )}
+        <div className="flex items-center justify-end pt-4 border-t border-gray-700">
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="ml-auto px-6 py-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors"
+            className="px-6 py-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors"
           >
             {isSaving ? 'Saving...' : 'Save Settings'}
           </button>

@@ -8,6 +8,7 @@ import { initializeContainer, getContainer } from './core/container';
 import { registerAllHandlers } from './handlers';
 import { createLogger } from './core/logger';
 import { initializeErrorHandler } from './core/errorHandler';
+import { startPerformanceLogging, stopPerformanceLogging } from './utils/performance';
 import { showCalloutWindow } from './windows/calloutWindow';
 import { IPC_CHANNELS } from '@shared/ipcChannels';
 import type { Callout } from '@shared/types';
@@ -59,8 +60,9 @@ async function createWindows() {
   const container = getContainer();
   container.meetingNotificationService.start();
 
-  // Dev-only: Register keyboard shortcuts
+  // Dev-only: Start performance logging and register keyboard shortcuts
   if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+    startPerformanceLogging(60000); // Log every 60 seconds
     const resetShortcut = process.platform === 'darwin' ? 'Cmd+Shift+O' : 'Ctrl+Shift+O';
     globalShortcut.register(resetShortcut, () => {
       logger.info('Dev: Resetting onboarding via keyboard shortcut');
@@ -107,6 +109,7 @@ app.on('activate', () => {
 
 // Handle app quit - cleanup
 app.on('before-quit', () => {
+  stopPerformanceLogging();
   const container = getContainer();
   container.meetingNotificationService.stop();
   closeDatabase();
