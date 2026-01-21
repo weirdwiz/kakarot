@@ -6,9 +6,6 @@ import { createLogger } from '../../core/logger';
 const logger = createLogger('SettingsRepository');
 
 export class SettingsRepository {
-  /**
-   * Ensure default settings exist in database
-   */
   initializeDefaults(): void {
     const db = getDatabase();
     const result = db.exec('SELECT COUNT(*) as count FROM settings');

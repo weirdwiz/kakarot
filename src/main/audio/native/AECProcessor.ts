@@ -80,44 +80,8 @@ const DEFAULT_CONFIG: Required<AECConfig> = {
 };
 
 /**
- * TypeScript wrapper for the native WebRTC AEC module
- *
- * Manages initialization, render/capture processing, native mic capture, and cleanup
- * of the WebRTC echo cancellation pipeline.
- *
- * @example
- * ```typescript
- * const aec = new AECProcessor({
- *   enableAec: true,
- *   enableNs: true,
- *   enableAgc: false,
- *   disableAecOnHeadphones: true,
- *   frameDurationMs: 10,
- * });
- *
- * // Option 1: Use native mic capture (recommended - perfect timestamps!)
- * aec.startMicrophoneCapture((samples, timestamp) => {
- *   console.log('Native mic audio:', samples.length, 'timestamp:', timestamp);
- *   // Process with AEC, send to transcription, etc.
- * });
- *
- * // Option 2: Manual processing (if using renderer mic capture)
- * // Feed system audio (what speakers play)
- * aec.processRenderAudio(systemBuffer);
- *
- * // Process microphone audio (returns echo-cancelled)
- * const cleanAudio = aec.processCaptureAudio(micBuffer);
- *
- * // Send cleanAudio to transcription
- * await transcriptionProvider.sendAudio(cleanAudio, 'mic');
- *
- * // Optionally log metrics
- * const metrics = aec.getMetrics();
- * console.log('ERLE:', metrics.erle, 'dB');
- *
- * // Cleanup
- * aec.destroy();
- * ```
+ * TypeScript wrapper for the native WebRTC AEC module.
+ * Manages render/capture processing and native mic capture.
  */
 export class AECProcessor {
   private nativeModule: any = null;
@@ -127,8 +91,6 @@ export class AECProcessor {
   private isDestroyed = false;
   private renderBufferQueue: Float32Array[] = [];
   private readonly MAX_RENDER_QUEUE = 10;
-  
-  // NEW: Native mic capture state
   private micCapturing = false;
   private micAudioCallback?: (samples: Float32Array, timestamp: number) => void;
 
@@ -144,14 +106,14 @@ export class AECProcessor {
         logger.debug('Attempting to load native addon via bindings module...');
           logger.debug('DEBUG:', { __dirname, cwd: process.cwd() });
         nativeModule = bindings('audio_capture_native');
-        logger.debug('✅ Loaded native addon via bindings module');
+        logger.debug('Loaded native addon via bindings module');
       } catch (bindingsError) {
         // Fallback: try to require directly at runtime using multiple possible paths
         const fs = require('fs');
         const path = require('path');
         
         const errorMsg = bindingsError instanceof Error ? bindingsError.message : String(bindingsError);
-        logger.debug('⚠️  bindings() failed, trying direct require paths', { error: errorMsg.substring(0, 100) });
+        logger.debug('bindings() failed, trying direct require paths', { error: errorMsg.substring(0, 100) });
         
         const possiblePaths: string[] = [];
         
@@ -190,7 +152,7 @@ export class AECProcessor {
           checkedPaths.push(testPath);
           try {
             if (fs.existsSync(testPath)) {
-              logger.info('✅ Found native addon', { path: testPath });
+              logger.info('Found native addon', { path: testPath });
               foundPath = testPath;
               break;
             }
@@ -208,7 +170,7 @@ export class AECProcessor {
 
         logger.debug('Loading native addon using require()', { path: foundPath });
         nativeModule = require(foundPath);
-        logger.debug('✅ Loaded native addon via direct require()');
+        logger.debug('Loaded native addon via direct require()');
       }
 
       if (!nativeModule || typeof nativeModule.AudioCaptureAddon !== 'function') {
@@ -227,7 +189,7 @@ export class AECProcessor {
       });
 
       this.isInitialized = true;
-      logger.info('✅ AEC initialized successfully', {
+      logger.info('AEC initialized successfully', {
         enableAec: this.config.enableAec,
         enableNs: this.config.enableNs,
         enableAgc: this.config.enableAgc,
@@ -236,40 +198,14 @@ export class AECProcessor {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error('❌ AEC initialization failed', { errorMessage: message, errorType: error instanceof Error ? 'Error' : 'Other' });
+      logger.error('AEC initialization failed', { errorMessage: message, errorType: error instanceof Error ? 'Error' : 'Other' });
       throw new Error(`AEC initialization failed: ${message}`);
     }
   }
 
   /**
-   * Initialize the AEC pipeline in the native module
-   * @private
-   */
-  private initializeAEC(): void {
-    // No-op: initialization occurs when creating nativeInstance in constructor
-    if (this.isInitialized) return;
-  }
-
-  /**
-   * Process render (system/speaker) audio through the AEC reference path
-   *
-   * Must be called for system audio BEFORE corresponding microphone audio
-   * is processed through processCaptureAudio(). This tells the AEC what
-   * signal is being played to the speakers so it can be removed from the
-   * microphone signal.
-   *
-   * @param renderBuffer - Float32Array of system audio samples (-1.0 to 1.0)
-   * @returns Success flag
-   * @throws Error if AEC is not initialized or destroyed
-   *
-   * @example
-   * ```typescript
-   * // When system audio arrives
-   * const systemAudio = await getSystemAudio();
-   * aec.processRenderAudio(systemAudio);
-   * // Then later, when mic audio arrives
-   * const cleanMic = aec.processCaptureAudio(micAudio);
-   * ```
+   * Process render (system/speaker) audio through the AEC reference path.
+   * Must be called BEFORE corresponding processCaptureAudio() call.
    */
   public processRenderAudio(renderBuffer: Float32Array): boolean {
     if (this.isDestroyed) {
@@ -310,36 +246,8 @@ export class AECProcessor {
   }
 
   /**
-   * Process capture (microphone) audio through the AEC to remove echo
-   *
-   * Returns echo-cancelled microphone audio suitable for transcription.
-   * Should only be called after render audio has been processed via
-   * processRenderAudio() for the corresponding far-end signal.
-   *
-   * @param captureBuffer - Float32Array of microphone audio samples (-1.0 to 1.0)
-   * @returns Processed (echo-cancelled) audio as Float32Array, or null on error
-   * @throws Error if AEC is not initialized or destroyed
-   *
-   * @example
-   * ```typescript
-   * // When microphone audio arrives
-   * try {
-   *   const cleanAudio = aec.processCaptureAudio(micBuffer);
-   *   if (cleanAudio) {
-   *     // Send clean audio to transcription
-   *     const pcmBuffer = float32ToInt16(cleanAudio);
-   *     await transcriptionProvider.sendAudio(pcmBuffer, 'mic');
-   *   } else {
-   *     // Fall back to raw audio if processing failed
-   *     const pcmBuffer = float32ToInt16(micBuffer);
-   *     await transcriptionProvider.sendAudio(pcmBuffer, 'mic');
-   *   }
-   * } catch (error) {
-   *   logger.error('AEC processing failed, using raw mic', { error });
-   *   const pcmBuffer = float32ToInt16(micBuffer);
-   *   await transcriptionProvider.sendAudio(pcmBuffer, 'mic');
-   * }
-   * ```
+   * Process capture (microphone) audio through the AEC to remove echo.
+   * Returns echo-cancelled audio, or null on error.
    */
   public processCaptureAudio(captureBuffer: Float32Array): Float32Array | null {
     if (this.isDestroyed) {
@@ -374,39 +282,8 @@ export class AECProcessor {
   }
 
   /**
-   * NEW: Start native microphone capture using AudioUnit
-   * 
-   * This captures mic audio directly in the main process using the SAME
-   * timestamp source as system audio, ensuring perfect synchronization!
-   * 
-   * Timestamps are in milliseconds and use the same monotonic clock as
-   * system audio, so they can be matched with 50-100ms tolerance for AEC sync.
-   *
-   * @param callback - Called with mic audio samples and timestamp
-   * @returns Success flag
-   * 
-   * @example
-   * ```typescript
-   * const success = aec.startMicrophoneCapture((samples, timestamp) => {
-   *   console.log('Native mic:', samples.length, 'samples at', timestamp, 'ms');
-   *   
-   *   // Find matching system audio in your buffer
-   *   const systemAudio = findSystemAudioNearTimestamp(timestamp);
-   *   
-   *   if (systemAudio) {
-   *     // Perfect sync! Process in order:
-   *     aec.processRenderAudio(systemAudio.samples);  // Step 1: Feed echo reference
-   *     const clean = aec.processCaptureAudio(samples); // Step 2: Remove echo
-   *     
-   *     // Send to transcription
-   *     await transcription.sendAudio(clean, 'mic');
-   *   }
-   * });
-   * 
-   * if (!success) {
-   *   console.error('Failed to start native mic capture');
-   * }
-   * ```
+   * Start native microphone capture using AudioUnit.
+   * Timestamps use the same monotonic clock as system audio for AEC sync.
    */
   public startMicrophoneCapture(callback: (samples: Float32Array, timestamp: number) => void): boolean {
     if (this.isDestroyed) {
@@ -441,7 +318,7 @@ export class AECProcessor {
 
         if (success) {
           this.micCapturing = true;
-          logger.info('✅ Native microphone capture started (same clock as system audio!)');
+          logger.info('Native microphone capture started');
           return true;
         } else {
           logger.error('Native module failed to start microphone capture');
@@ -478,14 +355,7 @@ export class AECProcessor {
   }
 
   /**
-   * NEW: Stop native microphone capture
-   * 
-   * @returns Success flag
-   * 
-   * @example
-   * ```typescript
-   * aec.stopMicrophoneCapture();
-   * ```
+   * Stop native microphone capture.
    */
   public stopMicrophoneCapture(): boolean {
     if (!this.micCapturing) {
@@ -499,7 +369,7 @@ export class AECProcessor {
         if (success) {
           this.micCapturing = false;
           this.micAudioCallback = undefined;
-          logger.info('🛑 Native microphone capture stopped');
+          logger.info('Native microphone capture stopped');
           return true;
         } else {
           logger.warn('Native module failed to stop microphone capture');
@@ -517,33 +387,14 @@ export class AECProcessor {
   }
 
   /**
-   * NEW: Check if native microphone capture is running
-   * 
-   * @returns True if mic is currently capturing
+   * Check if native microphone capture is running.
    */
   public isMicrophoneCapturing(): boolean {
     return this.micCapturing;
   }
 
   /**
-   * Get current AEC metrics and performance statistics
-   *
-   * Useful for logging, debugging, and monitoring echo suppression quality.
-   * Metrics include echo return loss enhancement (ERLE), residual echo level,
-   * and convergence status.
-   *
-   * @returns Object containing AEC metrics, or empty object if unavailable
-   *
-   * @example
-   * ```typescript
-   * const metrics = aec.getMetrics();
-   * if (metrics.erle !== undefined) {
-   *   console.log(`Echo suppression: ${metrics.erle} dB`);
-   *   if (metrics.erle > 10) {
-   *     console.log('✅ Good echo cancellation performance');
-   *   }
-   * }
-   * ```
+   * Get current AEC metrics (ERLE, residual echo level, convergence status).
    */
   public getMetrics(): AECMetrics {
     if (!this.isInitialized || this.isDestroyed) {
@@ -573,11 +424,7 @@ export class AECProcessor {
   }
 
   /**
-   * Check if headphones are currently connected
-   *
-   * Can be used to conditionally disable AEC or adjust processing parameters.
-   *
-   * @returns True if headphones are detected, false otherwise
+   * Check if headphones are currently connected.
    */
   public isHeadphonesConnected(): boolean {
     if (!this.isInitialized || this.isDestroyed) {
@@ -596,9 +443,7 @@ export class AECProcessor {
   }
 
   /**
-   * Enable or disable echo cancellation at runtime
-   *
-   * @param enabled - Whether to enable AEC processing
+   * Enable or disable echo cancellation at runtime.
    */
   public setEchoCancellationEnabled(enabled: boolean): void {
     if (!this.isInitialized || this.isDestroyed) {
@@ -635,17 +480,7 @@ export class AECProcessor {
   }
 
   /**
-   * Clean up and destroy the AEC processor
-   *
-   * Must be called when the processor is no longer needed to release
-   * native resources and prevent memory leaks.
-   *
-   * @example
-   * ```typescript
-   * // When stopping recording
-   * aec.destroy();
-   * aec = null;
-   * ```
+   * Clean up and destroy the AEC processor. Call when no longer needed.
    */
   public destroy(): void {
     if (this.isDestroyed) {
@@ -667,7 +502,7 @@ export class AECProcessor {
       this.nativeInstance = null;
       this.nativeModule = null;
 
-      logger.info('✅ AEC processor destroyed');
+      logger.info('AEC processor destroyed');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('Error destroying AEC processor', { error: message });
@@ -690,18 +525,7 @@ export class AECProcessor {
 }
 
 /**
- * Convert Float32Array audio samples to Int16Array (16-bit PCM)
- * for transmission to transcription services.
- *
- * @param float32Samples - Audio samples in range [-1.0, 1.0]
- * @returns Int16Array of PCM samples
- *
- * @example
- * ```typescript
- * const cleanAudio = aec.processCaptureAudio(micBuffer);
- * const pcmBuffer = float32ToInt16Array(cleanAudio);
- * await transcriptionProvider.sendAudio(pcmBuffer.buffer, 'mic');
- * ```
+ * Convert Float32Array audio samples to Int16Array (16-bit PCM).
  */
 export function float32ToInt16Array(float32Samples: Float32Array): Int16Array {
   const int16Samples = new Int16Array(float32Samples.length);
@@ -713,10 +537,7 @@ export function float32ToInt16Array(float32Samples: Float32Array): Int16Array {
 }
 
 /**
- * Convert Float32Array audio samples to ArrayBuffer in Int16 format
- *
- * @param float32Samples - Audio samples in range [-1.0, 1.0]
- * @returns ArrayBuffer containing int16 PCM data
+ * Convert Float32Array audio samples to ArrayBuffer in Int16 format.
  */
 export function float32ToInt16Buffer(float32Samples: Float32Array): ArrayBuffer {
   const int16Samples = float32ToInt16Array(float32Samples);

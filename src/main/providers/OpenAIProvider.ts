@@ -16,9 +16,9 @@ export interface ChatOptions {
   responseFormat?: 'text' | 'json';
 }
 
-// Common interface for AI providers
 export interface AIProvider {
   chat(messages: ChatMessage[], options?: ChatOptions): Promise<string>;
+  complete(prompt: string, model?: string): Promise<string>;
 }
 
 export interface OpenAIProviderConfig {
@@ -28,7 +28,7 @@ export interface OpenAIProviderConfig {
   defaultModel?: string;
 }
 
-export class OpenAIProvider {
+export class OpenAIProvider implements AIProvider {
   private client: OpenAI;
   private defaultModel: string;
   private tokenProvider?: () => Promise<string | null>;
@@ -80,14 +80,5 @@ export class OpenAIProvider {
 
   async complete(prompt: string, model?: string): Promise<string> {
     return this.chat([{ role: 'user', content: prompt }], { model: model || this.defaultModel });
-  }
-
-  async embed(text: string): Promise<number[]> {
-    const client = await this.getClient();
-    const response = await client.embeddings.create({
-      model: AI_MODELS.EMBEDDING_SMALL,
-      input: text,
-    });
-    return response.data[0].embedding;
   }
 }

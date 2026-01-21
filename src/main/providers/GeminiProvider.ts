@@ -1,5 +1,5 @@
 import { createLogger } from '../core/logger';
-import type { ChatMessage, ChatOptions } from './OpenAIProvider';
+import type { AIProvider, ChatMessage, ChatOptions } from './OpenAIProvider';
 
 const logger = createLogger('GeminiProvider');
 
@@ -8,7 +8,7 @@ export interface GeminiProviderConfig {
   model?: string;
 }
 
-export class GeminiProvider {
+export class GeminiProvider implements AIProvider {
   private apiKey: string;
   private model: string;
   private baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
@@ -23,7 +23,6 @@ export class GeminiProvider {
     const model = options.model || this.model;
     const url = `${this.baseUrl}/models/${model}:generateContent`;
 
-    // Convert OpenAI-style messages to Gemini format
     const contents = this.convertMessages(messages);
 
     const body = {
@@ -75,7 +74,7 @@ export class GeminiProvider {
       } else if (msg.role === 'user') {
         const text = systemPrompt ? systemPrompt + msg.content : msg.content;
         contents.push({ role: 'user', parts: [{ text }] });
-        systemPrompt = ''; // Clear after first use
+        systemPrompt = '';
       } else if (msg.role === 'assistant') {
         contents.push({ role: 'model', parts: [{ text: msg.content }] });
       }
@@ -84,7 +83,7 @@ export class GeminiProvider {
     return contents;
   }
 
-  async complete(prompt: string): Promise<string> {
-    return this.chat([{ role: 'user', content: prompt }]);
+  async complete(prompt: string, model?: string): Promise<string> {
+    return this.chat([{ role: 'user', content: prompt }], { model });
   }
 }

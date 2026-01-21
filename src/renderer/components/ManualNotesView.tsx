@@ -60,28 +60,21 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
     minute: '2-digit'
   }) : '';
 
-  // Detect meeting platform from location/URL
   const getMeetingPlatform = () => {
-    if (!meeting?.location) {
-      console.log('[ManualNotesView] No location found, checking for meeting:', meeting);
-      return null;
-    }
-    console.log('[ManualNotesView] Meeting location:', meeting.location);
+    if (!meeting?.location) return null;
     const location = meeting.location.toLowerCase();
-    
-    // Check for URLs with https:// prefix
-    if (location.includes('zoom.us') || location.includes('zoom.com') || location.includes('zoom')) 
+
+    if (location.includes('zoom.us') || location.includes('zoom.com') || location.includes('zoom'))
       return { name: 'Zoom', type: 'zoom', url: meeting.location };
-    if (location.includes('meet.google') || location.includes('google.com/meet') || location.includes('meet')) 
+    if (location.includes('meet.google') || location.includes('google.com/meet') || location.includes('meet'))
       return { name: 'Google Meet', type: 'google-meet', url: meeting.location };
-    if (location.includes('teams.microsoft') || location.includes('teams.live.com') || location.includes('teams')) 
+    if (location.includes('teams.microsoft') || location.includes('teams.live.com') || location.includes('teams'))
       return { name: 'Microsoft Teams', type: 'teams', url: meeting.location };
-    if (location.includes('webex') || location.includes('cisco')) 
+    if (location.includes('webex') || location.includes('cisco'))
       return { name: 'Cisco Webex', type: 'webex', url: meeting.location };
-    if (location.includes('hangout')) 
+    if (location.includes('hangout'))
       return { name: 'Google Hangouts', type: 'hangouts', url: meeting.location };
-    
-    console.log('[ManualNotesView] No meeting platform detected for location:', meeting.location);
+
     return null;
   };
 
@@ -125,7 +118,6 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
   const handleJoinMeeting = () => {
     const url = meetingPlatform?.url || meeting?.location;
     if (url) {
-      console.log('[ManualNotesView] Opening meeting URL:', url);
       window.open(url, '_blank');
     }
   };

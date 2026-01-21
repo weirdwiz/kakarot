@@ -1,8 +1,3 @@
-/**
- * Audio Service
- * Manages audio capture and echo cancellation for the application
- */
-
 import { NativeAudioCapture, isNativeAudioAvailable } from "./nativeAudioCapture";
 import { AECProcessor, type AECConfig, type AECMetrics } from "./native/AECProcessor";
 import { createLogger } from "@main/core/logger";
@@ -174,7 +169,7 @@ export class AudioService {
       };
 
       this.aecProcessor = new AECProcessor(aecConfig);
-      logger.info("✅ WebRTC AEC processor initialized");
+      logger.info("WebRTC AEC processor initialized");
 
       // Optional: Log AEC metrics every 5 seconds
       this.aecMetricsInterval = setInterval(() => {

@@ -24,7 +24,6 @@ export class HubSpotOAuthProvider {
 
   async authenticate(mainWindow: BrowserWindow): Promise<HubSpotOAuthToken> {
     return new Promise((resolve, reject) => {
-      // Create a temporary OAuth window
       const authWindow = new BrowserWindow({
         width: 600,
         height: 700,
@@ -53,8 +52,6 @@ export class HubSpotOAuthProvider {
         isProcessingCode = true;
 
         logger.info('Authorization code received', { code: code.substring(0, 10) + '...' });
-        
-        // Remove the closed event listener to prevent rejection
         authWindow.removeAllListeners('closed');
         
         this.exchangeCodeForToken(code)
@@ -68,11 +65,9 @@ export class HubSpotOAuthProvider {
           });
       };
 
-      // Listen for redirect and extract auth code
       authWindow.webContents.on('will-redirect', (event, url) => {
         logger.debug('OAuth redirect detected', { url });
         
-        // Check if this is our redirect URI
         if (url.startsWith(this.redirectUri)) {
           event.preventDefault();
           
@@ -95,7 +90,6 @@ export class HubSpotOAuthProvider {
         }
       });
 
-      // Also handle navigation event (backup for some OAuth flows)
       authWindow.webContents.on('will-navigate', (event, url) => {
         logger.debug('OAuth navigation detected', { url });
         

@@ -5,9 +5,6 @@ import { createLogger } from '../../core/logger';
 const logger = createLogger('PeopleRepository');
 
 export class PeopleRepository {
-  /**
-   * Get all people, ordered by most recent meeting
-   */
   listAll(): Person[] {
     const db = getDatabase();
     const rows = db.exec(
@@ -17,9 +14,6 @@ export class PeopleRepository {
     return rows.map(this.rowToPerson);
   }
 
-  /**
-   * Search people by email or name
-   */
   search(query: string): Person[] {
     const db = getDatabase();
     const searchPattern = `%${query.toLowerCase()}%`;
@@ -33,9 +27,6 @@ export class PeopleRepository {
     return rows.map(this.rowToPerson);
   }
 
-  /**
-   * Get a person by email
-   */
   getByEmail(email: string): Person | null {
     const db = getDatabase();
     const rows = db.exec(
@@ -47,9 +38,6 @@ export class PeopleRepository {
     return this.rowToPerson(rows[0]);
   }
 
-  /**
-   * Update person's notes
-   */
   updateNotes(email: string, notes: string): void {
     const db = getDatabase();
     db.run(
@@ -60,9 +48,6 @@ export class PeopleRepository {
     logger.info('Updated person notes', { email });
   }
 
-  /**
-   * Update person's name
-   */
   updateName(email: string, name: string): void {
     const db = getDatabase();
     db.run(
@@ -73,9 +58,6 @@ export class PeopleRepository {
     logger.info('Updated person name', { email, name });
   }
 
-  /**
-   * Update person's organization
-   */
   updateOrganization(email: string, organization: string): void {
     const db = getDatabase();
     db.run(
@@ -86,12 +68,8 @@ export class PeopleRepository {
     logger.info('Updated person organization', { email, organization });
   }
 
-  /**
-   * Get people who attended a specific meeting
-   */
   getByMeetingId(meetingId: string): Person[] {
     const db = getDatabase();
-    // Get attendee emails from the meeting
     const meetingRows = db.exec(
       'SELECT attendee_emails FROM meetings WHERE id = ?',
       [meetingId]
@@ -102,7 +80,6 @@ export class PeopleRepository {
     const attendeeEmails: string[] = JSON.parse(meetingRows[0][0] as string);
     if (attendeeEmails.length === 0) return [];
 
-    // Get people for those emails
     const placeholders = attendeeEmails.map(() => '?').join(',');
     const rows = db.exec(
       `SELECT * FROM people WHERE email IN (${placeholders})`,
@@ -112,9 +89,6 @@ export class PeopleRepository {
     return rows.map(this.rowToPerson);
   }
 
-  /**
-   * Get statistics about the people database
-   */
   getStats(): {
     totalPeople: number;
     totalMeetings: number;
@@ -141,12 +115,7 @@ export class PeopleRepository {
     };
   }
 
-  /**
-   * Upsert person from calendar attendee with smart name resolution
-   * 1. Use displayName from calendar if available
-   * 2. Fallback to People API lookup
-   * 3. Final fallback to email extraction
-   */
+  // Resolves name from: calendarDisplayName -> People API -> email extraction
   async upsertFromCalendarAttendee(
     email: string,
     calendarDisplayName?: string,
@@ -158,10 +127,8 @@ export class PeopleRepository {
     const db = getDatabase();
     const now = Date.now();
 
-    // Step 1: Try calendar displayName
     let name = calendarDisplayName;
 
-    // Step 2: If no calendar name, try People API
     if (!name && peopleApiFetcher) {
       try {
         name = await peopleApiFetcher(email) || undefined;
@@ -170,7 +137,6 @@ export class PeopleRepository {
       }
     }
 
-    // Step 3: Final fallback - extract from email
     if (!name) {
       const localPart = email.split('@')[0];
       const nameParts = localPart.split(/[._-]/).filter(part => part.length > 0);
@@ -183,14 +149,12 @@ export class PeopleRepository {
     const existing = db.exec('SELECT * FROM people WHERE email = ?', [email]);
 
     if (existing[0]?.values.length > 0) {
-      // Update existing person - only update if current name is null or email-derived
       db.run(
         'UPDATE people SET name = COALESCE(name, ?), organization = COALESCE(organization, ?), updated_at = ? WHERE email = ?',
         [name, organization || null, now, email]
       );
       logger.info('Updated person from calendar', { email, name, source: calendarDisplayName ? 'calendar' : 'fallback' });
     } else {
-      // Create new person
       db.run(
         `INSERT INTO people (email, name, last_meeting_at, meeting_count, total_duration, organization, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,

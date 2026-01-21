@@ -108,11 +108,12 @@ export function registerCRMHandlers(): void {
       const noteSyncService = new CRMNoteSyncService();
 
       // Determine which CRM to push to
-      const activeCRM = settings.crmConnections?.salesforce
-        ? 'salesforce'
-        : settings.crmConnections?.hubspot
-          ? 'hubspot'
-          : null;
+      let activeCRM: 'salesforce' | 'hubspot' | null = null;
+      if (settings.crmConnections?.salesforce) {
+        activeCRM = 'salesforce';
+      } else if (settings.crmConnections?.hubspot) {
+        activeCRM = 'hubspot';
+      }
 
       if (!activeCRM || !settings.crmConnections) {
         throw new Error('No CRM connected');

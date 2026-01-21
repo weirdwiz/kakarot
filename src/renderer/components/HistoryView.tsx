@@ -109,12 +109,6 @@ export default function HistoryView() {
     setSelectedMeeting({ ...selectedMeeting, summary });
   };
 
-  const _handleExport = async (format: 'markdown' | 'pdf') => {
-    if (!selectedMeeting) return;
-    const filePath = await window.kakarot.meetings.export(selectedMeeting.id, format);
-    alert(`Exported to: ${filePath}`);
-  };
-
   const handleTitleSave = async () => {
     if (!selectedMeeting) return;
     const nextTitle = titleDraft.trim() || 'Untitled Meeting';

@@ -1,18 +1,9 @@
-/**
- * Meeting Prep Service
- * Generates a 5-minute meeting briefing using OpenAI Agent
- * based on participant history and context
- */
-
 import { getContainer } from '../core/container';
 import { createLogger } from '../core/logger';
-import { Meeting, TranscriptSegment } from '@shared/types';
+import { Meeting } from '@shared/types';
 
 const logger = createLogger('PrepService');
 
-/**
- * Participant information for prep context
- */
 export interface PrepParticipant {
   name: string;
   email: string | null;
@@ -20,9 +11,6 @@ export interface PrepParticipant {
   domain: string | null;
 }
 
-/**
- * Input contract for generating meeting prep
- */
 export interface GenerateMeetingPrepInput {
   meeting: {
     meeting_type: string; // e.g., "product sync", "sales call", "board meeting"
@@ -31,9 +19,6 @@ export interface GenerateMeetingPrepInput {
   participants: PrepParticipant[];
 }
 
-/**
- * Preparation section for a participant
- */
 export interface ParticipantPrepSection {
   name: string;
   email: string | null;
@@ -49,9 +34,6 @@ export interface ParticipantPrepSection {
   background: string;
 }
 
-/**
- * Structured meeting prep output
- */
 export interface MeetingPrepOutput {
   meeting: {
     type: string;
@@ -114,9 +96,6 @@ export class PrepService {
     return this.validateAndFormatOutput(prepData, input);
   }
 
-  /**
-   * Retrieve participant meeting histories with email/domain filtering
-   */
   private async retrieveParticipantContexts(
     participants: PrepParticipant[]
   ): Promise<Record<string, ParticipantContext>> {
@@ -157,9 +136,6 @@ export class PrepService {
     return contexts;
   }
 
-  /**
-   * Filter meetings by participant email or domain
-   */
   private filterMeetingsByParticipant(meetings: Meeting[], participant: PrepParticipant): Meeting[] {
     return meetings.filter((meeting) => {
       // Rule 1: Filter by exact email
@@ -184,9 +160,6 @@ export class PrepService {
     });
   }
 
-  /**
-   * Determine strength of relationship based on meeting history
-   */
   private determineHistoryStrength(
     participant: PrepParticipant,
     meetings: Meeting[]
@@ -219,9 +192,6 @@ export class PrepService {
     return 'none';
   }
 
-  /**
-   * Extract recent topics from meetings
-   */
   private extractTopics(meetings: Meeting[]): string[] {
     const topics = new Set<string>();
 
@@ -244,9 +214,6 @@ export class PrepService {
     return Array.from(topics).slice(0, 5);
   }
 
-  /**
-   * Extract key points from meetings
-   */
   private extractKeyPoints(meetings: Meeting[]): string[] {
     const keyPoints = new Set<string>();
 
@@ -274,9 +241,6 @@ export class PrepService {
     return Array.from(keyPoints).slice(0, 5);
   }
 
-  /**
-   * Build the agent prompt with context
-   */
   private buildAgentPrompt(
     input: GenerateMeetingPrepInput,
     contexts: Record<string, ParticipantContext>
@@ -348,9 +312,6 @@ RESPONSE FORMAT:
 }`;
   }
 
-  /**
-   * Validate and format output to ensure it matches contract
-   */
   private validateAndFormatOutput(
     prepData: any,
     input: GenerateMeetingPrepInput
@@ -411,9 +372,6 @@ RESPONSE FORMAT:
   }
 }
 
-/**
- * Internal type for participant context during retrieval
- */
 interface ParticipantContext {
   participant: PrepParticipant;
   meetings: Meeting[];

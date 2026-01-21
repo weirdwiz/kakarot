@@ -88,10 +88,7 @@ export default function CompactMeetingBar({
             <div className="flex items-center gap-2 ml-4">
               {onDismiss && (
                 <button
-                  onClick={() => {
-                    console.log('[CompactMeetingBar] Trash icon clicked for event:', event.id);
-                    onDismiss(event.id);
-                  }}
+                  onClick={() => onDismiss(event.id)}
                   className="p-1.5 text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
                   title="Remove from live bar"
                 >

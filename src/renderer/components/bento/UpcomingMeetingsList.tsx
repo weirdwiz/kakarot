@@ -1,6 +1,6 @@
 import React from 'react';
 import type { CalendarEvent } from '../../../shared/types';
-import { Calendar, Clock, Settings } from 'lucide-react';
+import { Calendar, Settings } from 'lucide-react';
 
 interface UpcomingMeetingsListProps {
   meetings: CalendarEvent[];
@@ -32,10 +32,6 @@ export default function UpcomingMeetingsList({ meetings, onNavigateSettings, onS
     const d = new Date(date);
     return d.toDateString() === tomorrow.toDateString();
   };
-
-  const todayMeetings = meetings.filter(m => isToday(m.start));
-  const tomorrowMeetings = meetings.filter(m => isTomorrow(m.start));
-  const laterMeetings = meetings.filter(m => !isToday(m.start) && !isTomorrow(m.start));
 
   const renderMeeting = (meeting: CalendarEvent): JSX.Element => (
     <button

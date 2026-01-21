@@ -27,7 +27,7 @@ export class MeetingNotificationService {
       return;
     }
 
-    logger.info('🔔 Starting meeting notification service');
+    logger.info('Starting meeting notification service');
     
     // Check every 10 seconds for meetings starting in 1 minute (reduced from 15s for faster detection)
     this.checkInterval = setInterval(() => {
@@ -37,7 +37,7 @@ export class MeetingNotificationService {
     // Check immediately on start
     this.checkUpcomingMeetings();
     
-    logger.info('🔔 Meeting notification service started - checking every 10 seconds');
+    logger.info('Meeting notification service started - checking every 10 seconds');
   }
 
   /**
@@ -115,19 +115,19 @@ export class MeetingNotificationService {
           if (timeUntilMeeting > oneMinuteMs) {
             const delayMs = timeUntilMeeting - oneMinuteMs;
             const timeout = setTimeout(() => {
-              logger.info('🔔 Showing scheduled notification (T-60s)', { title: meeting.title });
+              logger.info('Showing scheduled notification (T-60s)', { title: meeting.title });
               this.showMeetingNotification(meeting);
               this.pendingNotifications.delete(meeting.id);
             }, delayMs);
 
             this.pendingNotifications.set(meeting.id, { eventId: meeting.id, timeout });
-            logger.info('📅 Scheduled notification', { 
+            logger.info('Scheduled notification', { 
               eventId: meeting.id, 
               title: meeting.title,
               delaySeconds: Math.round(delayMs / 1000)
             });
           } else if (withinOneMinuteWindow) {
-            logger.info('🔔 Showing notification immediately (inside 60s window)', { 
+            logger.info('Showing notification immediately (inside 60s window)', { 
               title: meeting.title,
               startTime: startDate.toLocaleTimeString()
             });

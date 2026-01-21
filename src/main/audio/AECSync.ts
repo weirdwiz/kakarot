@@ -19,9 +19,9 @@ export class AECSync {
   private aecProcessor: AECProcessor;
 
   // Configuration
-  private readonly BUFFER_SIZE_MS = 500; // Keep 500ms of render audio
-  private readonly SYNC_TOLERANCE_MS = 300; // Match within 100ms
-  private readonly MAX_BUFFER_ITEMS = 50; // At 48kHz, 10ms frames = 50 items for 500ms
+  private readonly BUFFER_SIZE_MS = 500;
+  private readonly SYNC_TOLERANCE_MS = 300;
+  private readonly MAX_BUFFER_ITEMS = 50;
 
   // Stats
   private totalProcessed = 0;

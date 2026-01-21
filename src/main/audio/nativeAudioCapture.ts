@@ -1,8 +1,3 @@
-/**
- * Native Audio Capture TypeScript Wrapper
- * Provides a TypeScript interface to the native audio capture module
- */
-
 import { EventEmitter } from "events";
 
 // Native module callback type - receives (buffer, timestamp, source)
@@ -187,16 +182,5 @@ export class NativeAudioCapture extends EventEmitter {
    */
   getIsCapturing(): boolean {
     return this.isCapturing;
-  }
-
-  /**
-   * Convert a Buffer of float32 data to Float32Array
-   */
-  private bufferToFloat32Array(buffer: Buffer): Float32Array {
-    return new Float32Array(
-      buffer.buffer,
-      buffer.byteOffset,
-      buffer.length / Float32Array.BYTES_PER_ELEMENT
-    );
   }
 }

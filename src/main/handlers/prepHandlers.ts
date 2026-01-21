@@ -1,8 +1,3 @@
-/**
- * Prep IPC Handlers
- * Exposes meeting prep generation functionality to renderer
- */
-
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '@shared/ipcChannels';
 import { getContainer } from '../core/container';

@@ -1,4 +1,3 @@
-import { BrowserWindow } from 'electron';
 import axios from 'axios';
 import { Client } from '@hubspot/api-client';
 import { createLogger } from '../core/logger';

@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
 import {
   Users,
-  Building2,
   Sparkles,
   AlertCircle,
   CheckCircle,
@@ -17,7 +16,6 @@ import {
   Plus,
 } from 'lucide-react';
 import type { Person } from '@shared/types';
-import { formatDuration } from '../lib/formatters';
 
 interface MeetingPrepResult {
   meeting: {

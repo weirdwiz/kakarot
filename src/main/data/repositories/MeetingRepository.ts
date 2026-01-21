@@ -70,10 +70,6 @@ export class MeetingRepository {
     return id;
   }
 
-  /**
-   * Upsert attendees in background without blocking meeting startup
-   * This prevents slow API calls from delaying recording
-   */
   private async upsertAttendeesInBackground(
     attendees: (string | CalendarAttendee)[]
   ): Promise<void> {
@@ -129,16 +125,13 @@ export class MeetingRepository {
     meetingStartTime = null;
     saveDatabase();
 
-    // Update people table with attendee information
     if (meeting && meeting.attendeeEmails && meeting.attendeeEmails.length > 0) {
       const durationMinutes = Math.floor(duration / 60);
       for (const email of meeting.attendeeEmails) {
         if (!email) continue;
         try {
-          // Check if person exists
           const existing = db.exec('SELECT * FROM people WHERE email = ?', [email]);
           if (existing.length > 0 && existing[0].values.length > 0) {
-            // Update existing person
             db.run(
               `UPDATE people SET 
                 last_meeting_at = ?,
@@ -149,7 +142,6 @@ export class MeetingRepository {
               [now, durationMinutes, now, email]
             );
           } else {
-            // Insert new person
             db.run(
               `INSERT INTO people (email, last_meeting_at, meeting_count, total_duration, created_at, updated_at)
               VALUES (?, ?, 1, ?, ?, ?)`,

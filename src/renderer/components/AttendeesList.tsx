@@ -114,7 +114,6 @@ export default function AttendeesList({ attendeeEmails, organizationName }: Atte
       <button
         ref={buttonRef}
         onClick={(e) => {
-          console.log('[AttendeesList] Button clicked, current isOpen:', isOpen);
           e.preventDefault();
           e.stopPropagation();
           setIsOpen(!isOpen);

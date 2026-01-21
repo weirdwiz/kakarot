@@ -173,53 +173,28 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
     onSelectTab?.('notes');
   };
 
-  /**
-   * Handle dismissing a live meeting
-   * Creates a completed meeting record and moves it to Previous Meetings
-   */
   const handleDismissLiveMeeting = async (eventId: string) => {
-    console.log('[BentoDashboard] handleDismissLiveMeeting called', { eventId });
     try {
-      // Find the event
       const event = liveEvents.find(e => e.id === eventId);
-      console.log('[BentoDashboard] Found event:', event);
-      if (!event) {
-        console.warn('[BentoDashboard] Event not found:', eventId);
-        return;
-      }
+      if (!event) return;
 
-      // Dismiss from live bar immediately (optimistic update)
       setDismissedEventIds(prev => {
         const updated = new Set([...prev, eventId]);
-        // Persist to localStorage
         localStorage.setItem('dismissedEventIds', JSON.stringify([...updated]));
         return updated;
       });
 
-      console.log('[BentoDashboard] Creating dismissed meeting:', { 
-        title: event.title, 
-        attendees: event.attendees 
-      });
-
-      // Create a dismissed meeting record without starting recording
-      const meetingId = await window.kakarot.meetings.createDismissed(
+      await window.kakarot.meetings.createDismissed(
         event.title,
         event.attendees?.map((a: any) => typeof a === 'string' ? a : a.email)
       );
 
-      console.log('[BentoDashboard] Created dismissed meeting:', meetingId);
-
-      // Refresh previous meetings to show the dismissed meeting
       await loadPreviousMeetings();
-
-      console.log('[BentoDashboard] Dismissed live meeting moved to previous', { eventId, meetingId });
     } catch (err) {
-      console.error('[BentoDashboard] Failed to dismiss live meeting:', err);
-      // Revert optimistic update on error
+      console.error('Failed to dismiss live meeting:', err);
       setDismissedEventIds(prev => {
         const next = new Set(prev);
         next.delete(eventId);
-        // Update localStorage
         localStorage.setItem('dismissedEventIds', JSON.stringify([...next]));
         return next;
       });

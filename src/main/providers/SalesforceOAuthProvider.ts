@@ -22,7 +22,6 @@ export class SalesforceOAuthProvider {
 
   async authenticate(mainWindow: BrowserWindow): Promise<SalesforceOAuthToken> {
     return new Promise((resolve, reject) => {
-      // Create a temporary OAuth window
       const authWindow = new BrowserWindow({
         width: 600,
         height: 700,
@@ -52,7 +51,6 @@ export class SalesforceOAuthProvider {
 
         logger.info('Authorization code received', { code: code.substring(0, 10) + '...' });
 
-        // Remove all event listeners to prevent rejection
         authWindow.removeAllListeners('closed');
         authWindow.webContents.removeAllListeners('will-redirect');
         authWindow.webContents.removeAllListeners('will-navigate');
@@ -95,14 +93,12 @@ export class SalesforceOAuthProvider {
         return false;
       };
 
-      // Listen for page loads (Salesforce often completes OAuth on page load)
       authWindow.webContents.on('did-finish-load', () => {
         const currentUrl = authWindow.webContents.getURL();
         logger.debug('Page finished loading', { url: currentUrl });
         checkUrlForCode(currentUrl);
       });
 
-      // Listen for redirect and extract auth code
       authWindow.webContents.on('will-redirect', (event, url) => {
         logger.debug('OAuth redirect detected', { url });
         if (checkUrlForCode(url)) {
@@ -110,7 +106,6 @@ export class SalesforceOAuthProvider {
         }
       });
 
-      // Also handle navigation event (backup for some OAuth flows)
       authWindow.webContents.on('will-navigate', (event, url) => {
         logger.debug('OAuth navigation detected', { url });
         if (checkUrlForCode(url)) {

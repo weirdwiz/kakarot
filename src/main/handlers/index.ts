@@ -20,7 +20,7 @@ export function registerAllHandlers(
   registerRecordingHandlers(mainWindow, calloutWindow);
   registerMeetingHandlers();
   registerSettingsHandlers();
-  registerCalloutHandlers(calloutWindow);
+  registerCalloutHandlers();
   registerCalendarHandlers();
   registerPeopleHandlers();
   setCRMHandlersMainWindow(mainWindow);
