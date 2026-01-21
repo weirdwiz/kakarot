@@ -14,18 +14,17 @@ Electron app for meeting transcription with real-time audio capture and AI-power
 
 - Node.js 18+
 - macOS 13.2+ or Windows 10+
-- meson, ninja (for native audio module)
+- Python 3, node-gyp (for native module)
 - API keys: AssemblyAI, OpenAI (or Gemini)
 
 ## Setup
 
 ```bash
-# Clone with submodules
-git clone --recursive https://github.com/user/kakarot.git
+git clone https://github.com/user/kakarot.git
 cd kakarot
 
-# Build native audio module
-cd native/kakarot-audio && ./setup.sh && cd ../..
+# Build native audio module (optional, improves AEC)
+cd native && npm install && npm run build && cd ..
 
 # Install deps
 npm install
@@ -66,7 +65,7 @@ Main process handles audio capture, transcription, and AI calls. Renderer is Rea
 
 1. System audio captured via audiotee (macOS loopback)
 2. Mic audio via Web Audio API
-3. AEC processor removes speaker bleed from mic (Rust/SpeexDSP)
+3. AEC processor removes speaker bleed from mic (C++/WebRTC AEC3)
 4. Both streams sent to AssemblyAI for transcription
 5. Transcripts labeled by source (you/other)
 
@@ -80,7 +79,7 @@ The AEC module is optional - app works without it but transcription quality impr
 | UI | React 18, Tailwind, Zustand |
 | Build | Vite, electron-builder |
 | Audio | audiotee, Web Audio API |
-| AEC | Rust + aec-rs |
+| AEC | C++ / WebRTC AEC3 |
 | Transcription | AssemblyAI SDK |
 | LLM | OpenAI/Gemini |
 | DB | sql.js (SQLite/WASM) |
@@ -94,15 +93,17 @@ npm run lint          # eslint
 npm run build         # production build
 ```
 
-## Native modules
+## Native module
 
-AEC module (optional, improves quality when using speakers):
+The AEC module uses WebRTC's AEC3 via node-gyp:
 
 ```bash
-cd native/kakarot-aec
-cargo build --release
-cp target/release/libkakarot_aec.dylib index.node
+cd native
+npm install
+npm run build  # builds audio_capture_native.node
 ```
+
+Requires pre-built WebRTC libs in `native/webrtc/lib/`.
 
 ## License
 

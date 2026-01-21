@@ -131,37 +131,35 @@ Copy `.env.example` to `.env` and configure:
 
 ## Native Modules
 
-### Acoustic Echo Cancellation (native/kakarot-aec/)
+### Acoustic Echo Cancellation (native/)
 
-Rust native module using aec-rs (SpeexDSP bindings) for echo cancellation. Removes speaker audio picked up by the microphone when using speakers instead of headphones.
+C++ native module using WebRTC AEC3 for echo cancellation. Removes speaker audio picked up by the microphone when using speakers instead of headphones.
 
 ```bash
-# Build the native module
-cd native/kakarot-aec
-cargo build --release
-cp target/release/libkakarot_aec.dylib index.node  # macOS
+cd native
+npm install
+npm run build  # builds audio_capture_native.node
 ```
 
-The module is loaded dynamically at runtime. If unavailable, AEC gracefully bypasses and the app continues without echo cancellation.
+The module is loaded dynamically at runtime via `bindings('audio_capture_native')`. If unavailable, AEC gracefully bypasses and the app continues without echo cancellation.
 
-**API**: `create()`, `feedReference()`, `process()`, `getMetrics()`, `reset()`
-
-See `docs/AEC_IMPLEMENTATION_PLAN.md` for full architecture details.
+Key files:
+- `native/src/audio_capture_native.cc` - Node addon entry point
+- `native/src/aec_processor.cc` - WebRTC AEC3 wrapper
+- `native/webrtc/` - Pre-built WebRTC libs and headers
 
 ## Audio Processing Pipeline
 
-Audio flows through a processor pipeline in `SystemAudioService`:
+Audio flows through `SystemAudioService`:
 
-1. **Platform Backend** (audiotee) captures system audio
-2. **AudioPipeline** processes chunks through registered processors
-3. **AECProcessor** removes echo using mic audio as reference
+1. audiotee captures system audio (macOS loopback)
+2. Web Audio API captures mic audio
+3. AECProcessor removes echo using system audio as reference
 4. Clean audio sent to transcription
-
-The pipeline pattern allows adding future processors (noise suppression, AGC, VAD).
 
 ## Platform Requirements
 
 - macOS 13.2+ (for system audio loopback)
 - Windows 10+
 - Node.js 18+
-- Rust toolchain (for building native modules)
+- Python 3, node-gyp (for building native module)
