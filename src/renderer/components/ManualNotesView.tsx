@@ -3,7 +3,6 @@ import { useAppStore } from '../stores/appStore';
 import { Clock, Users, FolderPlus, BookOpen, ChevronDown, X, Video, Calendar as CalendarIcon } from 'lucide-react';
 import googleMeetPng from '../assets/google-meet.png';
 import googleCalendarPng from '../assets/google-calendar.png';
-import { formatDateTime } from '../lib/formatters';
 import AttendeesList from './AttendeesList';
 
 interface ManualNotesViewProps {

@@ -10,7 +10,7 @@ interface UpcomingMeetingsListProps {
   onNavigateInteract?: () => void;
 }
 
-export default function UpcomingMeetingsList({ meetings, onNavigateSettings, onSelectMeeting, onTakeNotes, onNavigateInteract }: UpcomingMeetingsListProps) {
+export default function UpcomingMeetingsList({ meetings, onNavigateSettings, onSelectMeeting: _onSelectMeeting, onTakeNotes, onNavigateInteract }: UpcomingMeetingsListProps) {
   const formatDate = (date: Date): string => {
     const d = new Date(date);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();

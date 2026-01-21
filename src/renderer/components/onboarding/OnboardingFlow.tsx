@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import WelcomeStep from './WelcomeStep';
 import SignInStep from './SignInStep';
 import AudioPermissionsStep from './AudioPermissionsStep';
@@ -11,7 +11,7 @@ interface OnboardingFlowProps {
 
 export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('welcome');
-  const [userData, setUserData] = useState<{
+  const [, setUserData] = useState<{
     name: string;
     email: string;
     avatar?: string;
@@ -21,9 +21,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const steps: OnboardingStep[] = ['welcome', 'signin', 'audio'];
   const currentStepIndex = steps.indexOf(currentStep);
 
-  const goToStep = (step: OnboardingStep) => {
+  const _goToStep = (step: OnboardingStep) => {
     setCurrentStep(step);
   };
+  void _goToStep; // Reserved for step navigation
 
   const nextStep = () => {
     const nextIndex = currentStepIndex + 1;
@@ -40,7 +41,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         {/* Progress indicator */}
         {currentStep !== 'welcome' && (
           <div className="flex items-center justify-center gap-2 mb-8">
-            {steps.slice(1).map((step, index) => (
+            {steps.slice(1).map((step, _index) => (
               <div
                 key={step}
                 className={`h-2 rounded-full transition-all ${

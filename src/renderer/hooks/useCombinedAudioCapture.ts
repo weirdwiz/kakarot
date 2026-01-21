@@ -78,9 +78,9 @@ export function useCombinedAudioCapture(
     ),
   });
 
-  // Web audio hooks for fallback
-  const [micRms, setMicRms] = useState(0);
-  const [systemRms, setSystemRms] = useState(0);
+  // Web audio hooks for fallback (RMS values set by callbacks below)
+  const [, setMicRms] = useState(0);
+  const [, setSystemRms] = useState(0);
 
   // Refs for audio processing
   const micChunkerRef = useRef<PcmChunker | null>(null);
@@ -115,22 +115,24 @@ export function useCombinedAudioCapture(
     };
   }, [targetSampleRate, chunkDurationMs]);
 
-  // Web audio callbacks
-  const handleMicPcm = useCallback((pcm: Float32Array, sampleRate: number) => {
+  // Web audio callbacks (reserved for fallback mode)
+  const _handleMicPcm = useCallback((pcm: Float32Array, sampleRate: number) => {
     micChunkerRef.current?.addFrame(pcm, sampleRate);
   }, []);
+  void _handleMicPcm;
 
   const handleSystemPcm = useCallback((pcm: Float32Array, sampleRate: number) => {
     systemChunkerRef.current?.addFrame(pcm, sampleRate);
   }, []);
 
-  const handleMicRms = useCallback(
+  const _handleMicRms = useCallback(
     (rms: number) => {
       setMicRms(rms);
       onMicLevel?.(rms);
     },
     [onMicLevel]
   );
+  void _handleMicRms;
 
   const handleSystemRms = useCallback(
     (rms: number) => {
@@ -141,10 +143,8 @@ export function useCombinedAudioCapture(
   );
 
   // DISABLED: Web audio mic capture - using native mic instead
-  // const micStream = useMicStream(handleMicRms, handleMicPcm);
-  
   // Create a dummy micStream object for compatibility
-  const micStream = {
+  const _micStream = {
     start: async () => {
       console.log("[CombinedAudio] Renderer mic capture is disabled - using native mic instead");
     },
@@ -152,7 +152,8 @@ export function useCombinedAudioCapture(
       console.log("[CombinedAudio] Renderer mic capture is disabled");
     },
   };
-  
+  void _micStream;
+
   const systemStream = useSystemAudioStream(handleSystemRms, handleSystemPcm, systemAudioPreference);
 
   // Start capture

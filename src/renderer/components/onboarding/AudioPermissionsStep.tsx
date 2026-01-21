@@ -45,7 +45,7 @@ export default function AudioPermissionsStep({ onSuccess }: AudioPermissionsStep
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach(track => track.stop());
       setMicStatus('granted');
-    } catch (err) {
+    } catch {
       setMicStatus('denied');
     }
   };

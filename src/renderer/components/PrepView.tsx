@@ -62,7 +62,7 @@ export default function PrepView() {
   const [people, setPeople] = useState<Person[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPeople, setSelectedPeople] = useState<Person[]>([]);
-  const [isLoadingPeople, setIsLoadingPeople] = useState(true);
+  const [, setIsLoadingPeople] = useState(true);
   const [selectedMeetingType, setSelectedMeetingType] = useState('');
   const [customMeetingType, setCustomMeetingType] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -70,10 +70,8 @@ export default function PrepView() {
   const [briefingResult, setBriefingResult] = useState<MeetingPrepResult | null>(null);
 
   const customTypes = settings?.customMeetingTypes || [];
-  const allMeetingTypes = useMemo(
-    () => [...customTypes.map((label) => ({ id: label, label })), ...PREDEFINED_MEETING_TYPES],
-    [customTypes]
-  );
+  // Combine custom meeting types with predefined ones for the dropdown
+  void customTypes; // Reserved for future custom meeting type support
 
   useEffect(() => {
     loadPeople();

@@ -32,7 +32,6 @@ export default function Sidebar() {
     let left = -menu.width / 2 + button.width / 2;
 
     // Check if menu would go off-screen
-    const windowHeight = window.innerHeight;
     const windowWidth = window.innerWidth;
     const sidebarRight = button.right;
 

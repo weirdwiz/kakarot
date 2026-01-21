@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 /**
  * PCM Audio Worklet Processor
  * Captures raw PCM audio and calculates RMS for level monitoring
