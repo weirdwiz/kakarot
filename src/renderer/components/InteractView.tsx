@@ -128,7 +128,7 @@ export default function InteractView() {
   const meetingTypes = localSettings.customMeetingTypes || [];
 
   return (
-    <div className="h-full flex flex-col bg-[#0D0D0D]">
+    <div className="h-full flex flex-col bg-gradient-to-br from-[#0C0C0F] via-[#0D0D0F] to-[#0C0C14]">
       {/* Header */}
       <div className="flex items-center justify-between px-8 py-6 border-b border-white/5">
         <div className="flex items-center gap-3">

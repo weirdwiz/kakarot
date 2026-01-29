@@ -8,6 +8,7 @@ import AskNotesBar from './AskNotesBar';
 import ManualNotesView from './ManualNotesView';
 import MeetingContextPreview from './MeetingContextPreview';
 import AttendeesList from './AttendeesList';
+import SearchPopup from './SearchPopup';
 import { FileText, Square, Search, Loader2, Calendar as CalendarIcon, Users, Folder, Share2, Copy, Check, X, ScrollText, MessageSquare, Clock3, Clock, ChevronDown } from 'lucide-react';
 import { formatDateTime } from '../lib/formatters';
 import type { CalendarEvent, AppSettings } from '@shared/types';
@@ -48,6 +49,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const [showManualNotes, setShowManualNotes] = React.useState<boolean>(false);
   const [notes, setNotes] = React.useState<string>('');
   const [showTranscriptPopover, setShowTranscriptPopover] = React.useState<boolean>(false);
+  const [showSearchPopup, setShowSearchPopup] = React.useState<boolean>(false);
   const [calloutTimeline, setCalloutTimeline] = React.useState<LiveCalloutEntry[]>([]);
   const [showTimePopover, setShowTimePopover] = React.useState<boolean>(false);
   const [showParticipantsPopover, setShowParticipantsPopover] = React.useState<boolean>(false);
@@ -509,7 +511,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
         }}
       />
     ) : (
-    <div className="flex-1 min-h-0 bg-studio text-slate-ink dark:bg-onyx dark:text-gray-100 flex flex-col overflow-hidden">
+    <div className="flex-1 min-h-0 bg-gradient-to-br from-[#0C0C0F] via-[#0D0D0F] to-[#0C0C14] text-slate-ink dark:text-gray-100 flex flex-col overflow-hidden">
       {/* Meeting Context Preview Modal */}
       {calendarContext && isIdle && (
         <MeetingContextPreview
@@ -530,14 +532,17 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
             </div>
 
             {/* Unified Action Row (Search + Take Notes) */}
-            <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-white/30 dark:border-white/10 bg-transparent backdrop-blur-sm">
+            <div className="flex items-center gap-3">
               {/* Search Bar */}
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                 <input
                   type="text"
                   placeholder="Search meetings or notes"
-                  className="w-full pl-10 pr-4 py-2 bg-white/70 dark:bg-graphite/80 border border-white/30 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/50 backdrop-blur-md transition"
+                  className="w-full pl-10 pr-4 py-2 bg-white/70 dark:bg-graphite/80 border border-white/30 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/50 backdrop-blur-md transition cursor-pointer"
+                  onClick={() => setShowSearchPopup(true)}
+                  onFocus={() => setShowSearchPopup(true)}
+                  readOnly
                 />
               </div>
 
@@ -636,51 +641,53 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                   )}
                 </div>
 
-                {/* Participants Button */}
-                <div className="relative">
-                  <button
-                    ref={participantsButtonRef}
-                    onClick={() => setShowParticipantsPopover(!showParticipantsPopover)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 hover:bg-white/80 dark:hover:bg-slate-700/80 transition text-slate-600 dark:text-slate-400"
-                  >
-                    <Users className="w-4 h-4" />
-                    <span>{displayAttendees && displayAttendees.length > 0 ? displayAttendees.length : '0'} Participant{(displayAttendees?.length || 0) !== 1 ? 's' : ''}</span>
-                    <ChevronDown className="w-4 h-4 opacity-50" />
-                  </button>
-
-                  {showParticipantsPopover && (
-                    <div
-                      ref={participantsPopoverRef}
-                      className="absolute top-full left-0 mt-2 bg-slate-900 dark:bg-slate-950 rounded-xl border border-slate-800 dark:border-slate-700 shadow-2xl z-50 overflow-hidden min-w-[320px]"
+                {/* Participants Button - only show for calendar event meetings */}
+                {activeCalendarContext && (
+                  <div className="relative">
+                    <button
+                      ref={participantsButtonRef}
+                      onClick={() => setShowParticipantsPopover(!showParticipantsPopover)}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 hover:bg-white/80 dark:hover:bg-slate-700/80 transition text-slate-600 dark:text-slate-400"
                     >
-                      <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-                        <h3 className="text-base font-semibold text-white">Participants</h3>
-                        <button
-                          onClick={() => setShowParticipantsPopover(false)}
-                          className="p-1 text-slate-400 hover:text-slate-200 transition rounded hover:bg-slate-800/50"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <div className="p-4">
-                        {displayAttendees && displayAttendees.length > 0 ? (
-                          <div className="space-y-2">
-                            {displayAttendees.map((email, idx) => (
-                              <div key={idx} className="flex items-center gap-3 text-sm">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white font-semibold text-sm">
-                                  {email.charAt(0).toUpperCase()}
+                      <Users className="w-4 h-4" />
+                      <span>{displayAttendees && displayAttendees.length > 0 ? displayAttendees.length : '0'} Participant{(displayAttendees?.length || 0) !== 1 ? 's' : ''}</span>
+                      <ChevronDown className="w-4 h-4 opacity-50" />
+                    </button>
+
+                    {showParticipantsPopover && (
+                      <div
+                        ref={participantsPopoverRef}
+                        className="absolute top-full left-0 mt-2 bg-slate-900 dark:bg-slate-950 rounded-xl border border-slate-800 dark:border-slate-700 shadow-2xl z-50 overflow-hidden min-w-[320px]"
+                      >
+                        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+                          <h3 className="text-base font-semibold text-white">Participants</h3>
+                          <button
+                            onClick={() => setShowParticipantsPopover(false)}
+                            className="p-1 text-slate-400 hover:text-slate-200 transition rounded hover:bg-slate-800/50"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="p-4">
+                          {displayAttendees && displayAttendees.length > 0 ? (
+                            <div className="space-y-2">
+                              {displayAttendees.map((email, idx) => (
+                                <div key={idx} className="flex items-center gap-3 text-sm">
+                                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white font-semibold text-sm">
+                                    {email.charAt(0).toUpperCase()}
+                                  </div>
+                                  <span className="text-slate-200 truncate">{email}</span>
                                 </div>
-                                <span className="text-slate-200 truncate">{email}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-slate-400 text-sm">No participants added</p>
-                        )}
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-slate-400 text-sm">No participants added</p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -702,7 +709,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
 
         {/* Dashboard or meeting content; transcript now lives in floating pill popover */}
         <div className="flex gap-4 items-stretch flex-1 min-h-0 h-full overflow-hidden">
-          <div className="flex-1 min-w-0 h-full rounded-2xl bg-white/70 dark:bg-graphite/80 border border-white/30 dark:border-white/10 shadow-soft-card backdrop-blur-md overflow-hidden flex flex-col min-h-0">
+          <div className="flex-1 min-w-0 h-full overflow-hidden flex flex-col min-h-0">
             {showBentoWhileLive ? (
               <div className="h-full flex flex-col overflow-hidden">
                 {/* Amber banner with back button */}
@@ -1032,6 +1039,12 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
       )}
     </div>
     )}
+
+    {/* Search Popup */}
+    <SearchPopup
+      isOpen={showSearchPopup}
+      onClose={() => setShowSearchPopup(false)}
+    />
     </>
   );
 }

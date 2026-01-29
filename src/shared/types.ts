@@ -187,6 +187,9 @@ export interface AppSettings {
   crmOAuthHubSpotClientSecret?: string;
   // Custom meeting types for PrepView
   customMeetingTypes?: string[];
+  // UI preferences
+  showLiveMeetingIndicator?: boolean;
+  openOnLogin?: boolean;
 }
 
 // Default settings for renderer (without process.env dependencies)
@@ -203,6 +206,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoDetectQuestions: true,
   showFloatingCallout: true,
   transcriptionLanguage: 'en',
+  showLiveMeetingIndicator: true,
+  openOnLogin: false,
   // Deprecated: Hosted tokens replaced by backend proxy
   useHostedTokens: false,
   authApiBaseUrl: '',

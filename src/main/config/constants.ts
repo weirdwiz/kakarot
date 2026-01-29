@@ -14,6 +14,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoDetectQuestions: true,
   showFloatingCallout: true,
   transcriptionLanguage: 'en',
+  showLiveMeetingIndicator: true,
+  openOnLogin: false,
   // Deprecated: Hosted tokens replaced by backend proxy
   useHostedTokens: false,
   authApiBaseUrl: '',

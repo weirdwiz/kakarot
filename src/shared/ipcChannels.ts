@@ -37,6 +37,7 @@ export const IPC_CHANNELS = {
   // Settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_UPDATE: 'settings:update',
+  SETTINGS_SET_LOGIN_ITEM: 'settings:setLoginItem',
 
   // Post-processing
   MEETING_SUMMARIZE: 'meeting:summarize',
@@ -66,6 +67,7 @@ export const IPC_CHANNELS = {
   PEOPLE_UPDATE_ORGANIZATION: 'people:updateOrganization',
   PEOPLE_GET_BY_MEETING: 'people:getByMeeting',
   PEOPLE_STATS: 'people:stats',
+  PEOPLE_GET_COMPANIES: 'people:getCompanies',
 
   // Calendar
   CALENDAR_CONNECT: 'calendar:connect',

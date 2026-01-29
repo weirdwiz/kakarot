@@ -87,7 +87,7 @@ export default function UpcomingMeetingsList({ meetings, onNavigateSettings, onS
   const displayedLater = displayedMeetings.filter(m => !isToday(m.start) && !isTomorrow(m.start));
 
   return (
-    <div className="h-full rounded-xl border border-white/30 dark:border-white/10 bg-white/60 dark:bg-graphite/70 backdrop-blur-md shadow-soft-card p-3 flex flex-col opacity-90">
+    <div className="h-full rounded-xl border border-purple-700/40 dark:border-purple-700/40 bg-[#0C0C0F] backdrop-blur-md shadow-[0_10px_50px_rgba(124,58,237,0.25)] p-3 flex flex-col opacity-90">
       <h3 className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 mb-3 px-1">
         Upcoming Meetings
       </h3>

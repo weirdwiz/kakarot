@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, app } from 'electron';
 import { IPC_CHANNELS } from '@shared/ipcChannels';
 import { getContainer } from '../core/container';
 import type { AppSettings } from '@shared/types';
@@ -14,5 +14,13 @@ export function registerSettingsHandlers(): void {
     settingsRepo.updateSettings(settings);
     // AI provider is now managed server-side via the backend
     // No local API key refresh needed
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_SET_LOGIN_ITEM, (_, openAtLogin: boolean) => {
+    app.setLoginItemSettings({
+      openAtLogin,
+      openAsHidden: false,
+    });
+    return { success: true };
   });
 }

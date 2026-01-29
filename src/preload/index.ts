@@ -123,6 +123,8 @@ contextBridge.exposeInMainWorld('kakarot', {
     get: (): Promise<AppSettings> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
     update: (settings: Partial<AppSettings>): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_UPDATE, settings),
+    setLoginItem: (openAtLogin: boolean): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET_LOGIN_ITEM, openAtLogin),
   },
 
   // Knowledge base
@@ -151,6 +153,8 @@ contextBridge.exposeInMainWorld('kakarot', {
       ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_GET_BY_MEETING, meetingId),
     getStats: (): Promise<{ totalPeople: number; totalMeetings: number; avgMeetingsPerPerson: number }> =>
       ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_STATS),
+    getCompanies: (): Promise<{ name: string; domain: string; contactCount: number }[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PEOPLE_GET_COMPANIES),
   },
 
   // Calendar
@@ -261,6 +265,7 @@ declare global {
       settings: {
         get: () => Promise<AppSettings>;
         update: (settings: Partial<AppSettings>) => Promise<void>;
+        setLoginItem: (openAtLogin: boolean) => Promise<{ success: boolean }>;
       };
       knowledge: {
         index: (path: string) => Promise<void>;
@@ -275,6 +280,7 @@ declare global {
         updateOrganization: (email: string, organization: string) => Promise<Person | null>;
         getByMeeting: (meetingId: string) => Promise<Person[]>;
         getStats: () => Promise<{ totalPeople: number; totalMeetings: number; avgMeetingsPerPerson: number }>;
+        getCompanies: () => Promise<{ name: string; domain: string; contactCount: number }[]>;
       };
       calendar: {
         connect: (

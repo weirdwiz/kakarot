@@ -15,9 +15,10 @@ interface PreviousMeetingsListProps {
   meetings: Meeting[];
   onViewNotes?: (id: string) => void;
   onViewCalendarEventNotes?: (id: string) => void;
+  onViewMore?: () => void;
 }
 
-export default function PreviousMeetingsList({ meetings, onViewNotes, onViewCalendarEventNotes }: PreviousMeetingsListProps) {
+export default function PreviousMeetingsList({ meetings, onViewNotes, onViewCalendarEventNotes, onViewMore }: PreviousMeetingsListProps) {
   const formatDate = (date: Date): string => {
     const d = new Date(date);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
@@ -38,7 +39,7 @@ export default function PreviousMeetingsList({ meetings, onViewNotes, onViewCale
   };
 
   return (
-    <div className="h-full rounded-xl border border-white/30 dark:border-white/10 bg-white/60 dark:bg-graphite/70 backdrop-blur-md shadow-soft-card p-3 flex flex-col opacity-90">
+    <div className="h-full rounded-xl border border-purple-700/40 dark:border-purple-700/40 bg-[#0C0C0F] backdrop-blur-md shadow-[0_10px_50px_rgba(124,58,237,0.25)] p-3 flex flex-col opacity-90">
       <h3 className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 mb-3 px-1">
         Previous Meetings
       </h3>
@@ -90,6 +91,15 @@ export default function PreviousMeetingsList({ meetings, onViewNotes, onViewCale
           ))
         )}
       </div>
+
+      {onViewMore && (
+        <button
+          onClick={onViewMore}
+          className="mt-3 w-full py-2 text-sm font-medium text-[#8B5CF6] dark:text-[#A78BFA] hover:bg-slate-100/40 dark:hover:bg-slate-700/30 rounded-lg transition-colors"
+        >
+          ...View More
+        </button>
+      )}
     </div>
   );
 }

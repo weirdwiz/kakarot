@@ -117,5 +117,18 @@ export function registerPeopleHandlers(): void {
     }
   });
 
+  // Get companies extracted from email domains
+  ipcMain.handle(IPC_CHANNELS.PEOPLE_GET_COMPANIES, async () => {
+    logger.debug('Getting companies');
+    try {
+      const companies = peopleRepo.getCompanies();
+      logger.info('Retrieved companies', { count: companies.length });
+      return companies;
+    } catch (error) {
+      logger.error('Failed to get companies', { error: (error as Error).message });
+      throw error;
+    }
+  });
+
   logger.info('People handlers registered');
 }

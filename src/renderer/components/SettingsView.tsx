@@ -167,13 +167,6 @@ export default function SettingsView() {
     }
   };
 
-  const handleSelectKnowledgePath = async () => {
-    const path = await window.kakarot.dialog.selectFolder();
-    if (path) {
-      handleChange('knowledgeBasePath', path);
-    }
-  };
-
   const handleConnectCRM = async (provider: 'salesforce' | 'hubspot') => {
     if (!localSettings) return;
 
@@ -246,67 +239,51 @@ export default function SettingsView() {
           </p>
         </div>
 
-        {/* Knowledge Base */}
+        {/* UI Preferences */}
         <section className="space-y-4">
           <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
-            Knowledge Base
+            General
           </h2>
 
-          <div>
-            <label className="block text-sm text-gray-300 mb-2">
-              Knowledge Base Path
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={localSettings.knowledgeBasePath}
-                onChange={(e) => handleChange('knowledgeBasePath', e.target.value)}
-                placeholder="/path/to/your/documents"
-                className="flex-1 bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          <div className="space-y-3">
+            {/* Live Meeting Indicator */}
+            <div className="flex items-start justify-between px-4 py-3 rounded-lg border border-gray-700 bg-gray-800">
+              <div className="flex-1 pr-4">
+                <h3 className="text-sm font-medium text-white mb-1">
+                  Show the live meeting indicator
+                </h3>
+                <p className="text-xs text-gray-400">
+                  The meeting indicator sits on the right of your screen, and shows when you're transcribing
+                </p>
+              </div>
+              <ToggleSwitch
+                enabled={localSettings.showLiveMeetingIndicator ?? true}
+                onChange={(enabled) => handleChange('showLiveMeetingIndicator', enabled)}
               />
-              <button
-                onClick={handleSelectKnowledgePath}
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors"
-              >
-                Browse
-              </button>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Folder containing your reference documents (PDFs, markdown, text files)
-            </p>
-          </div>
-        </section>
 
-        {/* Features */}
-        <section className="space-y-4">
-          <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
-            Features
-          </h2>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-300">Auto-detect Questions</p>
-              <p className="text-xs text-gray-500">
-                Automatically detect when someone asks you a question
-              </p>
+            {/* Open on Login */}
+            <div className="flex items-start justify-between px-4 py-3 rounded-lg border border-gray-700 bg-gray-800">
+              <div className="flex-1 pr-4">
+                <h3 className="text-sm font-medium text-white mb-1">
+                  Open Kakarot when you log in
+                </h3>
+                <p className="text-xs text-gray-400">
+                  Kakarot will open automatically when you log in
+                </p>
+              </div>
+              <ToggleSwitch
+                enabled={localSettings.openOnLogin ?? false}
+                onChange={async (enabled) => {
+                  handleChange('openOnLogin', enabled);
+                  try {
+                    await window.kakarot.settings.setLoginItem(enabled);
+                  } catch (err) {
+                    console.error('Failed to set login item:', err);
+                  }
+                }}
+              />
             </div>
-            <ToggleSwitch
-              enabled={localSettings.autoDetectQuestions}
-              onChange={(enabled) => handleChange('autoDetectQuestions', enabled)}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-300">Show Floating Callout</p>
-              <p className="text-xs text-gray-500">
-                Display a floating overlay when questions are detected
-              </p>
-            </div>
-            <ToggleSwitch
-              enabled={localSettings.showFloatingCallout}
-              onChange={(enabled) => handleChange('showFloatingCallout', enabled)}
-            />
           </div>
         </section>
 

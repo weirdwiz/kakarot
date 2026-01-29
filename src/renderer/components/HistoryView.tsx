@@ -8,7 +8,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import slackLogo from '../assets/slack.png';
 
 export default function HistoryView() {
-  const { meetings, setMeetings, selectedMeeting, setSelectedMeeting } = useAppStore();
+  const { meetings, setMeetings, selectedMeeting, setSelectedMeeting, searchQuery: globalSearchQuery, setSearchQuery: setGlobalSearchQuery } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [titleDraft, setTitleDraft] = useState('');
@@ -73,6 +73,19 @@ export default function HistoryView() {
       chatInputRef.current.focus();
     }
   }, [showChatPopover]);
+
+  // Check for global search query from SearchPopup navigation
+  useEffect(() => {
+    if (globalSearchQuery) {
+      setSearchQuery(globalSearchQuery);
+      // Execute search with the global query
+      window.kakarot.meetings.search(globalSearchQuery).then((results) => {
+        setMeetings(results);
+      });
+      // Clear the global search query after consuming
+      setGlobalSearchQuery(null);
+    }
+  }, [globalSearchQuery, setGlobalSearchQuery, setMeetings]);
 
   const handleSearch = async () => {
     if (searchQuery.trim()) {

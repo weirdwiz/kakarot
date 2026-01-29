@@ -4,6 +4,21 @@ import { createLogger } from '../../core/logger';
 
 const logger = createLogger('PeopleRepository');
 
+// Common email domains to exclude from company extraction
+const COMMON_EMAIL_DOMAINS = new Set([
+  'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com',
+  'icloud.com', 'aol.com', 'protonmail.com', 'mail.com',
+  'live.com', 'msn.com', 'ymail.com', 'googlemail.com',
+  'me.com', 'mac.com', 'inbox.com', 'zoho.com',
+  'fastmail.com', 'tutanota.com', 'hey.com'
+]);
+
+export interface Company {
+  name: string;
+  domain: string;
+  contactCount: number;
+}
+
 export class PeopleRepository {
   listAll(): Person[] {
     const db = getDatabase();
@@ -164,6 +179,44 @@ export class PeopleRepository {
     }
 
     saveDatabase();
+  }
+
+  getCompanies(): Company[] {
+    const db = getDatabase();
+    const rows = db.exec('SELECT email FROM people')[0]?.values || [];
+
+    // Extract domains and count contacts per domain
+    const domainCounts = new Map<string, number>();
+
+    for (const row of rows) {
+      const email = row[0] as string;
+      const domain = email.split('@')[1]?.toLowerCase();
+
+      if (!domain || COMMON_EMAIL_DOMAINS.has(domain)) {
+        continue;
+      }
+
+      domainCounts.set(domain, (domainCounts.get(domain) || 0) + 1);
+    }
+
+    // Convert to Company objects with formatted names
+    const companies: Company[] = [];
+
+    for (const [domain, count] of domainCounts) {
+      // Extract company name from domain (e.g., "acme.com" -> "Acme")
+      const domainParts = domain.split('.');
+      const companyPart = domainParts[0];
+      const name = companyPart.charAt(0).toUpperCase() + companyPart.slice(1);
+
+      companies.push({
+        name,
+        domain,
+        contactCount: count,
+      });
+    }
+
+    // Sort by contact count descending
+    return companies.sort((a, b) => b.contactCount - a.contactCount);
   }
 
   private rowToPerson(row: unknown[]): Person {
