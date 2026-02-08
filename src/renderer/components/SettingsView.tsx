@@ -4,11 +4,15 @@ import type { AppSettings } from '@shared/types';
 import { Calendar } from 'lucide-react';
 import { ConfirmDialog } from './ConfirmDialog';
 import { toast } from '../stores/toastStore';
+import salesforceLogo from '../assets/salesforce logo.png';
+import hubspotLogo from '../assets/hubspotlogo.png';
+import { SlackIntegration } from './SlackIntegration';
 
 export default function SettingsView() {
   const { settings, setSettings } = useAppStore();
   const [localSettings, setLocalSettings] = useState<AppSettings | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [connectingProvider, setConnectingProvider] = useState<'google' | 'outlook' | 'icloud' | null>(null);
   const [connectingCRM, setConnectingCRM] = useState<'salesforce' | 'hubspot' | null>(null);
   const [connectedCalendars, setConnectedCalendars] = useState<{
@@ -51,6 +55,14 @@ export default function SettingsView() {
       setVisibleGoogleIds(settings.visibleCalendars?.google || []);
     }
   }, [settings]);
+
+  // Check for unsaved changes
+  useEffect(() => {
+    if (settings && localSettings) {
+      const hasChanges = JSON.stringify(settings) !== JSON.stringify(localSettings);
+      setHasUnsavedChanges(hasChanges);
+    }
+  }, [settings, localSettings]);
 
   useEffect(() => {
     async function loadCalendars() {
@@ -159,18 +171,12 @@ export default function SettingsView() {
     try {
       await window.kakarot.settings.update(localSettings);
       setSettings(localSettings);
+      setHasUnsavedChanges(false);
       toast.success('Settings saved');
     } catch {
       toast.error('Failed to save settings');
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleSelectKnowledgePath = async () => {
-    const path = await window.kakarot.dialog.selectFolder();
-    if (path) {
-      handleChange('knowledgeBasePath', path);
     }
   };
 
@@ -242,150 +248,55 @@ export default function SettingsView() {
         <div>
           <h1 className="text-2xl font-semibold text-white">Settings</h1>
           <p className="text-gray-400 text-sm mt-1">
-            Configure your API keys and preferences
+            Configure your preferences and integrations
           </p>
         </div>
 
-        {/* API Keys */}
+        {/* UI Preferences */}
         <section className="space-y-4">
           <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
-            API Keys
+            General
           </h2>
 
-          <div>
-            <label className="block text-sm text-gray-300 mb-2">
-              AssemblyAI API Key
-            </label>
-            <input
-              type="password"
-              value={localSettings.assemblyAiApiKey}
-              onChange={(e) => handleChange('assemblyAiApiKey', e.target.value)}
-              placeholder="Enter your AssemblyAI API key"
-              className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Get your key from{' '}
-              <a
-                href="https://www.assemblyai.com/dashboard"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary-400 hover:underline"
-              >
-                assemblyai.com/dashboard
-              </a>
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-300 mb-2">
-              Deepgram API Key
-            </label>
-            <input
-              type="password"
-              value={localSettings.deepgramApiKey}
-              onChange={(e) => handleChange('deepgramApiKey', e.target.value)}
-              placeholder="Enter your Deepgram API key"
-              className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Get your key from{' '}
-              <a
-                href="https://console.deepgram.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary-400 hover:underline"
-              >
-                console.deepgram.com
-              </a>
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-300 mb-2">
-              OpenAI API Key
-            </label>
-            <input
-              type="password"
-              value={localSettings.openAiApiKey}
-              onChange={(e) => handleChange('openAiApiKey', e.target.value)}
-              placeholder="Enter your OpenAI API key"
-              className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Get your key from{' '}
-              <a
-                href="https://platform.openai.com/api-keys"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary-400 hover:underline"
-              >
-                platform.openai.com/api-keys
-              </a>
-            </p>
-          </div>
-        </section>
-
-        {/* Knowledge Base */}
-        <section className="space-y-4">
-          <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
-            Knowledge Base
-          </h2>
-
-          <div>
-            <label className="block text-sm text-gray-300 mb-2">
-              Knowledge Base Path
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={localSettings.knowledgeBasePath}
-                onChange={(e) => handleChange('knowledgeBasePath', e.target.value)}
-                placeholder="/path/to/your/documents"
-                className="flex-1 bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          <div className="space-y-3">
+            {/* Live Meeting Indicator */}
+            <div className="flex items-start justify-between px-4 py-3 rounded-lg border border-gray-700 bg-gray-800">
+              <div className="flex-1 pr-4">
+                <h3 className="text-sm font-medium text-white mb-1">
+                  Show the live meeting indicator
+                </h3>
+                <p className="text-xs text-gray-400">
+                  The meeting indicator sits on the right of your screen, and shows when you're transcribing
+                </p>
+              </div>
+              <ToggleSwitch
+                enabled={localSettings.showLiveMeetingIndicator ?? true}
+                onChange={(enabled) => handleChange('showLiveMeetingIndicator', enabled)}
               />
-              <button
-                onClick={handleSelectKnowledgePath}
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors"
-              >
-                Browse
-              </button>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Folder containing your reference documents (PDFs, markdown, text files)
-            </p>
-          </div>
-        </section>
 
-        {/* Features */}
-        <section className="space-y-4">
-          <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
-            Features
-          </h2>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-300">Auto-detect Questions</p>
-              <p className="text-xs text-gray-500">
-                Automatically detect when someone asks you a question
-              </p>
+            {/* Open on Login */}
+            <div className="flex items-start justify-between px-4 py-3 rounded-lg border border-gray-700 bg-gray-800">
+              <div className="flex-1 pr-4">
+                <h3 className="text-sm font-medium text-white mb-1">
+                  Open Treeto when you log in
+                </h3>
+                <p className="text-xs text-gray-400">
+                  Treeto will open automatically when you log in
+                </p>
+              </div>
+              <ToggleSwitch
+                enabled={localSettings.openOnLogin ?? false}
+                onChange={async (enabled) => {
+                  handleChange('openOnLogin', enabled);
+                  try {
+                    await window.kakarot.settings.setLoginItem(enabled);
+                  } catch (err) {
+                    console.error('Failed to set login item:', err);
+                  }
+                }}
+              />
             </div>
-            <ToggleSwitch
-              enabled={localSettings.autoDetectQuestions}
-              onChange={(enabled) => handleChange('autoDetectQuestions', enabled)}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-300">Show Floating Callout</p>
-              <p className="text-xs text-gray-500">
-                Display a floating overlay when questions are detected
-              </p>
-            </div>
-            <ToggleSwitch
-              enabled={localSettings.showFloatingCallout}
-              onChange={(enabled) => handleChange('showFloatingCallout', enabled)}
-            />
           </div>
         </section>
 
@@ -396,26 +307,11 @@ export default function SettingsView() {
           </h2>
 
           <div>
-            <label className="block text-sm text-gray-300 mb-2">Provider</label>
-            <select
-              value={localSettings.transcriptionProvider}
-              onChange={(e) => handleChange('transcriptionProvider', e.target.value)}
-              className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-              <option value="assemblyai">AssemblyAI</option>
-              <option value="deepgram">Deepgram</option>
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              Select which transcription service to use
-            </p>
-          </div>
-
-          <div>
             <label className="block text-sm text-gray-300 mb-2">Language</label>
             <select
               value={localSettings.transcriptionLanguage}
               onChange={(e) => handleChange('transcriptionLanguage', e.target.value)}
-              className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4ea8dd]"
             >
               <option value="auto">Auto-detect</option>
               <optgroup label="Common Languages">
@@ -496,15 +392,6 @@ export default function SettingsView() {
               onDisconnect={() => showDisconnectConfirm('calendar', 'outlook', 'Outlook Calendar')}
               icon={<Calendar className="w-5 h-5 text-gray-400" />}
             />
-            <CalendarConnectionButton
-              provider="icloud"
-              label="iCloud Calendar"
-              isConnected={connectedCalendars.icloud}
-              isLoading={connectingProvider === 'icloud'}
-              onConnect={() => handleConnectCalendar('icloud')}
-              onDisconnect={() => showDisconnectConfirm('calendar', 'icloud', 'iCloud Calendar')}
-              icon={<Calendar className="w-5 h-5 text-gray-400" />}
-            />
           </div>
         </section>
 
@@ -535,6 +422,7 @@ export default function SettingsView() {
                         setVisibleGoogleIds(next);
                         const nextSettings = { ...localSettings!, visibleCalendars: { ...(localSettings!.visibleCalendars || {}), google: next } };
                         setLocalSettings(nextSettings);
+                        // Update visible calendars - settings change event will trigger automatic refresh
                         window.kakarot.calendar.setVisibleCalendars('google', next).catch(() => {});
                       }}
                     />
@@ -544,6 +432,17 @@ export default function SettingsView() {
             </div>
           </section>
         )}
+
+        {/* Slack Integration */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
+            Slack Integration
+          </h2>
+          <p className="text-sm text-gray-400">
+            Connect Slack to send notes directly to channels.
+          </p>
+          <SlackIntegration showTitle={false} />
+        </section>
 
         {/* CRM Integrations */}
         <section className="space-y-4">
@@ -570,9 +469,7 @@ export default function SettingsView() {
               }`}
             >
               <div className="flex items-center gap-3">
-                <div className="w-5 h-5 bg-gradient-to-br from-blue-400 to-blue-600 rounded text-white text-xs font-bold flex items-center justify-center">
-                  SF
-                </div>
+                <img src={salesforceLogo} alt="Salesforce" className="w-5 h-5 object-contain" />
                 <div className="text-left">
                   <p className="text-sm font-medium text-white">
                     {connectedCRMs.salesforce ? 'Salesforce Connected' : 'Connect Salesforce'}
@@ -608,9 +505,7 @@ export default function SettingsView() {
               }`}
             >
               <div className="flex items-center gap-3">
-                <div className="w-5 h-5 bg-gradient-to-br from-orange-400 to-orange-600 rounded text-white text-xs font-bold flex items-center justify-center">
-                  HS
-                </div>
+                <img src={hubspotLogo} alt="HubSpot" className="w-5 h-5 object-contain" />
                 <div className="text-left">
                   <p className="text-sm font-medium text-white">
                     {connectedCRMs.hubspot ? 'HubSpot Connected' : 'Connect HubSpot'}
@@ -672,17 +567,21 @@ export default function SettingsView() {
           )}
         </section>
 
-        {/* Save button */}
-        <div className="flex items-center justify-end pt-4 border-t border-gray-700">
+        {/* Save button - now floating */}
+      </div>
+
+      {/* Floating Save Button - Only shown when there are changes */}
+      {hasUnsavedChanges && (
+        <div className="fixed bottom-8 right-8 z-50">
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="px-6 py-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors"
+            className="px-6 py-3 bg-[#4ea8dd] hover:bg-[#3d96cb] disabled:opacity-50 text-white rounded-lg font-medium transition-all shadow-lg hover:shadow-xl"
           >
             {isSaving ? 'Saving...' : 'Save Settings'}
           </button>
         </div>
-      </div>
+      )}
 
       <ConfirmDialog
         isOpen={disconnectConfirm.isOpen}
@@ -708,7 +607,7 @@ function ToggleSwitch({ enabled, onChange }: ToggleSwitchProps) {
     <button
       onClick={() => onChange(!enabled)}
       className={`relative w-11 h-6 rounded-full transition-colors ${
-        enabled ? 'bg-primary-600' : 'bg-gray-600'
+        enabled ? 'bg-[#4ea8dd]' : 'bg-gray-600'
       }`}
     >
       <div
@@ -777,7 +676,7 @@ function CalendarConnectionButton({
           )}
         </div>
       </div>
-      <span className={`text-sm ${isConnected ? 'text-green-400' : 'text-primary-400'}`}>
+      <span className={`text-sm ${isConnected ? 'text-green-400' : 'text-[#4ea8dd]'}`}>
         {getActionLabel()}
       </span>
     </button>

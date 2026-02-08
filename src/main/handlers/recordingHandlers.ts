@@ -3,6 +3,7 @@ import { IPC_CHANNELS } from '@shared/ipcChannels';
 import { getContainer } from '../core/container';
 import { createLogger } from '../core/logger';
 import { createTranscriptionProvider, ITranscriptionProvider } from '../services/transcription';
+import { getDeepgramTokenService } from '../services/DeepgramTokenService';
 import { SystemAudioService } from '../services/SystemAudioService';
 import { CalloutService } from '../services/CalloutService';
 import { AECProcessor } from '../audio/native/AECProcessor';
@@ -28,10 +29,11 @@ let activeCalendarContext: {
 } | null = null;
 let isPaused = false;
 
-// NEW: Audio buffering for mic capture
-let micAudioBuffer: Int16Array = new Int16Array(0);
-const MIN_BUFFER_SAMPLES = 2400; // 50ms at 48kHz (AssemblyAI minimum)
+// 📊 Audio packet counter for logging
 let micAudioDataCount = 0;
+
+// ✅ REMOVED: Audio buffering logic (MIN_BUFFER_SAMPLES, micAudioBuffer)
+// Audio is now sent immediately to Deepgram for better real-time transcription
 
 export function registerRecordingHandlers(
   mainWindow: BrowserWindow,
@@ -43,7 +45,7 @@ export function registerRecordingHandlers(
     logger.info('Recording start requested', { hasCalendarContext: !!calendarContext });
     const { meetingRepo, settingsRepo } = getContainer();
     const settings = settingsRepo.getSettings();
-    logger.debug('Transcription provider', { provider: settings.transcriptionProvider });
+    logger.debug('Using transcription provider', { provider: 'Deepgram (WebSocket streaming, low-latency)' });
 
     // Store calendar context for later linking
     if (calendarContext) {
@@ -73,7 +75,7 @@ export function registerRecordingHandlers(
       aecProcessor = new AECProcessor({
         enableAec: true,
         enableNs: true,
-        enableAgc: false,
+        enableAgc: true,  // ✅ ENABLED: Automatically boosts mic volume (important for built-in mics)
         frameDurationMs: 10,
         sampleRate: AUDIO_CONFIG.SAMPLE_RATE,
       });
@@ -94,14 +96,19 @@ export function registerRecordingHandlers(
       // Continue without AEC if initialization fails
     }
 
-    transcriptionProvider = createTranscriptionProvider(
-      settings.transcriptionProvider,
-      settings.assemblyAiApiKey,
-      settings.deepgramApiKey,
-      undefined,
-      settings.useHostedTokens
-    );
-    logger.info('Using transcription provider', { name: transcriptionProvider.name });
+    // Fetch temporary Deepgram token from backend (API key stays secure on server)
+    const tokenService = getDeepgramTokenService();
+    const tokenResponse = await tokenService.getTemporaryToken();
+    logger.info('Deepgram temporary token acquired', {
+      expiresIn: tokenResponse.expires_in,
+    });
+
+    // Create transcription provider with token (no local API key - fully secure)
+    transcriptionProvider = createTranscriptionProvider({ token: tokenResponse.access_token });
+    logger.info('Using transcription provider', {
+      name: transcriptionProvider.name,
+      authMethod: 'JWT token (secure)',
+    });
 
     // Set up transcript forwarding
     transcriptionProvider.onTranscript((segment, isFinal) => {
@@ -172,7 +179,7 @@ export function registerRecordingHandlers(
             .then(() => {
               logger.info('System audio capture started');
 
-              // NEW: Start native microphone capture AFTER system audio is ready
+              // ✅ OPTIMIZED: Start native microphone capture with IMMEDIATE streaming
               if (aecProcessor && transcriptionProvider) {
                 const tp = transcriptionProvider; // Capture in closure
                 
@@ -213,6 +220,7 @@ export function registerRecordingHandlers(
                     cleanFloat32 = aecProcessor.processCaptureAudio(samples);
                   }
 
+                  // ✅ CRITICAL CHANGE: Send audio IMMEDIATELY without buffering
                   if (cleanFloat32 && cleanFloat32.length > 0) {
                     // Convert echo-cancelled audio to Int16
                     const cleanInt16 = new Int16Array(cleanFloat32.length);
@@ -220,75 +228,45 @@ export function registerRecordingHandlers(
                       cleanInt16[i] = Math.max(-32768, Math.min(32767, cleanFloat32[i] * 32768));
                     }
                     
-                    // Buffer the audio
-                    const newBuffer = new Int16Array(micAudioBuffer.length + cleanInt16.length);
-                    newBuffer.set(micAudioBuffer);
-                    newBuffer.set(cleanInt16, micAudioBuffer.length);
-                    micAudioBuffer = newBuffer;
+                    // 🚀 SEND IMMEDIATELY - No buffering, no delays
+                    // This allows Deepgram's VAD to naturally detect speech boundaries
+                    tp.sendAudio(cleanInt16.buffer as ArrayBuffer, 'mic');
                     
-                    // Debug: Check buffer status
-                    if (micAudioDataCount === 5 || micAudioDataCount === 10 || micAudioDataCount === 15) {
-                      logger.info('🔍 Buffer check (AEC path)', {
-                        bufferSize: micAudioBuffer.length,
-                        needed: MIN_BUFFER_SAMPLES,
-                        chunk: micAudioDataCount,
-                        justAdded: cleanInt16.length
+                    // Log occasionally for debugging
+                    if (micAudioDataCount % 100 === 1) {
+                      logger.debug('📤 Mic audio sent to Deepgram (AEC - immediate streaming)', { 
+                        samples: cleanInt16.length,
+                        bytes: cleanInt16.buffer.byteLength,
+                        packet: micAudioDataCount
                       });
-                    }
-                    
-                    // Send if buffer is large enough (50ms minimum for AssemblyAI)
-                    if (micAudioBuffer.length >= MIN_BUFFER_SAMPLES) {
-                      logger.info('📤 Sending mic audio to AssemblyAI (AEC)', { 
-                        samples: micAudioBuffer.length, 
-                        bytes: micAudioBuffer.buffer.byteLength,
-                        firstSample: micAudioBuffer[0],
-                        maxSample: Math.max(...Array.from(micAudioBuffer))
-                      });
-                      tp.sendAudio(micAudioBuffer.buffer as ArrayBuffer, 'mic');
-                      micAudioBuffer = new Int16Array(0); // Reset buffer
                     }
                   } else {
                     // Fallback to raw audio if AEC processing fails
                     if (micAudioDataCount % 100 === 1) {
                       logger.warn('AEC processing returned empty, using raw mic audio', { micAudioDataCount });
                     }
+                    
                     const rawInt16 = new Int16Array(samples.length);
                     for (let i = 0; i < samples.length; i++) {
                       rawInt16[i] = Math.max(-32768, Math.min(32767, samples[i] * 32768));
                     }
                     
-                    // Buffer the raw audio
-                    const newBuffer = new Int16Array(micAudioBuffer.length + rawInt16.length);
-                    newBuffer.set(micAudioBuffer);
-                    newBuffer.set(rawInt16, micAudioBuffer.length);
-                    micAudioBuffer = newBuffer;
+                    // 🚀 SEND IMMEDIATELY - No buffering
+                    tp.sendAudio(rawInt16.buffer as ArrayBuffer, 'mic');
                     
-                    // Debug: Check buffer status
-                    if (micAudioDataCount === 5 || micAudioDataCount === 10 || micAudioDataCount === 15) {
-                      logger.info('🔍 Buffer check', {
-                        bufferSize: micAudioBuffer.length,
-                        needed: MIN_BUFFER_SAMPLES,
-                        chunk: micAudioDataCount,
-                        justAdded: rawInt16.length
+                    if (micAudioDataCount % 100 === 1) {
+                      logger.debug('📤 Mic audio sent to Deepgram (raw - immediate streaming)', { 
+                        samples: rawInt16.length,
+                        bytes: rawInt16.buffer.byteLength,
+                        packet: micAudioDataCount
                       });
-                    }
-                    
-                    // Send if buffer is large enough
-                    if (micAudioBuffer.length >= MIN_BUFFER_SAMPLES) {
-                      logger.info('📤 Sending mic audio to AssemblyAI', { 
-                        samples: micAudioBuffer.length, 
-                        bytes: micAudioBuffer.buffer.byteLength,
-                        firstSample: micAudioBuffer[0],
-                        maxSample: Math.max(...Array.from(micAudioBuffer))
-                      });
-                      tp.sendAudio(micAudioBuffer.buffer as ArrayBuffer, 'mic');
-                      micAudioBuffer = new Int16Array(0);
                     }
                   }
                 });
 
                 if (success) {
-                  logger.info('✅ Native microphone capture started (perfect sync with system audio!)');
+                  logger.info('✅ Native microphone capture started with immediate streaming (no buffering)');
+                  logger.info('🎯 Audio packets are sent directly to Deepgram for optimal VAD and sentence formation');
                 } else {
                   logger.error('❌ Failed to start native microphone capture');
                 }
@@ -357,9 +335,8 @@ export function registerRecordingHandlers(
       aecProcessor = null;
     }
 
-    // Reset mic audio counter and buffer
+    // Reset mic audio counter (no buffer to reset anymore)
     micAudioDataCount = 0;
-    micAudioBuffer = new Int16Array(0);
 
     // Disconnect transcription and wait for it to flush
     if (transcriptionProvider) {
@@ -377,12 +354,29 @@ export function registerRecordingHandlers(
     const meeting = await meetingRepo.endCurrentMeeting();
     logger.info('Meeting ended', { id: meeting?.id, transcriptCount: meeting?.transcript.length });
 
-    // Auto-generate notes in background
+    // Auto-generate notes in background (only if sufficient transcript)
     if (meeting && meetingId) {
-      mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_GENERATING, { meetingId: meeting.id });
-
       // Re-fetch meeting to get all transcript segments
       const fullMeeting = meetingRepo.findById(meeting.id);
+      
+      // Skip note generation if transcript has fewer than 2 segments
+      if (fullMeeting && fullMeeting.transcript.length < 2) {
+        logger.info('Skipping notes generation - insufficient transcript', {
+          meetingId: meeting.id,
+          transcriptLength: fullMeeting.transcript.length
+        });
+        // CRITICAL: Emit completion event so frontend can navigate correctly
+        mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
+          meetingId: meeting.id,
+          title: fullMeeting.title || 'Untitled Meeting',
+          overview: '',
+        });
+        mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+        return meeting;
+      }
+
+      mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_GENERATING, { meetingId: meeting.id });
+
       if (fullMeeting && fullMeeting.transcript.length > 0) {
         // Generate notes safely with try/catch
         try {
@@ -391,8 +385,22 @@ export function registerRecordingHandlers(
           
           if (notes) {
             logger.info('Notes generated successfully', { meetingId: meeting.id });
-            meetingRepo.updateNotes(meeting.id, null, notes.notesMarkdown, notes.notesMarkdown);
+            // Store the full structured notes object for rich UI rendering
+            meetingRepo.updateNotes(meeting.id, notes, notes.notesMarkdown, notes.notesMarkdown);
             meetingRepo.updateOverview(meeting.id, notes.overview);
+
+            // Persist extracted participants to meeting.people for prep search
+            if (notes.participants && notes.participants.length > 0) {
+              const peopleData = notes.participants.map((name: string) => ({ name }));
+              meetingRepo.updatePeople(meeting.id, peopleData);
+              logger.info('Stored extracted participants', {
+                meetingId: meeting.id,
+                participantCount: notes.participants.length,
+                participants: notes.participants
+              });
+            }
+
+            saveDatabase();
 
             // Preserve calendar-derived titles; only override when we don't have a calendar context
             if (!calendContext) {
@@ -457,6 +465,12 @@ export function registerRecordingHandlers(
       }
     } else {
       logger.warn('No meeting or meetingId available for notes generation');
+      // CRITICAL: Still emit completion event so frontend doesn't get stuck
+      mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
+        meetingId: meetingId || 'unknown',
+        title: 'Meeting Error',
+        overview: '',
+      });
       mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
     }
 
@@ -467,23 +481,125 @@ export function registerRecordingHandlers(
     isPaused = true;
     // Cancel pending callouts - don't show callouts while paused
     calloutService.cancelPendingCallout();
+    
+    // Pause system audio
     if (systemAudioService) {
       systemAudioService.pause();
     }
+    
+    // Stop microphone capture (we'll restart on resume)
+    if (aecProcessor && aecProcessor.isMicrophoneCapturing()) {
+      logger.info('Stopping microphone capture on pause');
+      aecProcessor.stopMicrophoneCapture();
+    }
+    
+    // Pause transcription provider
+    if (transcriptionProvider) {
+      transcriptionProvider.pause?.();
+    }
+    
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'paused');
   });
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_RESUME, async () => {
     isPaused = false;
+
+    // Resume system audio
     if (systemAudioService) {
       systemAudioService.resume();
     }
+
+    // Restart microphone capture if it was stopped
+    if (aecProcessor && !aecProcessor.isMicrophoneCapturing()) {
+      logger.info('Restarting microphone capture on resume');
+      aecProcessor.startMicrophoneCapture((samples: Float32Array, timestamp: number) => {
+        micAudioDataCount += samples.length;
+        if (transcriptionProvider && !isPaused) {
+          transcriptionProvider.send?.(samples, timestamp, 'microphone');
+        }
+      });
+    }
+
+    // Resume transcription provider
+    if (transcriptionProvider) {
+      transcriptionProvider.resume?.();
+    }
+
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'recording');
   });
 
-  // REMOVED: Audio data handler for renderer mic capture
-  // Now using native microphone capture in the main process!
-  // The IPC_CHANNELS.AUDIO_DATA handler is no longer needed for mic audio.
+  // Discard recording - stops everything without generating notes and deletes the meeting
+  ipcMain.handle(IPC_CHANNELS.RECORDING_DISCARD, async () => {
+    logger.info('Recording discard requested');
+    const { meetingRepo } = getContainer();
+    const meetingId = meetingRepo.getCurrentMeetingId();
+
+    // Cancel any pending callouts
+    calloutService.reset();
+    activeCalendarContext = null;
+
+    // Stop system audio capture
+    if (systemAudioService) {
+      const sas = systemAudioService;
+      systemAudioService = null;
+      await sas.stop().catch((error) => logger.error('System audio stop error on discard', error));
+      logger.info('System audio capture stopped (discard)');
+    }
+
+    // Stop native mic capture
+    if (aecProcessor && aecProcessor.isMicrophoneCapturing()) {
+      logger.info('Stopping native microphone capture (discard)');
+      aecProcessor.stopMicrophoneCapture();
+    }
+
+    // Wait for in-flight audio callbacks
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Clean up AEC sync
+    if (aecSync) {
+      aecSync.clear();
+      aecSync = null;
+    }
+
+    // Clean up AEC processor
+    if (aecProcessor) {
+      try {
+        aecProcessor.destroy();
+      } catch (error) {
+        logger.warn('Error destroying AEC processor on discard', { error: (error as Error).message });
+      }
+      aecProcessor = null;
+    }
+
+    // Reset mic audio counter
+    micAudioDataCount = 0;
+
+    // Disconnect transcription
+    if (transcriptionProvider) {
+      const tp = transcriptionProvider;
+      transcriptionProvider = null;
+      await tp.disconnect().catch((error) => logger.error('Transcription disconnect error on discard', error));
+      logger.info('Transcription provider disconnected (discard)');
+    }
+
+    isPaused = false;
+
+    // Delete the meeting if it exists
+    if (meetingId) {
+      try {
+        meetingRepo.clearCurrentMeeting();
+        meetingRepo.delete(meetingId);
+        logger.info('Meeting discarded', { meetingId });
+      } catch (error) {
+        logger.error('Failed to delete meeting on discard', { error: (error as Error).message });
+      }
+    } else {
+      meetingRepo.clearCurrentMeeting();
+    }
+
+    mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+    logger.info('Recording discarded successfully');
+  });
 }
 
 // Expose transcription state for other handlers (e.g., audioHandlers)

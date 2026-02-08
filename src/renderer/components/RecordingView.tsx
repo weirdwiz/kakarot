@@ -8,12 +8,17 @@ import AskNotesBar from './AskNotesBar';
 import ManualNotesView from './ManualNotesView';
 import MeetingContextPreview from './MeetingContextPreview';
 import AttendeesList from './AttendeesList';
-import { FileText, Square, Search, Loader2, Calendar as CalendarIcon, Users, Folder, Share2, Copy, Check, X, ScrollText, MessageSquare, Clock3, Clock, ChevronDown } from 'lucide-react';
-import { formatDateTime } from '../lib/formatters';
-import type { CalendarEvent, AppSettings } from '@shared/types';
+import SearchPopup from './SearchPopup';
+import { FileText, Square, Search, Loader2, Calendar as CalendarIcon, Users, Folder, Share2, Copy, Check, X, MessageSquare, Clock3, Clock, ChevronDown, Mic } from 'lucide-react';
+import { formatMeetingDate } from '../lib/formatters';
+import type { TranscriptSegment } from '@shared/types';
+import type { CalendarEvent, AppSettings, GeneratedStructuredNotes } from '@shared/types';
+import slackLogo from '../assets/slack.png';
+import { toast } from '../stores/toastStore';
+import { StructuredNotesView } from './StructuredNotesView';
 
 interface RecordingViewProps {
-  onSelectTab?: (tab: 'notes' | 'prep' | 'interact') => void;
+  onSelectTab?: (tab: 'notes' | 'prep') => void;
 }
 
 type LiveCalloutEntry = {
@@ -25,10 +30,75 @@ type LiveCalloutEntry = {
   timestampMs: number;
 };
 
+// Transcript grouping constants and utilities (same as LiveTranscript.tsx)
+const MERGE_WINDOW_MS = 45000; // 45 seconds
+const CONTINUOUS_SPEECH_MS = 2000; // 2 seconds
+
+interface GroupedSegment {
+  id: string;
+  source: 'mic' | 'system';
+  timestamp: number;
+  text: string;
+  segmentCount: number;
+}
+
+function endsWithSentence(text: string): boolean {
+  const trimmed = text.trim();
+  return /[.!?]$/.test(trimmed);
+}
+
+function groupTranscriptSegments(segments: TranscriptSegment[]): GroupedSegment[] {
+  if (segments.length === 0) return [];
+
+  const groups: GroupedSegment[] = [];
+  let currentGroup: GroupedSegment | null = null;
+
+  for (const segment of segments) {
+    if (!currentGroup) {
+      currentGroup = {
+        id: segment.id,
+        source: segment.source,
+        timestamp: segment.timestamp,
+        text: segment.text,
+        segmentCount: 1,
+      };
+      continue;
+    }
+
+    const timeSinceLast = segment.timestamp - currentGroup.timestamp;
+    const isSameSpeaker = currentGroup.source === segment.source;
+    const withinTimeWindow = timeSinceLast < MERGE_WINDOW_MS;
+    const isContinuousSpeech = timeSinceLast < CONTINUOUS_SPEECH_MS;
+    const previousIncomplete = !endsWithSentence(currentGroup.text);
+
+    const shouldMerge = isSameSpeaker && (isContinuousSpeech || withinTimeWindow || previousIncomplete);
+
+    if (shouldMerge) {
+      currentGroup.text += ' ' + segment.text;
+      currentGroup.segmentCount++;
+    } else {
+      groups.push(currentGroup);
+      currentGroup = {
+        id: segment.id,
+        source: segment.source,
+        timestamp: segment.timestamp,
+        text: segment.text,
+        segmentCount: 1,
+      };
+    }
+  }
+
+  if (currentGroup) {
+    groups.push(currentGroup);
+  }
+
+  return groups;
+}
+
 export default function RecordingView({ onSelectTab }: RecordingViewProps) {
-  const { recordingState, audioLevels, liveTranscript, currentPartials, clearLiveTranscript, calendarContext, setCalendarContext, activeCalendarContext, setActiveCalendarContext, setLastCompletedNoteId, setSelectedMeeting, setView, currentMeetingId, setCurrentMeetingId, showRecordingHome, setShowRecordingHome } = useAppStore();
-  const { startCapture, stopCapture } = useAudioCapture();
-  const [pillarTab, setPillarTab] = React.useState<'notes' | 'prep' | 'interact'>('notes');
+  const { recordingState, audioLevels, liveTranscript, currentPartials, clearLiveTranscript, calendarContext, setCalendarContext, activeCalendarContext, setActiveCalendarContext, setLastCompletedNoteId, setSelectedMeeting, setView, currentMeetingId, setCurrentMeetingId, showRecordingHome, setShowRecordingHome, setInitialPrepQuery } = useAppStore();
+  const { startCapture, stopCapture, pause: pauseCapture, resume: resumeCapture } = useAudioCapture();
+  const [pillarTab, setPillarTab] = React.useState<'notes' | 'prep'>('notes');
   const [recordingTitle, setRecordingTitle] = React.useState<string>(''); // Title to display during recording
   const [upcomingMeetingId, setUpcomingMeetingId] = React.useState<string | null>(null); // Meeting ID for upcoming notes
   type MeetingPhase = 'recording' | 'processing' | 'completed' | 'error';
@@ -47,14 +117,30 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const [isPushingNotes, setIsPushingNotes] = React.useState<boolean>(false);
   const [showManualNotes, setShowManualNotes] = React.useState<boolean>(false);
   const [notes, setNotes] = React.useState<string>('');
-  const [showTranscriptPopover, setShowTranscriptPopover] = React.useState<boolean>(false);
+  const [showSearchPopup, setShowSearchPopup] = React.useState<boolean>(false);
+  const titleContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const titleInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [titleFontSize, setTitleFontSize] = React.useState<number>(48);
+  
+  // Slack state
+  const [slackToken, setSlackToken] = React.useState<string | null>(null);
+  const [slackChannels, setSlackChannels] = React.useState<Array<{ id: string; name: string; isPrivate?: boolean }>>([]);
+  const [slackChannelId, setSlackChannelId] = React.useState('');
+  const [isSlackConnecting, setIsSlackConnecting] = React.useState(false);
+  const [isSlackSending, setIsSlackSending] = React.useState(false);
+  const [showSlackOptions, setShowSlackOptions] = React.useState(false);
+  
   const [calloutTimeline, setCalloutTimeline] = React.useState<LiveCalloutEntry[]>([]);
   const [showTimePopover, setShowTimePopover] = React.useState<boolean>(false);
   const [showParticipantsPopover, setShowParticipantsPopover] = React.useState<boolean>(false);
+  const [showTranscriptPopover, setShowTranscriptPopover] = React.useState<boolean>(false);
+  const [isAutoScrollEnabled, setIsAutoScrollEnabled] = React.useState<boolean>(true);
   const timeButtonRef = React.useRef<HTMLButtonElement>(null);
   const timePopoverRef = React.useRef<HTMLDivElement>(null);
   const participantsButtonRef = React.useRef<HTMLButtonElement>(null);
   const participantsPopoverRef = React.useRef<HTMLDivElement>(null);
+  const transcriptScrollRef = React.useRef<HTMLDivElement>(null);
+  const lastScrollTopRef = React.useRef<number>(0);
   const processedSegmentsRef = React.useRef<Set<string>>(new Set());
   const saveTimerRef = React.useRef<NodeJS.Timeout | null>(null);
   const isIdle = recordingState === 'idle';
@@ -62,8 +148,69 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const isPaused = recordingState === 'paused';
   const isGenerating = phase === 'processing';
 
+  const updateTitleFontSize = React.useCallback(() => {
+    const container = titleContainerRef.current;
+    if (!container) return;
+
+    const availableWidth = container.clientWidth;
+    if (!availableWidth) return;
+
+    const text = titleInput?.trim() || 'Untitled Meeting';
+    const inputEl = titleInputRef.current;
+    const computed = inputEl ? window.getComputedStyle(inputEl) : null;
+    const fontFamily = computed?.fontFamily || 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
+    const fontWeight = computed?.fontWeight || '700';
+
+    const maxSize = 48;
+    const minSize = 24;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.font = `${fontWeight} ${maxSize}px ${fontFamily}`;
+    const textWidth = ctx.measureText(text).width;
+    const nextSize = textWidth > availableWidth
+      ? Math.max(minSize, Math.floor((availableWidth / textWidth) * maxSize))
+      : maxSize;
+
+    setTitleFontSize(nextSize);
+  }, [titleInput]);
+
+  React.useEffect(() => {
+    updateTitleFontSize();
+  }, [updateTitleFontSize]);
+
+  React.useEffect(() => {
+    const container = titleContainerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(() => updateTitleFontSize());
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [updateTitleFontSize]);
+
+  // Track previous recording state to detect pause->resume transitions
+  const prevRecordingStateRef = React.useRef<string>(recordingState);
+
+  // Pause/resume audio capture when recording state changes
+  React.useEffect(() => {
+    const prevState = prevRecordingStateRef.current;
+    prevRecordingStateRef.current = recordingState;
+
+    if (recordingState === 'paused') {
+      pauseCapture();
+    } else if (recordingState === 'recording' && prevState === 'paused') {
+      // Only resume if we're coming from a paused state, not from idle (fresh start)
+      resumeCapture();
+    } else if (recordingState === 'idle' && (prevState === 'paused' || prevState === 'recording')) {
+      // Fully stop capture when discarding or ending (paused/recording -> idle)
+      stopCapture();
+    }
+  }, [recordingState, pauseCapture, resumeCapture, stopCapture]);
+
   // Forward tab changes to parent if handler provided
-  const handleSelectTab = (tab: 'notes' | 'prep' | 'interact') => {
+  const handleSelectTab = (tab: 'notes' | 'prep') => {
     setPillarTab(tab);
     onSelectTab?.(tab);
   };
@@ -116,9 +263,11 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   }, [notes, upcomingMeetingId, showManualNotes]);
 
   // Initialize meeting when entering manual notes view for upcoming meetings
+  // IMPORTANT: Only create meeting when explicitly viewing manual notes (calendarContext),
+  // NOT when starting recording from calendar (activeCalendarContext)
   React.useEffect(() => {
-    if (isIdle && pillarTab === 'notes' && (activeCalendarContext || calendarContext) && !upcomingMeetingId) {
-      const meeting = activeCalendarContext || calendarContext;
+    if (isIdle && pillarTab === 'notes' && calendarContext && !activeCalendarContext && !upcomingMeetingId) {
+      const meeting = calendarContext;
       if (meeting) {
         // Check if this calendar event already has linked notes; if so, reuse that meeting ID
         window.kakarot.settings.get()
@@ -130,16 +279,10 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
               console.log('[RecordingView] Using existing notes meeting for upcoming event:', existing.notesId);
               return null; // signal no creation needed
             }
-            // Otherwise, create a new meeting entry for upcoming calendar event notes and link it
-            return window.kakarot.recording.start({
-              calendarEventId: meeting.id,
-              calendarEventTitle: meeting.title,
-              calendarEventAttendees: meeting.attendees,
-              calendarEventStart: meeting.start.toISOString(),
-              calendarEventEnd: meeting.end.toISOString(),
-              calendarProvider: meeting.provider,
-            })
-              .then(async (meetingId) => {
+            // Create a new meeting entry for upcoming calendar event notes (without starting recording)
+            const attendeeEmails = meeting.attendees?.map((a: any) => typeof a === 'string' ? a : a.email) || [];
+            return window.kakarot.meetings.createDismissed(meeting.title, attendeeEmails)
+              .then(async (meetingId: string) => {
                 setUpcomingMeetingId(meetingId);
                 console.log('[RecordingView] Created meeting for upcoming notes:', meetingId);
                 try {
@@ -220,6 +363,16 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     });
   }, [liveTranscript, isRecording, isPaused, userFirstName]);
 
+  // Auto-scroll transcript when new messages arrive
+  React.useEffect(() => {
+    if (isAutoScrollEnabled && transcriptScrollRef.current && showTranscriptPopover) {
+      transcriptScrollRef.current.scrollTo({
+        top: transcriptScrollRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [liveTranscript, currentPartials, isAutoScrollEnabled, showTranscriptPopover]);
+
   // Hook into meeting notes completion event
   React.useEffect(() => {
     const unsubscribe = window.kakarot.recording.onNotesComplete?.((data: { meetingId: string; title: string; overview: string }) => {
@@ -228,7 +381,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
       window.kakarot.meetings.get(data.meetingId)
         .then((meeting) => {
           if (meeting) {
-            const hasNotes = Boolean((meeting as any).notesMarkdown || (meeting as any).overview);
+            const hasNotes = Boolean((meeting as any).notes || (meeting as any).notesMarkdown || (meeting as any).overview);
             if (hasNotes) {
               setLastCompletedNoteId(data.meetingId);
               setCompletedMeeting(meeting);
@@ -237,6 +390,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
             } else {
               setPhase('error');
               setErrorMessage('Notes generation failed. You can still view the transcript.');
+              setActiveCalendarContext(null); // Clear to prevent Manual Notes view from showing
               console.warn('[RecordingView] Notes generation appears to have failed.');
             }
           }
@@ -244,6 +398,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
         .catch((err) => {
           setPhase('error');
           setErrorMessage('Something went wrong loading your meeting.');
+          setActiveCalendarContext(null); // Clear to prevent Manual Notes view from showing
           console.error('[RecordingView] Failed to load meeting after notes completion:', err);
         });
     });
@@ -280,9 +435,36 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return `Good Morning, ${userFirstName}`;
-    if (hour < 18) return `Good Afternoon, ${userFirstName}`;
+    if (hour >= 5 && hour < 12) return `Good Morning, ${userFirstName}`;
+    if (hour >= 12 && hour < 22) return `Good Afternoon, ${userFirstName}`;
     return `Good Evening, ${userFirstName}`;
+  };
+
+  const handlePrepMeeting = async (meeting: CalendarEvent) => {
+    // Get user's email from settings to exclude from attendees list
+    const settings = await window.kakarot.settings.get() as AppSettings;
+    const userEmail = settings.userProfile?.email?.toLowerCase();
+
+    // Format attendee names for the prep query, excluding the signed-in user
+    const attendeeNames = meeting.attendees
+      ?.filter(a => {
+        const email = (typeof a === 'string' ? a : a.email).toLowerCase();
+        return email !== userEmail;
+      })
+      .map(a => typeof a === 'string' ? a : a.name || a.email)
+      .filter(Boolean)
+      .join(', ') || 'the attendees';
+
+    const prepQuery = `I have a meeting with ${attendeeNames}, help me prep.`;
+
+    // Set the initial prep query and navigate to Prep tab
+    setInitialPrepQuery(prepQuery);
+    handleSelectTab('prep');
+  };
+
+  const handleTranscribeNow = (meeting: CalendarEvent) => {
+    // Start recording with the calendar event context
+    handleStartRecording(meeting);
   };
 
   const handleStartRecording = async (calendarEvent?: CalendarEvent) => {
@@ -293,11 +475,10 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     if (calendarEvent) {
       console.log('[RecordingView] Setting active calendar context from event:', calendarEvent.title);
       setActiveCalendarContext(calendarEvent);
-      setShowManualNotes(true); // Show manual notes when recording from calendar context
+      // Don't set showManualNotes here - it's only for pre-meeting manual notes, not during recording
     } else {
       console.log('[RecordingView] Manual recording - clearing active calendar context');
       setActiveCalendarContext(null);
-      setShowManualNotes(false);
     }
     
     // Use only the passed event, not any previously stored context
@@ -343,6 +524,15 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   };
 
   const handleStopRecording = async () => {
+    // If paused, resume instead
+    if (recordingState === 'paused') {
+      console.log('Resuming transcription');
+      await window.kakarot.recording.resume();
+      return;
+    }
+
+    // Proceed with stop regardless of transcript length
+    // Backend will handle the case of insufficient transcript gracefully
     setPhase('processing');
     setErrorMessage('');
     await stopCapture();
@@ -371,22 +561,33 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     // Check CRM settings and trigger prompt if needed
     try {
       const settings = await window.kakarot.settings.get() as AppSettings;
-      if (settings.crmNotesBehavior === 'ask' && settings.crmConnections) {
+      if (settings.crmConnections) {
         // Find first connected CRM provider
         const connectedProvider = (Object.keys(settings.crmConnections) as Array<'salesforce' | 'hubspot'>).find(
           (provider) => settings.crmConnections?.[provider]?.accessToken
         );
         
         if (connectedProvider && meeting) {
-          setPendingCRMMeetingId(meeting.id);
-          setCRMProvider(connectedProvider);
-          setShowCRMPrompt(true);
+          if (settings.crmNotesBehavior === 'always') {
+            // Auto-send without prompting
+            try {
+              await window.kakarot.crm.pushNotes(meeting.id);
+              console.log('[RecordingView] Notes automatically pushed to CRM:', connectedProvider);
+            } catch (err) {
+              console.error('[RecordingView] Failed to auto-push notes to CRM:', err);
+            }
+          } else if (settings.crmNotesBehavior === 'ask') {
+            // Show prompt asking user
+            setPendingCRMMeetingId(meeting.id);
+            setCRMProvider(connectedProvider);
+            setShowCRMPrompt(true);
+          }
         }
       }
     } catch (err) {
       console.error('[RecordingView] Failed to check CRM settings:', err);
     }
-    
+
     // Keep active calendar context until notes render so metadata can be surfaced
   };
 
@@ -488,10 +689,50 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     setCRMProvider(null);
   };
 
+  const handleSlack = async () => {
+    if (!completedMeeting) return;
+
+    if (!slackToken) {
+      try {
+        setIsSlackConnecting(true);
+        const result = await window.kakarot.slack.connect();
+        setSlackToken(result.accessToken);
+        const channelList = await window.kakarot.slack.getChannels(result.accessToken);
+        setSlackChannels(channelList);
+        setShowSlackOptions(true);
+      } catch (err) {
+        console.error('Failed to connect to Slack:', err);
+        toast.error('Failed to connect to Slack');
+      } finally {
+        setIsSlackConnecting(false);
+      }
+    } else {
+      setShowSlackOptions(true);
+    }
+  };
+
+  const handleSlackSend = async () => {
+    if (!slackToken || !slackChannelId || !completedMeeting) return;
+
+    setIsSlackSending(true);
+    try {
+      const notesContent = completedMeeting.notesMarkdown || completedMeeting.overview || 'Meeting notes';
+      await window.kakarot.slack.sendNote(slackToken, slackChannelId, `📝 *${completedMeeting.title}*\n\n${notesContent}`);
+      toast.success('Notes sent to Slack!');
+      setShowSlackOptions(false);
+      setShowSharePopover(false);
+    } catch (err) {
+      console.error('Failed to send to Slack:', err);
+      toast.error('Failed to send notes to Slack');
+    } finally {
+      setIsSlackSending(false);
+    }
+  };
+
   return (
     <>
-    {/* Show Manual Notes View if viewing notes tab while idle and have calendar context */}
-    {isIdle && pillarTab === 'notes' && (activeCalendarContext || calendarContext) ? (
+    {/* Show Manual Notes View ONLY when explicitly clicking on upcoming meeting (calendarContext), never as fallback after recording */}
+    {isIdle && pillarTab === 'notes' && calendarContext && !activeCalendarContext && phase !== 'completed' && phase !== 'error' && !(completedMeeting?.notesMarkdown || completedMeeting?.overview) ? (
       <ManualNotesView 
         meetingId={upcomingMeetingId || undefined} 
         onSelectTab={handleSelectTab}
@@ -509,19 +750,21 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
         }}
       />
     ) : (
-    <div className="flex-1 min-h-0 bg-studio text-slate-ink dark:bg-onyx dark:text-gray-100 flex flex-col overflow-hidden">
+    <div className="flex-1 min-h-0 bg-gradient-to-br from-[#0C0C0F] via-[#0D0D0F] to-[#0C0C14] text-slate-ink dark:text-gray-100 flex flex-col overflow-hidden">
       {/* Meeting Context Preview Modal */}
       {calendarContext && isIdle && (
         <MeetingContextPreview
           meeting={calendarContext}
           onDismiss={() => setCalendarContext(null)}
+          onPrep={handlePrepMeeting}
+          onTranscribeNow={handleTranscribeNow}
         />
       )}
 
-      <div className="mx-auto w-full px-4 sm:px-6 py-4 flex flex-col gap-4 flex-1 min-h-0 overflow-hidden">
+      <div className="w-full flex flex-col flex-1 min-h-0 overflow-hidden">
         {/* Greeting + Unified Action Row - Only show when truly idle (not viewing completed notes) */}
         {showHomeHero && (
-          <div className="space-y-3">
+          <div className="flex-shrink-0 mx-auto w-full max-w-2xl px-4 sm:px-6 py-4 space-y-3">
             {/* Greeting */}
             <div>
               <h1 className="text-3xl font-medium text-slate-900 dark:text-white">
@@ -530,183 +773,40 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
             </div>
 
             {/* Unified Action Row (Search + Take Notes) */}
-            <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-white/30 dark:border-white/10 bg-transparent backdrop-blur-sm">
-              {/* Search Bar */}
+            <div className="flex items-center gap-2">
+              {/* Search Bar - 75% width */}
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                 <input
                   type="text"
                   placeholder="Search meetings or notes"
-                  className="w-full pl-10 pr-4 py-2 bg-white/70 dark:bg-graphite/80 border border-white/30 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/50 backdrop-blur-md transition"
+                  className="w-full pl-10 pr-4 py-1.5 bg-white/70 dark:bg-graphite/80 border border-white/30 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/50 backdrop-blur-md transition cursor-pointer"
+                  onClick={() => setShowSearchPopup(true)}
+                  onFocus={() => setShowSearchPopup(true)}
+                  readOnly
                 />
               </div>
 
-              {/* Take Notes Button */}
+              {/* Take Notes Button - 25% width, compact size */}
               <button
                 onClick={() => handleStartRecording()}
                 disabled={isRecording || isPaused || isGenerating}
-                className="px-4 py-2 bg-[#8B5CF6] text-white font-semibold rounded-lg flex items-center gap-2 shadow-soft-card transition hover:opacity-95 disabled:opacity-60 disabled:cursor-not-allowed flex-shrink-0"
+                className="px-3 py-1.5 bg-[#4ea8dd] text-white font-semibold rounded-lg flex items-center gap-1 shadow-soft-card transition hover:opacity-95 disabled:opacity-60 disabled:cursor-not-allowed flex-shrink-0 text-sm"
               >
-                <FileText className="w-4 h-4" />
+                <FileText className="w-3.5 h-3.5" />
                 + Take Notes
               </button>
             </div>
           </div>
         )}
 
-        {/* Recording controls and titles - Show when recording, paused, or generating notes */}
-        {!isIdle && !showBentoWhileLive && (
-          <div className="space-y-3">
-            {/* Recording Status with Visual Indicator */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                {isRecording && (
-                  <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                  </span>
-                )}
-                {isPaused && (
-                  <span className="inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
-                )}
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                  {isRecording && 'Recording in progress'}
-                  {isPaused && 'Recording paused'}
-                </p>
-              </div>
-              <p className="text-xs text-slate-400 dark:text-slate-500">
-                {isRecording && 'Keep the conversation flowing — your notes are being captured'}
-                {isPaused && 'Resume when ready to continue capturing'}
-              </p>
-              <div className="flex items-center gap-2">
-                <input
-                  value={titleInput}
-                  onChange={(e) => setTitleInput(e.target.value)}
-                  onBlur={() => persistTitle(titleInput)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.currentTarget.blur();
-                    }
-                  }}
-                  className="text-lg font-semibold text-slate-900 dark:text-white bg-transparent border-b border-transparent focus:border-[#8B5CF6] focus:outline-none truncate"
-                  placeholder="Untitled Meeting"
-                />
-                {isSavingTitle && <Loader2 className="w-4 h-4 animate-spin text-[#8B5CF6]" />}
-              </div>
-
-              {/* Meta row */}
-              <div className="flex items-center gap-3 text-sm flex-wrap relative">
-                {/* Time Button */}
-                <div className="relative">
-                  <button
-                    ref={timeButtonRef}
-                    onClick={() => setShowTimePopover(!showTimePopover)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 hover:bg-white/80 dark:hover:bg-slate-700/80 transition text-slate-600 dark:text-slate-400"
-                  >
-                    <Clock className="w-4 h-4" />
-                    <span>{displayDate.toLocaleDateString('en-US', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-                    <ChevronDown className="w-4 h-4 opacity-50" />
-                  </button>
-
-                  {showTimePopover && (
-                    <div
-                      ref={timePopoverRef}
-                      className="absolute top-full left-0 mt-2 bg-slate-900 dark:bg-slate-950 rounded-xl border border-slate-800 dark:border-slate-700 shadow-2xl z-50 overflow-hidden min-w-max"
-                    >
-                      <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-                        <h3 className="text-base font-semibold text-white">Meeting Time</h3>
-                        <button
-                          onClick={() => setShowTimePopover(false)}
-                          className="p-1 text-slate-400 hover:text-slate-200 transition rounded hover:bg-slate-800/50"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <div className="p-4 space-y-3">
-                        <div>
-                          <p className="text-xs text-slate-400 uppercase font-medium mb-1">Date</p>
-                          <p className="text-sm text-white font-medium">{displayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-400 uppercase font-medium mb-1">Time</p>
-                          <p className="text-sm text-white font-medium">{displayDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Participants Button */}
-                <div className="relative">
-                  <button
-                    ref={participantsButtonRef}
-                    onClick={() => setShowParticipantsPopover(!showParticipantsPopover)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 hover:bg-white/80 dark:hover:bg-slate-700/80 transition text-slate-600 dark:text-slate-400"
-                  >
-                    <Users className="w-4 h-4" />
-                    <span>{displayAttendees && displayAttendees.length > 0 ? displayAttendees.length : '0'} Participant{(displayAttendees?.length || 0) !== 1 ? 's' : ''}</span>
-                    <ChevronDown className="w-4 h-4 opacity-50" />
-                  </button>
-
-                  {showParticipantsPopover && (
-                    <div
-                      ref={participantsPopoverRef}
-                      className="absolute top-full left-0 mt-2 bg-slate-900 dark:bg-slate-950 rounded-xl border border-slate-800 dark:border-slate-700 shadow-2xl z-50 overflow-hidden min-w-[320px]"
-                    >
-                      <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-                        <h3 className="text-base font-semibold text-white">Participants</h3>
-                        <button
-                          onClick={() => setShowParticipantsPopover(false)}
-                          className="p-1 text-slate-400 hover:text-slate-200 transition rounded hover:bg-slate-800/50"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <div className="p-4">
-                        {displayAttendees && displayAttendees.length > 0 ? (
-                          <div className="space-y-2">
-                            {displayAttendees.map((email, idx) => (
-                              <div key={idx} className="flex items-center gap-3 text-sm">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white font-semibold text-sm">
-                                  {email.charAt(0).toUpperCase()}
-                                </div>
-                                <span className="text-slate-200 truncate">{email}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-slate-400 text-sm">No participants added</p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Recording Control Buttons */}
-            <div className="flex items-center gap-3 px-3 py-2 rounded-xl border border-white/20 dark:border-white/10 bg-transparent backdrop-blur-sm">
-              <button
-                onClick={handleStopRecording}
-                disabled={isGenerating}
-                className={`px-3 py-2 rounded-lg bg-red-500/90 text-white text-sm font-medium flex items-center gap-2 transition ${isGenerating ? 'opacity-60 cursor-not-allowed' : 'hover:bg-red-600'}`}
-              >
-                <Square className="w-4 h-4" />
-                Stop recording
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Compact audio meters moved into transcript header */}
-
-        {/* Dashboard or meeting content; transcript now lives in floating pill popover */}
-        <div className="flex gap-4 items-stretch flex-1 min-h-0 h-full overflow-hidden">
-          <div className="flex-1 min-w-0 h-full rounded-2xl bg-white/70 dark:bg-graphite/80 border border-white/30 dark:border-white/10 shadow-soft-card backdrop-blur-md overflow-hidden flex flex-col min-h-0">
+        {/* Dashboard or meeting content */}
+        <div className="w-full flex justify-center flex-1 min-h-0 overflow-hidden px-4 sm:px-6">
+          <div className="w-full max-w-2xl flex flex-col flex-1 min-h-0 overflow-hidden">
             {showBentoWhileLive ? (
-              <div className="h-full flex flex-col overflow-hidden">
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                 {/* Amber banner with back button */}
-                <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-2">
+                <div className="flex-shrink-0 pt-4 sm:pt-6 pb-2">
                   <div className="flex items-center justify-between p-3 rounded-xl border border-amber-200/60 dark:border-amber-500/40 bg-amber-50/70 dark:bg-amber-900/30 text-amber-800 dark:text-amber-100">
                     <div className="text-sm font-medium">{recordingTitle || 'Meeting'} - Transcription in Progress</div>
                     <button
@@ -718,41 +818,198 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                   </div>
                 </div>
                 {/* BentoDashboard below the banner */}
-                <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6 pb-4 sm:pb-6">
+                <div className="flex-1 min-h-0 overflow-auto pb-4 sm:pb-6">
                   <BentoDashboard isRecording={isRecording || isPaused} hideCompactBarWhenNoEvents={true} onStartNotes={handleStartRecording} onSelectTab={handleSelectTab} />
                 </div>
               </div>
             ) : isRecording || isPaused || isGenerating || phase === 'completed' || phase === 'error' ? (
-              <div className="h-full flex flex-col">
-                {showManualNotes && (isRecording || isPaused) && !isGenerating ? (
-                  <div className="h-full flex flex-col p-6 flex-1 min-h-0 gap-4 overflow-hidden">
-                    <LiveCalloutTracker
-                      entries={calloutTimeline}
-                      onClear={() => setCalloutTimeline([])}
-                    />
-                    <div className="flex items-center justify-between flex-shrink-0">
-                      <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Your Notes</h3>
+              <div className="flex-1 min-h-0 flex flex-col">
+                {/* Recording layout */}
+                {(isRecording || isPaused) && !isGenerating ? (
+                  <div className="flex-1 min-h-0 flex flex-col rounded-2xl border border-[#4ea8dd]/30 shadow-[0_10px_50px_rgba(78,168,221,0.25)] p-5 transition-all duration-300 relative">
+                    {/* Recording Header */}
+                    <div className="flex-shrink-0 mb-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex flex-col gap-2 flex-1">
+                          {/* Editable title */}
+                          <input
+                            value={titleInput}
+                            onChange={(e) => setTitleInput(e.target.value)}
+                            onBlur={() => persistTitle(titleInput)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.currentTarget.blur();
+                              }
+                            }}
+                            className="text-lg font-semibold text-white bg-transparent border-b border-transparent focus:border-[#4ea8dd] focus:outline-none truncate max-w-[300px]"
+                            placeholder="Untitled Meeting"
+                          />
+                          <div className="flex items-center gap-2">
+                            {/* Transcribing indicator */}
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-[#4ea8dd]/20 text-[#4ea8dd] border border-[#4ea8dd]/30">
+                              <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4ea8dd] opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#4ea8dd]"></span>
+                              </span>
+                              <span>{isRecording ? 'Transcribing' : 'Paused'}</span>
+                            </div>
+                            {isSavingTitle && <Loader2 className="w-4 h-4 animate-spin text-[#4ea8dd]" />}
+                          </div>
+                        </div>
+                        {/* Meta chips */}
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <button
+                              ref={timeButtonRef}
+                              onClick={() => setShowTimePopover(!showTimePopover)}
+                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-400 hover:bg-white/10 transition"
+                            >
+                              <Clock className="w-3.5 h-3.5" />
+                              <span>{displayDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </button>
+                            {showTimePopover && (
+                              <div
+                                ref={timePopoverRef}
+                                className="absolute top-full right-0 mt-2 bg-[#0C0C0F] rounded-xl border border-white/10 shadow-2xl z-50 overflow-hidden min-w-max"
+                              >
+                                <div className="p-3 border-b border-white/10 flex items-center justify-between">
+                                  <h3 className="text-sm font-semibold text-white">Meeting Time</h3>
+                                  <button
+                                    onClick={() => setShowTimePopover(false)}
+                                    className="p-1 text-slate-400 hover:text-slate-200 transition rounded hover:bg-white/5"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                                <div className="p-3 space-y-2">
+                                  <div>
+                                    <p className="text-[10px] text-slate-500 uppercase font-medium mb-0.5">Date</p>
+                                    <p className="text-xs text-white">{displayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] text-slate-500 uppercase font-medium mb-0.5">Time</p>
+                                    <p className="text-xs text-white">{displayDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          {activeCalendarContext && displayAttendees.length > 0 && (
+                            <div className="relative">
+                              <button
+                                ref={participantsButtonRef}
+                                onClick={() => setShowParticipantsPopover(!showParticipantsPopover)}
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-400 hover:bg-white/10 transition"
+                              >
+                                <Users className="w-3.5 h-3.5" />
+                                <span>{displayAttendees.length}</span>
+                              </button>
+                              {showParticipantsPopover && (
+                                <div
+                                  ref={participantsPopoverRef}
+                                  className="absolute top-full right-0 mt-2 bg-[#0C0C0F] rounded-xl border border-white/10 shadow-2xl z-50 overflow-hidden min-w-[280px]"
+                                >
+                                  <div className="p-3 border-b border-white/10 flex items-center justify-between">
+                                    <h3 className="text-sm font-semibold text-white">Participants</h3>
+                                    <button
+                                      onClick={() => setShowParticipantsPopover(false)}
+                                      className="p-1 text-slate-400 hover:text-slate-200 transition rounded hover:bg-white/5"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                  <div className="p-3 max-h-[200px] overflow-y-auto">
+                                    <div className="space-y-2">
+                                      {displayAttendees.map((email, idx) => (
+                                        <div key={idx} className="flex items-center gap-2 text-xs">
+                                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white font-semibold text-[10px]">
+                                            {email.charAt(0).toUpperCase()}
+                                          </div>
+                                          <span className="text-slate-300 truncate">{email}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex-1 min-h-0 overflow-hidden">
-                      <div className="h-full flex flex-col border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+
+                    {/* Full Notes Panel */}
+                    <div className="flex-1 min-h-0 rounded-xl border border-white/10 bg-[#0C0C0F] p-6 flex flex-col overflow-hidden">
+                      <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                        <h3 className="text-sm uppercase tracking-widest font-semibold text-slate-400">Your Notes</h3>
+                        <div className="flex items-center gap-3">
+                          <div className="w-28">
+                            <AudioLevelMeter label="Mic" level={audioLevels.mic} />
+                          </div>
+                          <div className="w-28">
+                            <AudioLevelMeter label="System" level={audioLevels.system} />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex-1 min-h-0 overflow-hidden">
                         <textarea
                           value={notes}
                           onChange={(e) => setNotes(e.target.value)}
-                          placeholder="Your prep notes..."
-                          className="w-full h-full flex-1 min-h-0 resize-none bg-transparent text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none leading-relaxed px-4 py-3 overflow-auto"
+                          placeholder="Take notes during your meeting..."
+                          className="w-full h-full resize-none bg-transparent text-base text-white placeholder-slate-500 focus:outline-none leading-relaxed overflow-auto"
                         />
                       </div>
                     </div>
+
+                    {/* Bottom Controls - Right aligned stop button */}
+                    <div className="flex-shrink-0 mt-2 flex items-center justify-end gap-2">
+                      {recordingState === 'paused' && (
+                        <button
+                          onClick={async () => {
+                            await window.kakarot.recording.discard();
+                            setPhase('recording');
+                            clearLiveTranscript();
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-700/80 text-white text-xs font-medium hover:bg-red-600/80 transition"
+                        >
+                          <X className="w-3 h-3" />
+                          Discard
+                        </button>
+                      )}
+                      <button
+                        onClick={handleStopRecording}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700/80 text-slate-300 text-xs font-medium hover:bg-slate-600/80 transition"
+                      >
+                        <Square className="w-3 h-3" />
+                        {recordingState === 'paused' ? 'Resume Transcribing' : 'Stop Transcribing'}
+                      </button>
+                    </div>
+
+                    {/* Live Transcription Capsule - Inside the card */}
+                    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10">
+                      <button
+                        onClick={() => setShowTranscriptPopover((open) => !open)}
+                        className={`flex items-center gap-2.5 rounded-full px-5 py-3 shadow-2xl transition-all duration-200 ${
+                          showTranscriptPopover
+                            ? 'bg-[#7C3AED] text-white shadow-purple-500/30'
+                            : 'bg-[#1A1A1A] border border-white/10 text-white hover:bg-[#252525]'
+                        }`}
+                        aria-label="Toggle live transcript"
+                      >
+                        <Mic className="w-4 h-4" />
+                        <span className="text-sm font-medium">Live Transcription</span>
+                      </button>
+                    </div>
                   </div>
                 ) : (
-                  <div className="h-full flex flex-col p-4 sm:p-6 flex-1 min-h-0 gap-4">
+                  <div className="h-full flex flex-col flex-1 min-h-0 gap-4 p-4 sm:p-6">
                     <div className="mb-4 flex items-center justify-between flex-shrink-0">
                       <div>
                         <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                           {phase === 'completed' ? 'Meeting Notes' : 'Recording'}
                         </p>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
-                          {phase === 'completed' ? 'Generated from your meeting' : 'Transcript is available in the floating pill below.'}
+                          {phase === 'completed' ? 'Generated from your meeting' : 'Processing your recording...'}
                         </p>
                       </div>
                       {phase === 'completed' && completedMeeting ? (
@@ -777,22 +1034,44 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                                 </span>
                                 <span className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Link</span>
                               </button>
+                              <button
+                                onClick={handleSlack}
+                                disabled={isSlackConnecting}
+                                className="w-full flex items-center justify-between px-3 py-2 rounded-md bg-slate-100 dark:bg-slate-700 text-sm font-medium text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-600 transition disabled:opacity-50"
+                              >
+                                <span className="flex items-center gap-2">
+                                  <img src={slackLogo} alt="Slack" className="w-4 h-4" />
+                                  {isSlackConnecting ? 'Connecting...' : 'Send to Slack'}
+                                </span>
+                              </button>
+                              {showSlackOptions && (
+                                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                                  <select
+                                    value={slackChannelId}
+                                    onChange={(e) => setSlackChannelId(e.target.value)}
+                                    className="w-full px-2 py-1.5 text-sm rounded-md bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100"
+                                  >
+                                    <option value="">Select channel...</option>
+                                    {slackChannels.map((channel) => (
+                                      <option key={channel.id} value={channel.id}>
+                                        {channel.isPrivate ? '🔒' : '#'} {channel.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    onClick={handleSlackSend}
+                                    disabled={!slackChannelId || isSlackSending}
+                                    className="w-full px-3 py-1.5 rounded-md bg-[#4ea8dd] hover:bg-[#3d96cb] text-white text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {isSlackSending ? 'Sending...' : 'Send'}
+                                  </button>
+                                </div>
+                              )}
                               <p className="text-[11px] text-slate-500 dark:text-slate-400 break-all leading-tight bg-slate-50 dark:bg-slate-900/60 rounded-md px-2 py-1">{shareLink}</p>
                             </div>
                           )}
                         </div>
-                      ) : (
-                        (isRecording || isPaused) && (
-                          <div className="flex items-center gap-3">
-                            <div className="w-40">
-                              <AudioLevelMeter label="Mic" level={audioLevels.mic} />
-                            </div>
-                            <div className="w-40">
-                              <AudioLevelMeter label="System" level={audioLevels.system} />
-                            </div>
-                          </div>
-                        )
-                      )}
+                      ) : null}
                     </div>
                     {isGenerating ? (
                       <div className="flex-1 flex items-center justify-center">
@@ -805,8 +1084,9 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                     ) : phase === 'completed' && completedMeeting ? (
                       <div className="flex-1 overflow-y-auto pb-32 space-y-6">
                         <div className="space-y-4">
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-3 min-w-0" ref={titleContainerRef}>
                             <input
+                              ref={titleInputRef}
                               value={titleInput}
                               onChange={(e) => setTitleInput(e.target.value)}
                               onBlur={() => persistTitle(titleInput)}
@@ -815,7 +1095,8 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                                   e.currentTarget.blur();
                                 }
                               }}
-                              className="flex-1 text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white leading-tight bg-transparent border-b border-transparent focus:border-[#8B5CF6] focus:outline-none"
+                              style={{ fontSize: `${titleFontSize}px` }}
+                              className="flex-1 min-w-0 w-full font-bold text-slate-900 dark:text-white leading-tight bg-transparent border-b border-transparent focus:border-[#8B5CF6] focus:outline-none"
                               placeholder="Untitled Meeting"
                             />
                             {isSavingTitle && <Loader2 className="w-5 h-5 animate-spin text-[#8B5CF6]" />}
@@ -824,7 +1105,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                           <div className="flex gap-3 overflow-visible">
                             <div className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-1.5">
                               <CalendarIcon className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                              <div className="text-sm text-slate-800 dark:text-slate-200">{formatDateTime(displayDate)}</div>
+                              <div className="text-sm text-slate-800 dark:text-slate-200">{formatMeetingDate(displayDate)}</div>
                             </div>
 
                             {displayAttendees && displayAttendees.length > 0 ? (
@@ -838,10 +1119,6 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                               </div>
                             )}
 
-                            <div className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-1.5">
-                              <Folder className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                              <div className="text-sm text-slate-800 dark:text-slate-200">{displayLocation || 'No folder'}</div>
-                            </div>
                           </div>
                         </div>
 
@@ -851,11 +1128,20 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                           </div>
                         )}
 
-                        {completedMeeting.notesMarkdown && (
-                          <div className="prose prose-sm max-w-none dark:prose-invert text-slate-800 dark:text-slate-200">
+                        {/* Structured Notes View - prefer when available */}
+                        {completedMeeting.notes && typeof completedMeeting.notes === 'object' &&
+                         (completedMeeting.notes as GeneratedStructuredNotes).topics?.length > 0 ? (
+                          <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-5 border border-slate-200 dark:border-slate-800">
+                            <StructuredNotesView
+                              notes={completedMeeting.notes as GeneratedStructuredNotes}
+                              meetingId={completedMeeting.id}
+                            />
+                          </div>
+                        ) : completedMeeting.notesMarkdown ? (
+                          <div className="prose prose-lg max-w-none dark:prose-invert text-slate-800 dark:text-slate-200">
                             <div dangerouslySetInnerHTML={{ __html: (completedMeeting.notesMarkdown as string).replace(/\n/g, '<br/>') }} />
                           </div>
-                        )}
+                        ) : null}
 
                         {liveTranscript.length > 0 && (
                           <div className="border-t border-slate-200 dark:border-slate-800 pt-6">
@@ -878,18 +1164,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                           </div>
                         )}
                       </div>
-                    ) : (
-                      <div className="flex-1 flex flex-col">
-                        <div className="flex-1 min-h-0 rounded-xl border border-slate-200/60 dark:border-slate-700/60 bg-white/5 dark:bg-slate-900/20 px-4 py-3">
-                          <textarea
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            placeholder="Your prep notes..."
-                            className="w-full h-full resize-none bg-transparent text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none leading-relaxed"
-                          />
-                        </div>
-                      </div>
-                    )}
+                    ) : null}
 
                     {phase === 'error' && (
                       <div className="mt-3 rounded-lg border border-red-300/40 bg-red-50/20 text-red-600 dark:text-red-400 px-3 py-2 text-sm">
@@ -927,37 +1202,124 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
         </div>
       </div>
 
-      {/* Floating transcript pill + popover */}
-      {(isRecording || isPaused) && !isGenerating && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30">
-          <button
-            onClick={() => setShowTranscriptPopover((open) => !open)}
-            className="flex items-center gap-2 rounded-full px-4 py-2 bg-slate-900 text-white shadow-lg shadow-slate-900/30 hover:shadow-slate-900/40 transition dark:bg-slate-800"
-            aria-label="Toggle live transcript"
-          >
-            <ScrollText className="w-4 h-4" />
-            <span className="text-sm font-medium">Live Transcript</span>
-          </button>
-          {showTranscriptPopover && (
-            <div className="mt-3 w-[380px] max-h-[420px] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 shadow-2xl backdrop-blur-md overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Live Transcript</p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Auto-scroll while recording.</p>
-                </div>
-                <button
-                  onClick={() => setShowTranscriptPopover(false)}
-                  className="h-8 w-8 inline-flex items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-700/80 transition"
-                  aria-label="Close transcript"
-                >
-                  <X className="w-4 h-4 text-slate-600 dark:text-slate-300" />
-                </button>
-              </div>
-              <div className="h-[340px] overflow-y-auto px-4 pb-4 pt-3">
-                <LiveTranscript segments={liveTranscript} currentPartials={currentPartials} />
+      {/* Transcript Popover - Fixed position, triggered by capsule inside the card */}
+      {(isRecording || isPaused) && !isGenerating && showTranscriptPopover && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 w-[480px] max-h-[450px] rounded-2xl border border-[#4ea8dd]/30 bg-[#0C0C0F] shadow-2xl shadow-[#4ea8dd]/30 overflow-hidden flex flex-col">
+          {/* Popover Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4ea8dd] opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#4ea8dd]"></span>
+                </span>
+                <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Live Transcript</span>
               </div>
             </div>
+            <button
+              onClick={() => setShowTranscriptPopover(false)}
+              className="p-1.5 rounded-lg hover:bg-white/5 transition"
+              aria-label="Close transcript"
+            >
+              <X className="w-4 h-4 text-slate-400" />
+            </button>
+          </div>
+
+          {/* Transcript Content */}
+          <div
+            ref={transcriptScrollRef}
+            className="flex-1 overflow-y-auto px-4 py-4 space-y-3"
+            onScroll={(e) => {
+              const target = e.target as HTMLDivElement;
+              const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 50;
+
+              // If user scrolled up (scrollTop decreased), disable auto-scroll
+              if (target.scrollTop < lastScrollTopRef.current && !isAtBottom) {
+                setIsAutoScrollEnabled(false);
+              }
+
+              // If user scrolled to bottom, re-enable auto-scroll
+              if (isAtBottom) {
+                setIsAutoScrollEnabled(true);
+              }
+
+              lastScrollTopRef.current = target.scrollTop;
+            }}
+          >
+            {liveTranscript.length === 0 && !currentPartials.mic && !currentPartials.system ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Mic className="w-8 h-8 text-slate-600 mb-3" />
+                <p className="text-sm text-slate-500">Waiting for speech...</p>
+                <p className="text-xs text-slate-600 mt-1">Start talking and the transcript will appear here</p>
+              </div>
+            ) : (
+              <>
+                {groupTranscriptSegments(liveTranscript).map((group) => (
+                  <div
+                    key={group.id}
+                    className={`flex ${group.source === 'mic' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
+                        group.source === 'mic'
+                          ? 'bg-[#7C3AED] text-white rounded-br-md'
+                          : 'bg-[#2A2A2A] text-slate-200 rounded-bl-md'
+                      }`}
+                    >
+                      <p className="leading-relaxed">{group.text}</p>
+                    </div>
+                  </div>
+                ))}
+                {/* System partial */}
+                {currentPartials.system && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm opacity-60 bg-[#2A2A2A] text-slate-200 rounded-bl-md">
+                      <p className="leading-relaxed">{currentPartials.system.text}</p>
+                    </div>
+                  </div>
+                )}
+                {/* Mic partial */}
+                {currentPartials.mic && (
+                  <div className="flex justify-end">
+                    <div className="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm opacity-60 bg-[#7C3AED] text-white rounded-br-md">
+                      <p className="leading-relaxed">{currentPartials.mic.text}</p>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Scroll to bottom button */}
+          {!isAutoScrollEnabled && liveTranscript.length > 0 && (
+            <button
+              onClick={() => {
+                setIsAutoScrollEnabled(true);
+                if (transcriptScrollRef.current) {
+                  transcriptScrollRef.current.scrollTo({
+                    top: transcriptScrollRef.current.scrollHeight,
+                    behavior: 'smooth'
+                  });
+                }
+              }}
+              className="absolute bottom-16 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full bg-[#7C3AED] text-white text-xs font-medium shadow-lg hover:bg-[#6D28D9] transition"
+            >
+              <ChevronDown className="w-4 h-4" />
+              New messages
+            </button>
           )}
+
+          {/* Legend */}
+          <div className="flex items-center justify-center gap-6 px-4 py-2.5 border-t border-white/10 bg-black/20 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-[#2A2A2A]"></div>
+              <span className="text-xs text-slate-500">System Audio</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-[#7C3AED]"></div>
+              <span className="text-xs text-slate-500">Your Mic</span>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1032,6 +1394,12 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
       )}
     </div>
     )}
+
+    {/* Search Popup */}
+    <SearchPopup
+      isOpen={showSearchPopup}
+      onClose={() => setShowSearchPopup(false)}
+    />
     </>
   );
 }

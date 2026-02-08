@@ -1,14 +1,20 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
-import type { Meeting } from '@shared/types';
-import { Search, Trash2, Folder, Calendar as CalendarIcon, Users, Share2, Copy, Link, Mail, MessageCircle, Send, X } from 'lucide-react';
+import type { Meeting, Person } from '@shared/types';
+import { Search, Trash2, Folder, Calendar as CalendarIcon, Users, Share2, Copy, Link, Mail, MessageCircle, Send, X, Plus, Check } from 'lucide-react';
 import { formatDuration, formatTimestamp, getSpeakerLabel, getAvatarColor, getInitials } from '../lib/formatters';
 import { MeetingListSkeleton } from './Skeleton';
 import { ConfirmDialog } from './ConfirmDialog';
+import { TranscriptDeepDive } from './TranscriptDeepDive';
+import { NotesWithDeepDive } from './NotesWithDeepDive';
+import { StructuredNotesView } from './StructuredNotesView';
+import type { GeneratedStructuredNotes } from '@shared/types';
 import slackLogo from '../assets/slack.png';
+import { toast } from '../stores/toastStore';
+import { usePopoverPosition } from '../lib/popoverUtils';
 
 export default function HistoryView() {
-  const { meetings, setMeetings, selectedMeeting, setSelectedMeeting } = useAppStore();
+  const { meetings, setMeetings, selectedMeeting, setSelectedMeeting, searchQuery: globalSearchQuery, setSearchQuery: setGlobalSearchQuery } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [titleDraft, setTitleDraft] = useState('');
@@ -19,12 +25,39 @@ export default function HistoryView() {
   const [chatMessages, setChatMessages] = useState<Array<{role: 'user' | 'assistant', content: string}>>([]);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [slackToken, setSlackToken] = useState<string | null>(null);
+  const [slackChannels, setSlackChannels] = useState<Array<{ id: string; name: string; isPrivate?: boolean }>>([]);
+  const [slackChannelId, setSlackChannelId] = useState('');
+  const [isSlackConnecting, setIsSlackConnecting] = useState(false);
+  const [isSlackSending, setIsSlackSending] = useState(false);
+  const [showSlackOptions, setShowSlackOptions] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; meetingId: string | null }>({
     isOpen: false,
     meetingId: null,
   });
+
+  // Manual notes state
+  const [manualNotes, setManualNotes] = useState('');
+  const [isNoteSaving, setIsNoteSaving] = useState(false);
+  const [noteLastSaved, setNoteLastSaved] = useState<Date | null>(null);
+  const [showManualNotesInput, setShowManualNotesInput] = useState(false);
+  
+  // Add attendees popover state
+  const [showAddAttendeesPopover, setShowAddAttendeesPopover] = useState(false);
+  const [contactList, setContactList] = useState<Person[]>([]);
+  const [contactSearchQuery, setContactSearchQuery] = useState('');
+  const [isLoadingContacts, setIsLoadingContacts] = useState(false);
+  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
+  
+  const saveNoteTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const notesInitialLoadRef = useRef(false);
+  const addAttendeesRef = useRef<HTMLDivElement | null>(null);
+
   const shareRef = useRef<HTMLDivElement | null>(null);
+  const shareButtonRef = useRef<HTMLButtonElement | null>(null);
   const chatInputRef = useRef<HTMLInputElement | null>(null);
+  
+  const sharePopoverPosition = usePopoverPosition(showSharePopover, shareButtonRef, 256, 400, 'below');
 
   const loadMeetings = useCallback(async () => {
     setIsLoading(true);
@@ -74,6 +107,19 @@ export default function HistoryView() {
     }
   }, [showChatPopover]);
 
+  // Check for global search query from SearchPopup navigation
+  useEffect(() => {
+    if (globalSearchQuery) {
+      setSearchQuery(globalSearchQuery);
+      // Execute search with the global query
+      window.kakarot.meetings.search(globalSearchQuery).then((results) => {
+        setMeetings(results);
+      });
+      // Clear the global search query after consuming
+      setGlobalSearchQuery(null);
+    }
+  }, [globalSearchQuery, setGlobalSearchQuery, setMeetings]);
+
   const handleSearch = async () => {
     if (searchQuery.trim()) {
       const results = await window.kakarot.meetings.search(searchQuery);
@@ -101,12 +147,6 @@ export default function HistoryView() {
     }
     setDeleteConfirm({ isOpen: false, meetingId: null });
     loadMeetings();
-  };
-
-  const handleGenerateSummary = async () => {
-    if (!selectedMeeting) return;
-    const summary = await window.kakarot.meetings.summarize(selectedMeeting.id);
-    setSelectedMeeting({ ...selectedMeeting, summary });
   };
 
   const handleTitleSave = async () => {
@@ -146,6 +186,76 @@ export default function HistoryView() {
     loadMeetings();
   }, [loadMeetings]);
 
+  // Load existing manual notes when meeting is selected
+  useEffect(() => {
+    if (!selectedMeeting) {
+      setManualNotes('');
+      setNoteLastSaved(null);
+      setShowManualNotesInput(false);
+      notesInitialLoadRef.current = false;
+      return;
+    }
+
+    // Load manual notes from noteEntries
+    const manualNoteEntries = selectedMeeting.noteEntries
+      ?.filter(entry => entry.type === 'manual')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    if (manualNoteEntries && manualNoteEntries.length > 0) {
+      setManualNotes(manualNoteEntries[0].content);
+      setNoteLastSaved(new Date(manualNoteEntries[0].createdAt));
+      setShowManualNotesInput(true);
+    } else {
+      setManualNotes('');
+      setNoteLastSaved(null);
+      // Show input if meeting has no generated notes
+      setShowManualNotesInput(!selectedMeeting.notesMarkdown && !selectedMeeting.summary);
+    }
+    notesInitialLoadRef.current = true;
+  }, [selectedMeeting]);
+
+  // Autosave manual notes
+  const saveManualNotes = useCallback(async (content: string) => {
+    if (!selectedMeeting?.id || !content.trim()) return;
+
+    setIsNoteSaving(true);
+    try {
+      await window.kakarot.meetings.saveManualNotes(selectedMeeting.id, content);
+      setNoteLastSaved(new Date());
+      // Refresh the meeting to get updated noteEntries
+      const updatedMeeting = await window.kakarot.meetings.get(selectedMeeting.id);
+      if (updatedMeeting) {
+        setSelectedMeeting(updatedMeeting);
+      }
+    } catch (error) {
+      console.error('Failed to save manual notes:', error);
+    } finally {
+      setIsNoteSaving(false);
+    }
+  }, [selectedMeeting?.id, setSelectedMeeting]);
+
+  // Debounced autosave on notes change
+  useEffect(() => {
+    if (saveNoteTimerRef.current) {
+      clearTimeout(saveNoteTimerRef.current);
+    }
+
+    // Don't save if not initialized or no content
+    if (!notesInitialLoadRef.current) return;
+
+    if (manualNotes.trim()) {
+      saveNoteTimerRef.current = setTimeout(() => {
+        saveManualNotes(manualNotes);
+      }, 1000);
+    }
+
+    return () => {
+      if (saveNoteTimerRef.current) {
+        clearTimeout(saveNoteTimerRef.current);
+      }
+    };
+  }, [manualNotes, saveManualNotes]);
+
   const handleCopyText = async () => {
     if (!selectedMeeting) return;
     const text = `${selectedMeeting.title}\n${selectedMeeting.overview || ''}\n${selectedMeeting.notesMarkdown || selectedMeeting.summary || ''}`;
@@ -180,23 +290,99 @@ export default function HistoryView() {
     setShowSharePopover(false);
   };
 
-  const handleSlack = () => {
+  const handleSlack = async () => {
     if (!selectedMeeting) return;
-    const text = `${selectedMeeting.title}\n${selectedMeeting.overview || selectedMeeting.notesMarkdown || selectedMeeting.summary || ''}`;
-    const slackText = encodeURIComponent(text);
-    window.open(`https://slack.com/intl/share?url=kakarot://meeting/${selectedMeeting.id}&text=${slackText}`, '_blank');
-    setShowSharePopover(false);
+
+    if (!slackToken) {
+      try {
+        setIsSlackConnecting(true);
+        const result = await window.kakarot.slack.connect();
+        setSlackToken(result.accessToken);
+        const channelList = await window.kakarot.slack.getChannels(result.accessToken);
+        setSlackChannels(channelList);
+        setShowSlackOptions(true);
+      } catch (err) {
+        console.error('Slack connect failed', err);
+        toast.error('Failed to connect to Slack');
+      } finally {
+        setIsSlackConnecting(false);
+      }
+      return;
+    }
+
+    setShowSlackOptions(true);
+  };
+
+  const handleSlackSend = async () => {
+    if (!selectedMeeting || !slackToken || !slackChannelId) return;
+
+    setIsSlackSending(true);
+    try {
+      const text = `${selectedMeeting.title}\n${selectedMeeting.overview || selectedMeeting.notesMarkdown || selectedMeeting.summary || ''}`;
+      await window.kakarot.slack.sendNote(slackToken, slackChannelId, text);
+      toast.success('Sent to Slack');
+      setShowSharePopover(false);
+      setShowSlackOptions(false);
+    } catch (err) {
+      console.error('Slack send failed', err);
+      toast.error('Failed to send to Slack');
+    } finally {
+      setIsSlackSending(false);
+    }
   };
 
   const formatMeetingDate = (value: string | number | Date) => {
     const date = new Date(value);
     const day = date.toLocaleDateString('en-US', { weekday: 'short' });
-    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const month = date.toLocaleDateString('en-US', { month: 'long' });
     const dayOfMonth = String(date.getDate()).padStart(2, '0');
     const year = date.getFullYear();
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${day}, ${month}/${dayOfMonth}/${year} - ${hours}:${minutes}`;
+    return `${day} - ${month} ${dayOfMonth}, ${year}`;
+  };
+
+  const loadContactsForPopover = useCallback(async () => {
+    setIsLoadingContacts(true);
+    try {
+      const people = await window.kakarot.people.list();
+      setContactList(people);
+      // Pre-select existing attendees
+      const existing = new Set(selectedMeeting?.attendeeEmails || []);
+      setSelectedContacts(existing);
+    } catch (error) {
+      console.error('Failed to load contacts:', error);
+    } finally {
+      setIsLoadingContacts(false);
+    }
+  }, [selectedMeeting]);
+
+  const handleAddAttendees = async () => {
+    if (!selectedMeeting) return;
+    
+    try {
+      const attendeeEmailsArray = Array.from(selectedContacts);
+      await window.kakarot.meetings.updateAttendees(selectedMeeting.id, attendeeEmailsArray);
+      
+      // Update the selected meeting in local state
+      const updated = { ...selectedMeeting, attendeeEmails: attendeeEmailsArray };
+      setSelectedMeeting(updated);
+      setMeetings(meetings.map(m => m.id === selectedMeeting.id ? updated : m));
+      
+      setShowAddAttendeesPopover(false);
+      toast.success('Attendees updated successfully');
+    } catch (error) {
+      console.error('Failed to update attendees:', error);
+      toast.error('Failed to update attendees');
+    }
+  };
+
+  const toggleContactSelection = (email: string) => {
+    const newSelected = new Set(selectedContacts);
+    if (newSelected.has(email)) {
+      newSelected.delete(email);
+    } else {
+      newSelected.add(email);
+    }
+    setSelectedContacts(newSelected);
   };
 
   const getAttendeesLabel = (meeting: Meeting): string => {
@@ -297,12 +483,12 @@ export default function HistoryView() {
       </div>
 
       {/* Meeting detail */}
-      <div className="flex-1 flex flex-col bg-[#050505] overflow-hidden">
+      <div className="flex-1 flex flex-col bg-[#050505] relative z-10 min-w-0">
         {selectedMeeting ? (
           <>
             {/* Header */}
             <div className="p-6 border-b border-[#1A1A1A] bg-[#121212]">
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start justify-between gap-4 min-w-0">
                 <div className="flex-1 space-y-3 min-w-0">
                   {isEditingTitle ? (
                     <input
@@ -317,54 +503,66 @@ export default function HistoryView() {
                         }
                       }}
                       autoFocus
-                      className="w-full bg-transparent border-b border-[#1A1A1A] focus:border-[#7C3AED] focus:outline-none text-2xl font-semibold text-white truncate"
+                      className="w-full bg-transparent border-b border-[#1A1A1A] focus:border-[#7C3AED] focus:outline-none text-xl font-semibold text-white break-words"
                       aria-label="Edit meeting title"
                     />
                   ) : (
                     <button
                       type="button"
                       onClick={() => setIsEditingTitle(true)}
-                      className="text-left w-full text-2xl font-semibold text-white truncate hover:text-slate-200"
+                      className="text-left w-full text-xl font-semibold text-white break-words hover:text-slate-200"
                       aria-label="Edit meeting title"
                     >
                       {selectedMeeting.title}
                     </button>
                   )}
-                  <div className="flex gap-3 items-stretch flex-wrap">
+                  <div className="flex gap-3 items-stretch flex-wrap min-w-0 max-w-full">
                     <div className="flex flex-none items-center gap-2 rounded-lg border border-[#1A1A1A] bg-[#171717] px-3 py-2 whitespace-nowrap">
                       <CalendarIcon className="w-4 h-4 text-slate-400" />
                       <div className="text-sm text-slate-200 whitespace-nowrap">
                         {formatMeetingDate(selectedMeeting.createdAt)}
                       </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        if ((selectedMeeting.attendeeEmails && selectedMeeting.attendeeEmails.length > 0) ||
-                            (selectedMeeting.participants && selectedMeeting.participants.length > 0)) {
-                          setShowAttendeeModal(true);
-                        }
-                      }}
-                      className="flex flex-none items-center gap-2 rounded-lg border border-[#1A1A1A] bg-[#171717] px-3 py-2 whitespace-nowrap hover:bg-[#1D1D1F] transition-colors cursor-pointer"
-                    >
-                      <Users className="w-4 h-4 text-slate-400" />
-                      <div className="text-sm text-slate-200 whitespace-nowrap">
-                        {getAttendeesLabel(selectedMeeting)}
-                      </div>
-                    </button>
-                    <div className="flex flex-none items-center gap-2 rounded-lg border border-[#1A1A1A] bg-[#171717] px-3 py-2 whitespace-nowrap">
-                      <Folder className="w-4 h-4 text-slate-400" />
-                      <div className="text-sm text-slate-200 whitespace-nowrap">No folder</div>
-                    </div>
-                    {!selectedMeeting.notesMarkdown && (
+                    {(selectedMeeting.attendeeEmails && selectedMeeting.attendeeEmails.length > 0) ||
+                    (selectedMeeting.participants && selectedMeeting.participants.length > 0) ? (
                       <button
-                        onClick={handleGenerateSummary}
-                        className="flex flex-none items-center gap-2 rounded-lg border border-[#1A1A1A] bg-indigo-500 hover:bg-indigo-400 text-white px-3 py-2 whitespace-nowrap text-sm transition-colors"
+                        onClick={() => {
+                          setShowAttendeeModal(true);
+                          setShowAddAttendeesPopover(true);
+                          loadContactsForPopover();
+                        }}
+                        className="flex flex-none items-center gap-2 rounded-lg border border-[#1A1A1A] bg-[#171717] px-3 py-2 whitespace-nowrap hover:bg-[#1D1D1F] transition-colors cursor-pointer"
                       >
-                        Generate Notes
+                        <Users className="w-4 h-4 text-slate-400" />
+                        <div className="text-sm text-slate-200 whitespace-nowrap">
+                          {getAttendeesLabel(selectedMeeting)}
+                        </div>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setShowAttendeeModal(true);
+                          setShowAddAttendeesPopover(true);
+                          loadContactsForPopover();
+                        }}
+                        className="flex flex-none items-center gap-2 rounded-lg border border-[#1A1A1A] bg-[#171717] hover:bg-[#1D1D1F] text-slate-100 px-3 py-2 whitespace-nowrap text-sm transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Attendees
+                      </button>
+                    )}
+                    {!showManualNotesInput && !manualNotes.trim() && !selectedMeeting.notesMarkdown && (
+                      <button
+                        onClick={() => setShowManualNotesInput(true)}
+                        className="flex flex-none items-center gap-2 rounded-lg border border-[#1A1A1A] bg-[#171717] hover:bg-[#1D1D1F] text-slate-100 px-3 py-2 whitespace-nowrap text-sm transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Notes
                       </button>
                     )}
                     <div className="relative" ref={shareRef}>
                       <button
+                        ref={shareButtonRef}
                         onClick={() => setShowSharePopover((prev) => !prev)}
                         className="flex flex-none items-center gap-2 rounded-lg border border-[#1A1A1A] bg-[#171717] hover:bg-[#1D1D1F] text-slate-100 px-3 py-2 whitespace-nowrap text-sm transition-colors"
                       >
@@ -372,7 +570,13 @@ export default function HistoryView() {
                         Share
                       </button>
                       {showSharePopover && (
-                        <div className="absolute right-0 mt-2 w-56 rounded-lg border border-slate-700 bg-[#121212] shadow-soft-card p-3 space-y-2 z-50">
+                        <div 
+                          className="fixed z-[9999] w-56 rounded-lg border border-slate-700 bg-[#121212] shadow-2xl p-3 space-y-2"
+                          style={{
+                            top: `${sharePopoverPosition.top}px`,
+                            left: `${sharePopoverPosition.left}px`,
+                          }}
+                        >
                           <p className="text-xs text-slate-400 px-1">Share your meeting</p>
                           <button
                             onClick={handleCopyText}
@@ -400,14 +604,42 @@ export default function HistoryView() {
                             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md bg-[#171717] hover:bg-[#1D1D1F] text-slate-100 text-sm transition-colors"
                           >
                             <img src={slackLogo} alt="Slack" className="w-4 h-4" />
-                            <span>Send to Slack</span>
+                            <span>{isSlackConnecting ? 'Connecting...' : 'Send to Slack'}</span>
                           </button>
+                          {showSlackOptions && (
+                            <div className="mt-2 space-y-2 rounded-md border border-[#1A1A1A] bg-[#0F0F10] p-3">
+                              <label className="block text-xs text-slate-400">Select channel</label>
+                              <select
+                                className="w-full p-2 border border-[#1A1A1A] rounded bg-[#0F0F10] text-slate-100"
+                                onChange={(e) => setSlackChannelId(e.target.value)}
+                                value={slackChannelId}
+                              >
+                                <option value="">-- Choose a channel --</option>
+                                {slackChannels.map((channel) => (
+                                  <option key={channel.id} value={channel.id}>
+                                    {channel.isPrivate ? '🔒' : '#'} {channel.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                onClick={handleSlackSend}
+                                disabled={!slackChannelId || isSlackSending}
+                                className={`w-full py-2 px-3 rounded text-sm font-medium text-white transition-colors ${
+                                  !slackChannelId || isSlackSending
+                                    ? 'bg-gray-500 cursor-not-allowed'
+                                    : 'bg-[#4ea8dd] hover:bg-[#3d96cb]'
+                                }`}
+                              >
+                                {isSlackSending ? 'Sending...' : 'Send notes'}
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
                   </div>
                   <p className="text-sm text-slate-400">
-                    {formatDuration(selectedMeeting.duration)} · {selectedMeeting.transcript.length} segments
+                    {formatDuration(selectedMeeting.duration)}
                   </p>
                 </div>
               </div>
@@ -421,15 +653,27 @@ export default function HistoryView() {
                 </div>
               )}
 
-              {/* Notes */}
-              {selectedMeeting.notesMarkdown && (
-                <div className="bg-[#121212] rounded-xl p-4 border border-[#1A1A1A]">
-                  <h2 className="text-sm font-medium text-slate-200 mb-2">Notes</h2>
-                  <div className="text-sm text-slate-100 whitespace-pre-wrap prose prose-invert prose-sm max-w-none">
-                    {selectedMeeting.notesMarkdown}
+              {/* Generated Notes - prefer structured view when available */}
+              {selectedMeeting.notes && typeof selectedMeeting.notes === 'object' &&
+               (selectedMeeting.notes as GeneratedStructuredNotes).topics?.length > 0 ? (
+                <div className="bg-[#121212] rounded-xl p-4 border border-[#1A1A1A] relative overflow-visible">
+                  <h2 className="text-sm font-medium text-slate-200 mb-3">Notes</h2>
+                  <StructuredNotesView
+                    notes={selectedMeeting.notes as GeneratedStructuredNotes}
+                    meetingId={selectedMeeting.id}
+                  />
+                </div>
+              ) : selectedMeeting.notesMarkdown ? (
+                <div className="bg-[#121212] rounded-xl p-4 border border-[#1A1A1A] relative overflow-visible">
+                  <h2 className="text-sm font-medium text-slate-200 mb-3">Generated Notes</h2>
+                  <div className="text-lg text-slate-100">
+                    <NotesWithDeepDive
+                      notesMarkdown={selectedMeeting.notesMarkdown}
+                      meetingId={selectedMeeting.id}
+                    />
                   </div>
                 </div>
-              )}
+              ) : null}
 
               {/* Legacy Summary */}
               {selectedMeeting.summary && !selectedMeeting.notesMarkdown && (
@@ -438,6 +682,31 @@ export default function HistoryView() {
                   <p className="text-sm text-slate-100 whitespace-pre-wrap">
                     {selectedMeeting.summary}
                   </p>
+                </div>
+              )}
+
+              {/* Manual Notes - shown after generated notes when user has taken notes */}
+              {(showManualNotesInput || manualNotes.trim()) && (
+                <div className="bg-[#121212] rounded-xl p-4 border border-[#1A1A1A]">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-sm font-medium text-slate-200">My Notes</h2>
+                    <div className="flex items-center gap-2 text-xs">
+                      {isNoteSaving && (
+                        <span className="text-amber-400">Saving...</span>
+                      )}
+                      {!isNoteSaving && noteLastSaved && (
+                        <span className="text-emerald-400">
+                          Saved {noteLastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <textarea
+                    value={manualNotes}
+                    onChange={(e) => setManualNotes(e.target.value)}
+                    placeholder="Write your notes here..."
+                    className="w-full min-h-[120px] bg-[#0F0F10] border border-[#1A1A1A] text-slate-100 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/50 placeholder:text-slate-500 resize-y"
+                  />
                 </div>
               )}
 
@@ -453,7 +722,7 @@ export default function HistoryView() {
                       }`}
                     >
                       <div
-                        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                        className={`max-w-[80%] rounded-2xl px-4 py-3 group ${
                           segment.source === 'mic'
                             ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white'
                             : 'bg-[#121212] text-slate-100 border border-[#1A1A1A]'
@@ -463,7 +732,13 @@ export default function HistoryView() {
                           {getSpeakerLabel(segment.source)} -{' '}
                           {formatTimestamp(segment.timestamp)}
                         </div>
-                        <p className="text-sm leading-relaxed">{segment.text}</p>
+                        <div className="flex items-start">
+                          <p className="text-sm leading-relaxed flex-1">{segment.text}</p>
+                          <TranscriptDeepDive
+                            segment={segment}
+                            meetingId={selectedMeeting.id}
+                          />
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -485,7 +760,10 @@ export default function HistoryView() {
       {showAttendeeModal && selectedMeeting && (
         <div 
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onClick={() => setShowAttendeeModal(false)}
+          onClick={() => {
+            setShowAttendeeModal(false);
+            setShowAddAttendeesPopover(false);
+          }}
         >
           <div 
             className="bg-[#121212] rounded-xl border border-[#1A1A1A] p-6 max-w-md w-full mx-4 shadow-xl"
@@ -494,7 +772,10 @@ export default function HistoryView() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-white">Attendees</h3>
               <button
-                onClick={() => setShowAttendeeModal(false)}
+                onClick={() => {
+                  setShowAttendeeModal(false);
+                  setShowAddAttendeesPopover(false);
+                }}
                 className="text-slate-400 hover:text-white transition-colors"
               >
                 ✕
@@ -525,6 +806,97 @@ export default function HistoryView() {
                 ))
               ) : (
                 <p className="text-sm text-slate-400 text-center py-4">No attendees</p>
+              )}
+            </div>
+            
+            {/* Add Attendees Section */}
+            <div className="mt-4 pt-4 border-t border-[#1A1A1A]">
+              {!showAddAttendeesPopover ? (
+                <button
+                  onClick={() => {
+                    setShowAddAttendeesPopover(true);
+                    loadContactsForPopover();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 rounded-lg border border-[#1A1A1A] bg-[#171717] hover:bg-[#1D1D1F] text-slate-100 px-3 py-2 text-sm transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Attendees
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-white">Tag People in Note</h4>
+                    <button
+                      onClick={() => setShowAddAttendeesPopover(false)}
+                      className="p-1 text-slate-400 hover:text-white transition"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  
+                  {/* Search bar */}
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Search contacts..."
+                      value={contactSearchQuery}
+                      onChange={(e) => setContactSearchQuery(e.target.value)}
+                      className="w-full px-3 py-2 bg-[#1D1D1F] border border-[#2D2D2F] rounded-lg text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#4ea8dd]/50"
+                    />
+                  </div>
+                  
+                  {/* Contacts list */}
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {isLoadingContacts ? (
+                      <p className="text-sm text-slate-400 text-center py-4">Loading contacts...</p>
+                    ) : (
+                      contactList
+                        .filter(person => 
+                          person.name?.toLowerCase().includes(contactSearchQuery.toLowerCase()) ||
+                          person.email.toLowerCase().includes(contactSearchQuery.toLowerCase())
+                        )
+                        .map((person) => (
+                          <button
+                            key={person.email}
+                            onClick={() => toggleContactSelection(person.email)}
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-[#1D1D1F] hover:bg-[#2D2D2F] transition-colors text-left"
+                          >
+                            <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                              selectedContacts.has(person.email)
+                                ? 'bg-[#4ea8dd] border-[#4ea8dd]'
+                                : 'border-slate-500'
+                            }`}>
+                              {selectedContacts.has(person.email) && (
+                                <Check className="w-3 h-3 text-white" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-white truncate">{person.name || person.email}</p>
+                              {person.name && (
+                                <p className="text-xs text-slate-400 truncate">{person.email}</p>
+                              )}
+                            </div>
+                          </button>
+                        ))
+                    )}
+                  </div>
+                  
+                  {/* Action buttons */}
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      onClick={() => setShowAddAttendeesPopover(false)}
+                      className="flex-1 px-3 py-2 rounded-lg bg-[#1D1D1F] hover:bg-[#2D2D2F] text-white text-sm transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAddAttendees}
+                      className="flex-1 px-3 py-2 rounded-lg bg-[#4ea8dd] hover:bg-[#3d96cb] text-white text-sm transition-colors font-medium"
+                    >
+                      Update
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>

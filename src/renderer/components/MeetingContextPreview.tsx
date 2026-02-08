@@ -1,13 +1,15 @@
 import React from 'react';
 import type { CalendarEvent } from '@shared/types';
-import { Calendar, Clock, Users, MapPin, FileText, X } from 'lucide-react';
+import { Calendar, Clock, Users, MapPin, FileText, X, Sparkles, Mic } from 'lucide-react';
 
 interface MeetingContextPreviewProps {
   meeting: CalendarEvent;
   onDismiss?: () => void;
+  onPrep?: (meeting: CalendarEvent) => void;
+  onTranscribeNow?: (meeting: CalendarEvent) => void;
 }
 
-export default function MeetingContextPreview({ meeting, onDismiss }: MeetingContextPreviewProps): JSX.Element {
+export default function MeetingContextPreview({ meeting, onDismiss, onPrep, onTranscribeNow }: MeetingContextPreviewProps): JSX.Element {
   const formatTime = (date: Date): string => {
     return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
@@ -60,11 +62,11 @@ export default function MeetingContextPreview({ meeting, onDismiss }: MeetingCon
 
           {/* Location */}
           {meeting.location && (
-            <div className="flex items-center gap-3 text-sm">
-              <div className="p-2 rounded-lg bg-purple-500/10">
-                <MapPin className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            <div className="flex items-start gap-3 text-sm">
+              <div className="p-2 rounded-lg bg-[#4ea8dd]/10 flex-shrink-0">
+                <MapPin className="w-4 h-4 text-[#4ea8dd] dark:text-[#4ea8dd]" />
               </div>
-              <p className="text-slate-700 dark:text-slate-300">{meeting.location}</p>
+              <p className="text-slate-700 dark:text-slate-300 break-all overflow-hidden flex-1">{meeting.location}</p>
             </div>
           )}
 
@@ -103,11 +105,11 @@ export default function MeetingContextPreview({ meeting, onDismiss }: MeetingCon
               <div className="p-2 rounded-lg bg-orange-500/10 flex-shrink-0">
                 <FileText className="w-4 h-4 text-orange-600 dark:text-orange-400" />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <p className="text-slate-600 dark:text-slate-400 text-xs font-medium mb-1">
                   Agenda
                 </p>
-                <p className="text-slate-700 dark:text-slate-300 text-sm line-clamp-3">
+                <p className="text-slate-700 dark:text-slate-300 text-sm line-clamp-3 overflow-hidden break-words">
                   {meeting.description}
                 </p>
               </div>
@@ -124,6 +126,30 @@ export default function MeetingContextPreview({ meeting, onDismiss }: MeetingCon
             {meeting.provider === 'icloud' && 'iCloud Calendar'}
             {meeting.provider === 'unknown' && 'Calendar'}
           </p>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-3 mb-6">
+          <button
+            onClick={() => {
+              onPrep?.(meeting);
+              onDismiss?.();
+            }}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-[#4ea8dd]/10 border border-[#4ea8dd]/30 hover:bg-[#4ea8dd]/20 hover:border-[#4ea8dd]/50 transition-all text-[#4ea8dd] font-medium"
+          >
+            <Sparkles className="w-4 h-4" />
+            Prep
+          </button>
+          <button
+            onClick={() => {
+              onTranscribeNow?.(meeting);
+              onDismiss?.();
+            }}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 hover:border-red-500/50 transition-all text-red-500 dark:text-red-400 font-medium"
+          >
+            <Mic className="w-4 h-4" />
+            Transcribe Now
+          </button>
         </div>
 
         {/* Info text */}

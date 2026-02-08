@@ -5,6 +5,7 @@ import { registerSettingsHandlers } from './settingsHandlers';
 import { registerCalloutHandlers } from './calloutHandlers';
 import { registerCalendarHandlers } from './calendarHandlers';
 import { registerPeopleHandlers } from './peopleHandlers';
+import { registerBranchHandlers } from './branchHandlers';
 import { registerCRMHandlers, setCRMHandlersMainWindow } from './crmHandlers';
 import { registerChatHandlers } from './chatHandlers';
 import { registerPrepHandlers } from './prepHandlers';
@@ -23,6 +24,7 @@ export function registerAllHandlers(
   registerCalloutHandlers();
   registerCalendarHandlers();
   registerPeopleHandlers();
+  registerBranchHandlers();
   setCRMHandlersMainWindow(mainWindow);
   registerCRMHandlers();
   registerChatHandlers();

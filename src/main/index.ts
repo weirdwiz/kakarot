@@ -6,6 +6,7 @@ import { createCalloutWindow } from './windows/calloutWindow';
 import { initializeDatabase, closeDatabase } from './data/database';
 import { initializeContainer, getContainer } from './core/container';
 import { registerAllHandlers } from './handlers';
+import { registerSlackHandlers } from './handlers/SlackHandlers'; // ✅ This works if file is in handlers folder
 import { createLogger } from './core/logger';
 import { initializeErrorHandler } from './core/errorHandler';
 import { startPerformanceLogging, stopPerformanceLogging } from './utils/performance';
@@ -16,78 +17,145 @@ import type { Callout } from '@shared/types';
 // Load .env from project root
 config({ path: resolve(__dirname, '../../.env') });
 
-// Initialize global error handlers early
 initializeErrorHandler();
 
 const logger = createLogger('Main');
+const PROTOCOL_SCHEME = 'treeto';
+
+app.setAsDefaultProtocolClient(PROTOCOL_SCHEME);
+
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  app.emit('treeto-oauth-url', url);
+});
 
 let mainWindow: BrowserWindow | null = null;
 let calloutWindow: BrowserWindow | null = null;
 
-// Make mainWindow globally accessible for notifications
+const CALENDAR_CONTACTS_SYNC_INTERVAL = 5 * 24 * 60 * 60 * 1000;
+
+async function checkAndRunCalendarContactsSync(): Promise<void> {
+  try {
+    const container = getContainer();
+    const settings = container.settingsRepo.getSettings();
+
+    const hasCalendar = settings.calendarConnections?.google || settings.calendarConnections?.outlook;
+    if (!hasCalendar) return;
+
+    const lastSync = settings.lastCalendarContactsSync || 0;
+    const timeSinceLastSync = Date.now() - lastSync;
+
+    if (timeSinceLastSync < CALENDAR_CONTACTS_SYNC_INTERVAL) return;
+
+    logger.info('Running auto-sync of calendar contacts');
+
+    const now = new Date();
+    const sixMonthsAgo = new Date(now.getTime() - 6 * 30 * 24 * 60 * 60 * 1000);
+    const sixMonthsFromNow = new Date(now.getTime() + 6 * 30 * 24 * 60 * 60 * 1000);
+
+    const events = await container.calendarService.fetchEventsInRange(sixMonthsAgo, sixMonthsFromNow);
+    
+    const attendeeMap = new Map<string, { email: string; name?: string }>();
+    for (const event of events) {
+      if (event.attendees) {
+        for (const attendee of event.attendees) {
+          if (attendee.email && !attendeeMap.has(attendee.email.toLowerCase())) {
+            attendeeMap.set(attendee.email.toLowerCase(), {
+              email: attendee.email.toLowerCase(),
+              name: attendee.name,
+            });
+          }
+        }
+      }
+    }
+
+    const uniqueAttendees = Array.from(attendeeMap.values());
+    const peopleApiFetcher = (email: string) => container.calendarService.fetchPersonNameFromGoogle(email);
+
+    for (const attendee of uniqueAttendees) {
+      await container.peopleRepo.upsertFromCalendarAttendee(
+        attendee.email,
+        attendee.name,
+        undefined,
+        peopleApiFetcher
+      );
+    }
+
+    container.settingsRepo.updateSettings({ lastCalendarContactsSync: Date.now() });
+    logger.info('Calendar contacts auto-sync complete');
+  } catch (error) {
+    logger.error('Failed to auto-sync calendar contacts', { error: (error as Error).message });
+  }
+}
+
 declare global {
   var mainWindow: BrowserWindow | null;
 }
 global.mainWindow = null;
 
 async function createWindows() {
-  // Request microphone permission on macOS
   if (process.platform === 'darwin') {
     const currentStatus = systemPreferences.getMediaAccessStatus('microphone');
-    logger.info('Microphone permission status', { status: currentStatus });
-
     if (currentStatus !== 'granted') {
-      const micAccess = await systemPreferences.askForMediaAccess('microphone');
-      logger.info('Microphone access request result', { granted: micAccess });
-      if (!micAccess) {
-        logger.warn('Microphone access denied - recording will not work');
-      }
+      await systemPreferences.askForMediaAccess('microphone');
     }
   }
 
   await initializeDatabase();
-  initializeContainer();
+  await initializeContainer();
 
   mainWindow = createMainWindow();
   calloutWindow = createCalloutWindow();
-  
-  // Store mainWindow globally for notification service
   global.mainWindow = mainWindow;
 
+  // Register existing handlers
   registerAllHandlers(mainWindow, calloutWindow);
+  
+  // Register NEW Slack Handlers
+  registerSlackHandlers(); 
 
-  // Start meeting notification service
   const container = getContainer();
-  container.meetingNotificationService.start();
+  const settings = container.settingsRepo.getSettings();
+  const hasCalendar = settings.calendarConnections?.google || settings.calendarConnections?.outlook;
+  
+  if (hasCalendar) {
+    container.meetingNotificationService.start();
+  } else {
+    mainWindow.webContents.on('ipc-message', (event, channel) => {
+      if (channel === IPC_CHANNELS.SETTINGS_UPDATE) {
+        const updatedSettings = container.settingsRepo.getSettings();
+        const hasCalendarNow = updatedSettings.calendarConnections?.google || updatedSettings.calendarConnections?.outlook;
+        if (hasCalendarNow && !container.meetingNotificationService['checkInterval']) {
+          container.meetingNotificationService.start();
+        }
+      }
+    });
+  }
 
-  // Dev-only: Start performance logging and register keyboard shortcuts
+  checkAndRunCalendarContactsSync();
+
   if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
-    startPerformanceLogging(60000); // Log every 60 seconds
+    startPerformanceLogging(60000);
     const resetShortcut = process.platform === 'darwin' ? 'Cmd+Shift+O' : 'Ctrl+Shift+O';
     globalShortcut.register(resetShortcut, () => {
-      logger.info('Dev: Resetting onboarding via keyboard shortcut');
       mainWindow?.webContents.send('dev:reset-onboarding');
     });
-    logger.info('Dev: Registered onboarding reset shortcut', { shortcut: resetShortcut });
 
-    // Dev-only: Trigger test callout (Cmd/Ctrl+Option+T)
     const calloutShortcut = process.platform === 'darwin' ? 'Cmd+Option+T' : 'Ctrl+Alt+T';
     globalShortcut.register(calloutShortcut, () => {
-      logger.info('Dev: Triggering test callout');
       const testCallout: Callout = {
         id: 'test-' + Date.now(),
         meetingId: 'test-meeting',
         triggeredAt: new Date(),
-        question: 'What is the timeline for the next release?',
+        question: 'Timeline?',
         context: 'Test context',
-        suggestedResponse: 'Based on our sprint planning, we are targeting mid-February for the beta release, with the full release planned for early March.',
+        suggestedResponse: 'Beta in Feb, Full in March.',
         sources: [],
         dismissed: false,
       };
       calloutWindow?.webContents.send(IPC_CHANNELS.CALLOUT_SHOW, testCallout);
       showCalloutWindow();
     });
-    logger.info('Dev: Registered test callout shortcut', { shortcut: calloutShortcut });
   }
 
   logger.info('Application initialized');
@@ -96,18 +164,13 @@ async function createWindows() {
 app.whenReady().then(createWindows);
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindows();
-  }
+  if (BrowserWindow.getAllWindows().length === 0) createWindows();
 });
 
-// Handle app quit - cleanup
 app.on('before-quit', () => {
   stopPerformanceLogging();
   const container = getContainer();
@@ -116,7 +179,6 @@ app.on('before-quit', () => {
   logger.info('Application closing');
 });
 
-// Export windows for IPC access
 export function getMainWindowInstance(): BrowserWindow | null {
   return mainWindow;
 }

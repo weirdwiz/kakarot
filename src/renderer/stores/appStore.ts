@@ -9,6 +9,19 @@ import {
   type CalendarEvent,
 } from '@shared/types';
 
+// Type for completed meetings displayed in dashboard
+export type CompletedMeeting = Meeting & { endedAt: Date };
+
+// Type for previous meeting display items
+export interface PreviousMeetingItem {
+  id: string;
+  title: string;
+  start: Date;
+  end: Date;
+  hasTranscript: boolean;
+  isCalendarEvent: boolean;
+}
+
 interface AppState {
   // Recording state
   recordingState: RecordingState;
@@ -28,6 +41,14 @@ interface AppState {
   calendarContext: CalendarEvent | null;
   activeCalendarContext: CalendarEvent | null; // Calendar event actively being recorded for
 
+  // Dashboard data (cached to avoid refetching on view switch)
+  liveCalendarEvents: CalendarEvent[];
+  upcomingCalendarEvents: CalendarEvent[];
+  previousMeetings: PreviousMeetingItem[];
+  calendarMappings: Record<string, { notesId?: string }>;
+  dismissedEventIds: Set<string>;
+  dashboardDataLoaded: boolean;
+
   // Notes
   lastCompletedNoteId: string | null; // ID of last generated notes for navigation
 
@@ -37,6 +58,8 @@ interface AppState {
   // UI state
   view: 'recording' | 'history' | 'people' | 'settings';
   showRecordingHome: boolean;
+  searchQuery: string | null; // For cross-view search navigation
+  initialPrepQuery: string | null; // Pre-fill query for Prep omnibar when navigating from notes
 
   // Actions
   setRecordingState: (state: RecordingState) => void;
@@ -54,7 +77,27 @@ interface AppState {
   setView: (view: 'recording' | 'history' | 'people' | 'settings') => void;
   setCurrentMeetingId: (id: string | null) => void;
   setShowRecordingHome: (value: boolean) => void;
+  setSearchQuery: (query: string | null) => void;
+  setInitialPrepQuery: (query: string | null) => void;
+  // Dashboard data actions
+  setLiveCalendarEvents: (events: CalendarEvent[]) => void;
+  setUpcomingCalendarEvents: (events: CalendarEvent[]) => void;
+  setPreviousMeetings: (meetings: PreviousMeetingItem[]) => void;
+  setCalendarMappings: (mappings: Record<string, { notesId?: string }>) => void;
+  setDismissedEventIds: (ids: Set<string>) => void;
+  addDismissedEventId: (id: string) => void;
+  setDashboardDataLoaded: (loaded: boolean) => void;
 }
+
+// Load dismissed event IDs from localStorage
+const loadDismissedEventIds = (): Set<string> => {
+  try {
+    const stored = localStorage.getItem('dismissedEventIds');
+    return stored ? new Set(JSON.parse(stored)) : new Set();
+  } catch {
+    return new Set();
+  }
+};
 
 export const useAppStore = create<AppState>((set) => ({
   // Initial state
@@ -67,10 +110,19 @@ export const useAppStore = create<AppState>((set) => ({
   selectedMeeting: null,
   calendarContext: null,
   activeCalendarContext: null,
+  // Dashboard cached data
+  liveCalendarEvents: [],
+  upcomingCalendarEvents: [],
+  previousMeetings: [],
+  calendarMappings: {},
+  dismissedEventIds: loadDismissedEventIds(),
+  dashboardDataLoaded: false,
   lastCompletedNoteId: null,
   settings: DEFAULT_SETTINGS,
   view: 'recording',
   showRecordingHome: false,
+  searchQuery: null,
+  initialPrepQuery: null,
 
   // Actions
   setRecordingState: (recordingState) => set({ recordingState }),
@@ -126,4 +178,31 @@ export const useAppStore = create<AppState>((set) => ({
   setCurrentMeetingId: (currentMeetingId) => set({ currentMeetingId }),
 
   setShowRecordingHome: (showRecordingHome) => set({ showRecordingHome }),
+
+  setSearchQuery: (searchQuery) => set({ searchQuery }),
+
+  setInitialPrepQuery: (initialPrepQuery) => set({ initialPrepQuery }),
+
+  // Dashboard data actions
+  setLiveCalendarEvents: (liveCalendarEvents) => set({ liveCalendarEvents }),
+
+  setUpcomingCalendarEvents: (upcomingCalendarEvents) => set({ upcomingCalendarEvents }),
+
+  setPreviousMeetings: (previousMeetings) => set({ previousMeetings }),
+
+  setCalendarMappings: (calendarMappings) => set({ calendarMappings }),
+
+  setDismissedEventIds: (dismissedEventIds) => {
+    localStorage.setItem('dismissedEventIds', JSON.stringify([...dismissedEventIds]));
+    return set({ dismissedEventIds });
+  },
+
+  addDismissedEventId: (id) =>
+    set((state) => {
+      const updated = new Set([...state.dismissedEventIds, id]);
+      localStorage.setItem('dismissedEventIds', JSON.stringify([...updated]));
+      return { dismissedEventIds: updated };
+    }),
+
+  setDashboardDataLoaded: (dashboardDataLoaded) => set({ dashboardDataLoaded }),
 }));

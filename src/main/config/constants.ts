@@ -1,18 +1,25 @@
 import type { AppSettings } from '@shared/types';
+
+// Default settings for the application.
+// API keys are now managed server-side via the Treeto backend.
 export const DEFAULT_SETTINGS: AppSettings = {
-  assemblyAiApiKey: process.env.ASSEMBLYAI_API_KEY || '',
-  deepgramApiKey: process.env.DEEPGRAM_API_KEY || '',
-  openAiApiKey: process.env.OPENAI_API_KEY || '',
-  openAiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-  openAiModel: process.env.OPENAI_MODEL || 'gpt-4o',
+  // Deprecated: API keys are now server-side
+  assemblyAiApiKey: '',
+  deepgramApiKey: '',
+  openAiApiKey: '',
+  openAiBaseUrl: '',
+  openAiModel: '',
+  // Active settings
   knowledgeBasePath: '',
   autoDetectQuestions: true,
   showFloatingCallout: true,
   transcriptionLanguage: 'en',
-  transcriptionProvider: 'assemblyai',
+  showLiveMeetingIndicator: true,
+  openOnLogin: false,
+  // Deprecated: Hosted tokens replaced by backend proxy
   useHostedTokens: false,
-  authApiBaseUrl: process.env.AUTH_API_BASE_URL || '',
-  hostedAuthToken: process.env.AUTH_API_TOKEN || '',
+  authApiBaseUrl: '',
+  hostedAuthToken: '',
   calendarConnections: {},
 };
 
