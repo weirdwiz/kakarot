@@ -461,19 +461,22 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     const userEmail = settings.userProfile?.email?.toLowerCase();
 
     // Format attendee names for the prep query, excluding the signed-in user
-    const attendeeNames = meeting.attendees
+    const attendeeNamesList = meeting.attendees
       ?.filter(a => {
-        const email = (typeof a === 'string' ? a : a.email).toLowerCase();
-        return email !== userEmail;
+        const email = (typeof a === 'string' ? a : a.email || '').toLowerCase();
+        return email && email !== userEmail;
       })
       .map(a => typeof a === 'string' ? a : a.name || a.email)
-      .filter(Boolean)
-      .join(', ') || 'the attendees';
+      .filter(Boolean) ?? [];
 
-    const prepQuery = `I have a meeting with ${attendeeNames}, help me prep.`;
+    if (attendeeNamesList.length > 0) {
+      const names = attendeeNamesList.join(', ');
+      const prepQuery = `I have a meeting with ${names}, help me prep.`;
+      setInitialPrepQuery(prepQuery);
+    } else {
+      setInitialPrepQuery(null);
+    }
 
-    // Set the initial prep query and navigate to Prep tab
-    setInitialPrepQuery(prepQuery);
     handleSelectTab('prep');
   };
 

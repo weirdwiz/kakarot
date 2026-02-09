@@ -1,8 +1,9 @@
 import { config } from 'dotenv';
 import { resolve } from 'path';
-import { app, BrowserWindow, systemPreferences, globalShortcut } from 'electron';
+import { app, BrowserWindow, systemPreferences, globalShortcut, ipcMain } from 'electron';
 import { createMainWindow } from './windows/mainWindow';
 import { createCalloutWindow } from './windows/calloutWindow';
+import { IndicatorWindow } from './windows/IndicatorWindow';
 import { initializeDatabase, closeDatabase } from './data/database';
 import { initializeContainer, getContainer } from './core/container';
 import { registerAllHandlers } from './handlers';
@@ -12,7 +13,7 @@ import { initializeErrorHandler } from './core/errorHandler';
 import { startPerformanceLogging, stopPerformanceLogging } from './utils/performance';
 import { showCalloutWindow } from './windows/calloutWindow';
 import { IPC_CHANNELS } from '@shared/ipcChannels';
-import type { Callout } from '@shared/types';
+import type { Callout, RecordingState } from '@shared/types';
 
 // Load .env from project root
 config({ path: resolve(__dirname, '../../.env') });
@@ -31,6 +32,11 @@ app.on('open-url', (event, url) => {
 
 let mainWindow: BrowserWindow | null = null;
 let calloutWindow: BrowserWindow | null = null;
+let indicatorWindow: IndicatorWindow | null = null;
+let recordingState: RecordingState = 'idle';
+let indicatorDragState:
+  | { startMouseX: number; startMouseY: number; startX: number; startY: number }
+  | null = null;
 
 const CALENDAR_CONTACTS_SYNC_INTERVAL = 5 * 24 * 60 * 60 * 1000;
 
@@ -106,31 +112,99 @@ async function createWindows() {
 
   mainWindow = createMainWindow();
   calloutWindow = createCalloutWindow();
+  indicatorWindow = new IndicatorWindow();
   global.mainWindow = mainWindow;
 
+  const container = getContainer();
+
+  const updateIndicatorVisibility = () => {
+    if (!mainWindow || !indicatorWindow) return;
+    const settings = container.settingsRepo.getSettings();
+    const indicatorEnabled = settings.showLiveMeetingIndicator ?? true;
+    const recordingActive = recordingState === 'recording' || recordingState === 'paused';
+    const shouldShow = indicatorEnabled && recordingActive && !mainWindow.isFocused();
+    if (shouldShow) {
+      indicatorWindow.show();
+    } else {
+      indicatorWindow.hide();
+    }
+  };
+
   // Register existing handlers
-  registerAllHandlers(mainWindow, calloutWindow);
+  registerAllHandlers(mainWindow, calloutWindow, {
+    indicatorWindow,
+    onRecordingStateChange: (state) => {
+      recordingState = state;
+      updateIndicatorVisibility();
+    },
+  });
   
   // Register NEW Slack Handlers
   registerSlackHandlers(); 
 
-  const container = getContainer();
   const settings = container.settingsRepo.getSettings();
   const hasCalendar = settings.calendarConnections?.google || settings.calendarConnections?.outlook;
+  let meetingNotificationsStarted = !!hasCalendar;
   
   if (hasCalendar) {
     container.meetingNotificationService.start();
-  } else {
-    mainWindow.webContents.on('ipc-message', (event, channel) => {
-      if (channel === IPC_CHANNELS.SETTINGS_UPDATE) {
-        const updatedSettings = container.settingsRepo.getSettings();
-        const hasCalendarNow = updatedSettings.calendarConnections?.google || updatedSettings.calendarConnections?.outlook;
-        if (hasCalendarNow && !container.meetingNotificationService['checkInterval']) {
-          container.meetingNotificationService.start();
-        }
-      }
-    });
   }
+
+  mainWindow.on('focus', updateIndicatorVisibility);
+  mainWindow.on('blur', updateIndicatorVisibility);
+  mainWindow.on('minimize', updateIndicatorVisibility);
+  mainWindow.on('restore', updateIndicatorVisibility);
+  mainWindow.on('show', updateIndicatorVisibility);
+  mainWindow.on('hide', updateIndicatorVisibility);
+
+  ipcMain.on(IPC_CHANNELS.INDICATOR_CLICKED, () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    indicatorWindow?.hide();
+  });
+
+  ipcMain.on(IPC_CHANNELS.INDICATOR_DRAG_START, (_event, payload: { screenX: number; screenY: number }) => {
+    if (!indicatorWindow) return;
+    const position = indicatorWindow.getPosition();
+    if (!position) return;
+    indicatorDragState = {
+      startMouseX: payload.screenX,
+      startMouseY: payload.screenY,
+      startX: position[0],
+      startY: position[1],
+    };
+  });
+
+  ipcMain.on(IPC_CHANNELS.INDICATOR_DRAG_MOVE, (_event, payload: { screenX: number; screenY: number }) => {
+    if (!indicatorWindow || !indicatorDragState) return;
+    const dx = payload.screenX - indicatorDragState.startMouseX;
+    const dy = payload.screenY - indicatorDragState.startMouseY;
+    indicatorWindow.setPosition(
+      Math.round(indicatorDragState.startX + dx),
+      Math.round(indicatorDragState.startY + dy)
+    );
+  });
+
+  ipcMain.on(IPC_CHANNELS.INDICATOR_DRAG_END, () => {
+    indicatorDragState = null;
+  });
+
+  mainWindow.webContents.on('ipc-message', (event, channel) => {
+    if (channel === IPC_CHANNELS.SETTINGS_UPDATE) {
+      const updatedSettings = container.settingsRepo.getSettings();
+      const hasCalendarNow = updatedSettings.calendarConnections?.google || updatedSettings.calendarConnections?.outlook;
+      if (hasCalendarNow && !meetingNotificationsStarted) {
+        container.meetingNotificationService.start();
+        meetingNotificationsStarted = true;
+      }
+      updateIndicatorVisibility();
+    }
+  });
 
   checkAndRunCalendarContactsSync();
 

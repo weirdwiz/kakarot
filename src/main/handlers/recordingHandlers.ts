@@ -12,7 +12,8 @@ import { AECSync } from '../audio/AECSync';
 import { showCalloutWindow } from '../windows/calloutWindow';
 import { AUDIO_CONFIG, matchesQuestionPattern } from '../config/constants';
 import { getDatabase, saveDatabase } from '../data/database';
-import type { CalendarAttendee } from '@shared/types';
+import type { CalendarAttendee, RecordingState } from '@shared/types';
+import type { IndicatorWindow } from '../windows/IndicatorWindow';
 
 const logger = createLogger('RecordingHandlers');
 
@@ -34,6 +35,9 @@ let isPaused = false;
 let lastMicApps: string[] = [];
 let meetingAppSeen = false;
 let autoStopTimer: NodeJS.Timeout | null = null;
+let indicatorAmplitudeTimer: NodeJS.Timeout | null = null;
+let latestSystemAmplitude = 0;
+let latestMicAmplitude = 0;
 
 // 📊 Audio packet counter for logging
 let micAudioDataCount = 0;
@@ -43,8 +47,17 @@ let micAudioDataCount = 0;
 
 export function registerRecordingHandlers(
   mainWindow: BrowserWindow,
-  calloutWindow: BrowserWindow
+  calloutWindow: BrowserWindow,
+  options?: {
+    indicatorWindow?: IndicatorWindow | null;
+    onRecordingStateChange?: (state: RecordingState) => void;
+  }
 ): void {
+  const indicatorWindow = options?.indicatorWindow ?? null;
+  const setRecordingState = (state: RecordingState): void => {
+    mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, state);
+    options?.onRecordingStateChange?.(state);
+  };
   const calloutService = new CalloutService();
   const selfAppTokens = [app.getName(), 'com.kakarot.app']
     .filter(Boolean)
@@ -71,6 +84,25 @@ export function registerRecordingHandlers(
     if (autoStopTimer) {
       clearTimeout(autoStopTimer);
       autoStopTimer = null;
+    }
+  };
+
+  const startIndicatorAmplitudeLoop = (): void => {
+    if (!indicatorWindow || indicatorAmplitudeTimer) return;
+    indicatorAmplitudeTimer = setInterval(() => {
+      const combined = Math.sqrt(
+        (latestSystemAmplitude * latestSystemAmplitude +
+          latestMicAmplitude * latestMicAmplitude) /
+          2
+      );
+      indicatorWindow.sendAudioAmplitude(Math.min(1, combined));
+    }, 16);
+  };
+
+  const stopIndicatorAmplitudeLoop = (): void => {
+    if (indicatorAmplitudeTimer) {
+      clearInterval(indicatorAmplitudeTimer);
+      indicatorAmplitudeTimer = null;
     }
   };
 
@@ -178,6 +210,7 @@ export function registerRecordingHandlers(
     }
     stopInProgress = true;
     clearAutoStopTimer();
+    stopIndicatorAmplitudeLoop();
     stopMicActivityMonitor();
     if (reason === 'auto') {
       mainWindow.webContents.send(IPC_CHANNELS.RECORDING_AUTO_STOPPED);
@@ -190,7 +223,7 @@ export function registerRecordingHandlers(
       const calendContext = activeCalendarContext;
       activeCalendarContext = null;
 
-      mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'processing');
+      setRecordingState('processing');
 
       // Cancel any pending callouts immediately to prevent timer firing during cleanup
       calloutService.reset();
@@ -270,7 +303,7 @@ export function registerRecordingHandlers(
             title: fullMeeting.title || 'Untitled Meeting',
             overview: '',
           });
-          mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+          setRecordingState('idle');
           return meeting;
         }
 
@@ -357,10 +390,10 @@ export function registerRecordingHandlers(
               overview: '',
             });
           }
-          mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+          setRecordingState('idle');
         } else {
           logger.warn('No transcript segments to generate notes from');
-          mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+          setRecordingState('idle');
         }
       } else {
         logger.warn('No meeting or meetingId available for notes generation');
@@ -370,7 +403,7 @@ export function registerRecordingHandlers(
           title: 'Meeting Error',
           overview: '',
         });
-        mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+        setRecordingState('idle');
       }
 
       return meeting;
@@ -406,8 +439,9 @@ export function registerRecordingHandlers(
       actualTitle: meetingTitle || 'will use default timestamp'
     });
 
-    mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'recording');
+    setRecordingState('recording');
     startMicActivityMonitor();
+    startIndicatorAmplitudeLoop();
 
     // Initialize AEC processor for echo cancellation
     try {
@@ -510,6 +544,7 @@ export function registerRecordingHandlers(
           }
 
           systemAudioService.onAudioLevel((level) => {
+            latestSystemAmplitude = level;
             mainWindow.webContents.send(IPC_CHANNELS.AUDIO_LEVELS, { system: level });
           });
 
@@ -558,6 +593,16 @@ export function registerRecordingHandlers(
                     // Fallback: direct AEC without sync
                     cleanFloat32 = aecProcessor.processCaptureAudio(samples);
                   }
+
+                  // Update mic amplitude for indicator (use clean audio if available)
+                  const micSamples = cleanFloat32 ?? samples;
+                  let micSumSquares = 0;
+                  for (let i = 0; i < micSamples.length; i++) {
+                    const sample = micSamples[i];
+                    micSumSquares += sample * sample;
+                  }
+                  const micRms = Math.sqrt(micSumSquares / micSamples.length);
+                  latestMicAmplitude = Math.min(1, micRms * 3);
 
                   // ✅ CRITICAL CHANGE: Send audio IMMEDIATELY without buffering
                   if (cleanFloat32 && cleanFloat32.length > 0) {
@@ -646,7 +691,7 @@ export function registerRecordingHandlers(
       transcriptionProvider.pause?.();
     }
     
-    mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'paused');
+    setRecordingState('paused');
   });
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_RESUME, async () => {
@@ -673,7 +718,7 @@ export function registerRecordingHandlers(
       transcriptionProvider.resume?.();
     }
 
-    mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'recording');
+    setRecordingState('recording');
   });
 
   // Discard recording - stops everything without generating notes and deletes the meeting
@@ -746,7 +791,7 @@ export function registerRecordingHandlers(
       meetingRepo.clearCurrentMeeting();
     }
 
-    mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+    setRecordingState('idle');
     logger.info('Recording discarded successfully');
   });
 }

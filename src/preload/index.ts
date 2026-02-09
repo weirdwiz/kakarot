@@ -81,6 +81,27 @@ contextBridge.exposeInMainWorld('kakarot', {
     },
   },
 
+  // Indicator
+  indicator: {
+    onAudioAmplitude: (callback: (level: number) => void) => {
+      const handler = (_: unknown, level: number) => callback(level);
+      ipcRenderer.on(IPC_CHANNELS.INDICATOR_AUDIO_AMPLITUDE, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.INDICATOR_AUDIO_AMPLITUDE, handler);
+    },
+    clicked: () => {
+      ipcRenderer.send(IPC_CHANNELS.INDICATOR_CLICKED);
+    },
+    dragStart: (screenX: number, screenY: number) => {
+      ipcRenderer.send(IPC_CHANNELS.INDICATOR_DRAG_START, { screenX, screenY });
+    },
+    dragMove: (screenX: number, screenY: number) => {
+      ipcRenderer.send(IPC_CHANNELS.INDICATOR_DRAG_MOVE, { screenX, screenY });
+    },
+    dragEnd: () => {
+      ipcRenderer.send(IPC_CHANNELS.INDICATOR_DRAG_END);
+    },
+  },
+
   // Transcription
   transcript: {
     onUpdate: (callback: (update: TranscriptUpdate) => void) => {
@@ -382,6 +403,13 @@ declare global {
       audio: {
         onLevels: (callback: (levels: AudioLevels) => void) => () => void;
         sendData: (audioData: ArrayBuffer, source: 'mic' | 'system') => void;
+      };
+      indicator: {
+        onAudioAmplitude: (callback: (level: number) => void) => () => void;
+        clicked: () => void;
+        dragStart: (screenX: number, screenY: number) => void;
+        dragMove: (screenX: number, screenY: number) => void;
+        dragEnd: () => void;
       };
       transcript: {
         onUpdate: (callback: (update: TranscriptUpdate) => void) => () => void;

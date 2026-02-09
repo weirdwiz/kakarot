@@ -132,4 +132,11 @@ export const IPC_CHANNELS = {
 
   // Dialog
   DIALOG_SELECT_FOLDER: 'dialog:selectFolder',
+
+  // Indicator
+  INDICATOR_AUDIO_AMPLITUDE: 'audio-amplitude',
+  INDICATOR_CLICKED: 'indicator:clicked',
+  INDICATOR_DRAG_START: 'indicator:drag-start',
+  INDICATOR_DRAG_MOVE: 'indicator:drag-move',
+  INDICATOR_DRAG_END: 'indicator:drag-end',
 } as const;
