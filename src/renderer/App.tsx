@@ -29,6 +29,7 @@ export default function App() {
     dashboardDataLoaded,
     dismissedEventIds,
     showRecordingHome,
+    recordingResult,
   } = useAppStore();
   const { isCompleted: onboardingCompleted, completeOnboarding, resetOnboarding } = useOnboardingStore();
   const [pillarTab, setPillarTab] = useState<'notes' | 'prep'>('notes');
@@ -231,6 +232,7 @@ export default function App() {
                                     pillarTab === 'notes' && 
                                     !state.selectedMeeting && 
                                     !state.activeCalendarContext && 
+                                    !recordingResult &&
                                     (recordingState === 'idle' || showRecordingHome);
 
                 return (
@@ -253,6 +255,7 @@ export default function App() {
                       state.setCalendarContext(null);
                       state.setSelectedMeeting(null);
                       state.setShowRecordingHome(currentlyLive);
+                      state.setRecordingResult(null);
                     }}
                   >
                     <span className="inline-flex items-center gap-1">

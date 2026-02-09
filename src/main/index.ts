@@ -13,6 +13,7 @@ import { initializeErrorHandler } from './core/errorHandler';
 import { startPerformanceLogging, stopPerformanceLogging } from './utils/performance';
 import { showCalloutWindow } from './windows/calloutWindow';
 import { IPC_CHANNELS } from '@shared/ipcChannels';
+import { FEATURE_FLAGS } from './config/constants';
 import type { Callout, RecordingState } from '@shared/types';
 
 // Load .env from project root
@@ -215,21 +216,23 @@ async function createWindows() {
       mainWindow?.webContents.send('dev:reset-onboarding');
     });
 
-    const calloutShortcut = process.platform === 'darwin' ? 'Cmd+Option+T' : 'Ctrl+Alt+T';
-    globalShortcut.register(calloutShortcut, () => {
-      const testCallout: Callout = {
-        id: 'test-' + Date.now(),
-        meetingId: 'test-meeting',
-        triggeredAt: new Date(),
-        question: 'Timeline?',
-        context: 'Test context',
-        suggestedResponse: 'Beta in Feb, Full in March.',
-        sources: [],
-        dismissed: false,
-      };
-      calloutWindow?.webContents.send(IPC_CHANNELS.CALLOUT_SHOW, testCallout);
-      showCalloutWindow();
-    });
+    if (FEATURE_FLAGS.enableCallouts) {
+      const calloutShortcut = process.platform === 'darwin' ? 'Cmd+Option+T' : 'Ctrl+Alt+T';
+      globalShortcut.register(calloutShortcut, () => {
+        const testCallout: Callout = {
+          id: 'test-' + Date.now(),
+          meetingId: 'test-meeting',
+          triggeredAt: new Date(),
+          question: 'Timeline?',
+          context: 'Test context',
+          suggestedResponse: 'Beta in Feb, Full in March.',
+          sources: [],
+          dismissed: false,
+        };
+        calloutWindow?.webContents.send(IPC_CHANNELS.CALLOUT_SHOW, testCallout);
+        showCalloutWindow();
+      });
+    }
   }
 
   logger.info('Application initialized');

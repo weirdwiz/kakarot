@@ -52,6 +52,11 @@ export const CALLOUT_TIMER_CONFIG = {
   MIN_RESPONSE_WORDS: 3,
 } as const;
 
+// Feature flags toggled per release; callouts remain under development.
+export const FEATURE_FLAGS = {
+  enableCallouts: false,
+} as const;
+
 // Audio configuration
 export const AUDIO_CONFIG = {
   SAMPLE_RATE: 48000,

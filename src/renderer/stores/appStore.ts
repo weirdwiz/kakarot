@@ -58,6 +58,7 @@ interface AppState {
   // UI state
   view: 'recording' | 'history' | 'people' | 'settings';
   showRecordingHome: boolean;
+  recordingResult: 'completed' | 'error' | null;
   searchQuery: string | null; // For cross-view search navigation
   initialPrepQuery: string | null; // Pre-fill query for Prep omnibar when navigating from notes
 
@@ -77,6 +78,7 @@ interface AppState {
   setView: (view: 'recording' | 'history' | 'people' | 'settings') => void;
   setCurrentMeetingId: (id: string | null) => void;
   setShowRecordingHome: (value: boolean) => void;
+  setRecordingResult: (value: 'completed' | 'error' | null) => void;
   setSearchQuery: (query: string | null) => void;
   setInitialPrepQuery: (query: string | null) => void;
   // Dashboard data actions
@@ -121,6 +123,7 @@ export const useAppStore = create<AppState>((set) => ({
   settings: DEFAULT_SETTINGS,
   view: 'recording',
   showRecordingHome: false,
+  recordingResult: null,
   searchQuery: null,
   initialPrepQuery: null,
 
@@ -178,6 +181,8 @@ export const useAppStore = create<AppState>((set) => ({
   setCurrentMeetingId: (currentMeetingId) => set({ currentMeetingId }),
 
   setShowRecordingHome: (showRecordingHome) => set({ showRecordingHome }),
+
+  setRecordingResult: (recordingResult) => set({ recordingResult }),
 
   setSearchQuery: (searchQuery) => set({ searchQuery }),
 

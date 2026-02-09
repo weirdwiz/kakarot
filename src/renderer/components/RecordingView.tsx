@@ -9,7 +9,7 @@ import ManualNotesView from './ManualNotesView';
 import MeetingContextPreview from './MeetingContextPreview';
 import AttendeesList from './AttendeesList';
 import SearchPopup from './SearchPopup';
-import { FileText, Square, Search, Loader2, Calendar as CalendarIcon, Users, Folder, Share2, Copy, Check, X, MessageSquare, Clock3, Clock, ChevronDown, Mic } from 'lucide-react';
+import { FileText, Square, Search, Loader2, Calendar as CalendarIcon, Users, Folder, Share2, Copy, Check, X, Clock, ChevronDown, Mic } from 'lucide-react';
 import { formatMeetingDate } from '../lib/formatters';
 import type { TranscriptSegment } from '@shared/types';
 import type { CalendarEvent, AppSettings, GeneratedStructuredNotes } from '@shared/types';
@@ -20,15 +20,6 @@ import { StructuredNotesView } from './StructuredNotesView';
 interface RecordingViewProps {
   onSelectTab?: (tab: 'notes' | 'prep') => void;
 }
-
-type LiveCalloutEntry = {
-  id: string;
-  type: 'question' | 'mention';
-  text: string;
-  context: string;
-  source: 'mic' | 'system';
-  timestampMs: number;
-};
 
 // Transcript grouping constants and utilities (same as LiveTranscript.tsx)
 const MERGE_WINDOW_MS = 45000; // 45 seconds
@@ -96,7 +87,7 @@ function groupTranscriptSegments(segments: TranscriptSegment[]): GroupedSegment[
 }
 
 export default function RecordingView({ onSelectTab }: RecordingViewProps) {
-  const { recordingState, audioLevels, liveTranscript, currentPartials, clearLiveTranscript, calendarContext, setCalendarContext, activeCalendarContext, setActiveCalendarContext, setLastCompletedNoteId, setSelectedMeeting, setView, currentMeetingId, setCurrentMeetingId, showRecordingHome, setShowRecordingHome, setInitialPrepQuery } = useAppStore();
+  const { recordingState, audioLevels, liveTranscript, currentPartials, clearLiveTranscript, calendarContext, setCalendarContext, activeCalendarContext, setActiveCalendarContext, setLastCompletedNoteId, setSelectedMeeting, setView, currentMeetingId, setCurrentMeetingId, showRecordingHome, setShowRecordingHome, setInitialPrepQuery, setRecordingResult } = useAppStore();
   const { startCapture, stopCapture, pause: pauseCapture, resume: resumeCapture } = useAudioCapture();
   const [pillarTab, setPillarTab] = React.useState<'notes' | 'prep'>('notes');
   const [recordingTitle, setRecordingTitle] = React.useState<string>(''); // Title to display during recording
@@ -130,7 +121,6 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const [isSlackSending, setIsSlackSending] = React.useState(false);
   const [showSlackOptions, setShowSlackOptions] = React.useState(false);
   
-  const [calloutTimeline, setCalloutTimeline] = React.useState<LiveCalloutEntry[]>([]);
   const [showTimePopover, setShowTimePopover] = React.useState<boolean>(false);
   const [showParticipantsPopover, setShowParticipantsPopover] = React.useState<boolean>(false);
   const [showTranscriptPopover, setShowTranscriptPopover] = React.useState<boolean>(false);
@@ -141,7 +131,6 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const participantsPopoverRef = React.useRef<HTMLDivElement>(null);
   const transcriptScrollRef = React.useRef<HTMLDivElement>(null);
   const lastScrollTopRef = React.useRef<number>(0);
-  const processedSegmentsRef = React.useRef<Set<string>>(new Set());
   const saveTimerRef = React.useRef<NodeJS.Timeout | null>(null);
   const isIdle = recordingState === 'idle';
   const isRecording = recordingState === 'recording';
@@ -313,56 +302,6 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     });
   }, []);
 
-  // Lightweight inline callout detection until the Python classifier is wired up
-  React.useEffect(() => {
-    if (!(isRecording || isPaused)) return;
-
-    const nameLower = userFirstName?.toLowerCase();
-    const newSegments = liveTranscript.filter(
-      (segment) => segment.isFinal && !processedSegmentsRef.current.has(segment.id)
-    );
-
-    if (!newSegments.length) return;
-
-    newSegments.forEach((segment) => {
-      processedSegmentsRef.current.add(segment.id);
-      const text = segment.text.trim();
-      if (!text) return;
-
-      const lower = text.toLowerCase();
-      const mentionsName = nameLower ? lower.includes(nameLower) : false;
-      const isQuestionLike =
-        text.includes('?') ||
-        lower.startsWith('can you') ||
-        lower.startsWith('could you') ||
-        lower.startsWith('would you') ||
-        lower.includes('please') ||
-        lower.includes('action item');
-
-      if (!(isQuestionLike || mentionsName)) return;
-
-      const contextWindow = liveTranscript.slice(-4).map((s) => s.text).join(' ');
-      const context = contextWindow.length > 400
-        ? contextWindow.slice(contextWindow.length - 400)
-        : contextWindow;
-
-      setCalloutTimeline((prev) => {
-        const next: LiveCalloutEntry[] = [
-          ...prev,
-          {
-            id: segment.id,
-            type: isQuestionLike ? 'question' : 'mention',
-            text,
-            context,
-            source: segment.source,
-            timestampMs: segment.timestamp,
-          },
-        ];
-        return next.slice(-25);
-      });
-    });
-  }, [liveTranscript, isRecording, isPaused, userFirstName]);
-
   // Auto-scroll transcript when new messages arrive
   React.useEffect(() => {
     if (isAutoScrollEnabled && transcriptScrollRef.current && showTranscriptPopover) {
@@ -386,10 +325,12 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
               setLastCompletedNoteId(data.meetingId);
               setCompletedMeeting(meeting);
               setPhase('completed');
+              setRecordingResult('completed');
               console.log('[RecordingView] Notes generated and displayed inline:', data.meetingId);
             } else {
               setPhase('error');
               setErrorMessage('Notes generation failed. You can still view the transcript.');
+              setRecordingResult('error');
               setActiveCalendarContext(null); // Clear to prevent Manual Notes view from showing
               console.warn('[RecordingView] Notes generation appears to have failed.');
             }
@@ -398,6 +339,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
         .catch((err) => {
           setPhase('error');
           setErrorMessage('Something went wrong loading your meeting.');
+          setRecordingResult('error');
           setActiveCalendarContext(null); // Clear to prevent Manual Notes view from showing
           console.error('[RecordingView] Failed to load meeting after notes completion:', err);
         });
@@ -507,6 +449,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     setPhase('recording');
     setCompletedMeeting(null);
     setErrorMessage('');
+    setRecordingResult(null);
     
     // Determine the title: prefer calendar context, fallback to "New Meeting"
     const titleToUse = contextToUse?.title || 'New Meeting';
@@ -553,6 +496,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     // Backend will handle the case of insufficient transcript gracefully
     setPhase('processing');
     setErrorMessage('');
+    setRecordingResult(null);
     await stopCapture();
     const meeting = await window.kakarot.recording.stop();
     console.log('Meeting ended:', meeting);
@@ -612,6 +556,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const isMeetingNotesScreen = phase === 'completed' && Boolean(completedMeeting);
   const showBentoWhileLive = showRecordingHome && (isRecording || isPaused || isGenerating);
   const showHomeHero = (isIdle || showBentoWhileLive) && !isMeetingNotesScreen;
+  const isRecordingLayout = (isRecording || isPaused) && !isGenerating;
 
   // Display title: use recordingTitle which is set from calendar context or timestamp at start
   // For completed meetings, prefer the stored title which should be calendar title if it existed
@@ -819,8 +764,8 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
         )}
 
         {/* Dashboard or meeting content */}
-        <div className="w-full flex justify-center flex-1 min-h-0 overflow-hidden px-4 sm:px-6">
-          <div className="w-full max-w-2xl flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div className={`w-full flex justify-center flex-1 min-h-0 overflow-hidden ${isRecordingLayout ? 'px-0' : 'px-4 sm:px-6'}`}>
+          <div className={`w-full ${isRecordingLayout ? 'max-w-none' : 'max-w-2xl'} flex flex-col flex-1 min-h-0 overflow-hidden`}>
             {showBentoWhileLive ? (
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                 {/* Amber banner with back button */}
@@ -844,179 +789,186 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
               <div className="flex-1 min-h-0 flex flex-col">
                 {/* Recording layout */}
                 {(isRecording || isPaused) && !isGenerating ? (
-                  <div className="flex-1 min-h-0 flex flex-col rounded-2xl border border-[#4ea8dd]/30 shadow-[0_10px_50px_rgba(78,168,221,0.25)] p-5 transition-all duration-300 relative">
-                    {/* Recording Header */}
-                    <div className="flex-shrink-0 mb-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex flex-col gap-2 flex-1">
-                          {/* Editable title */}
-                          <input
-                            value={titleInput}
-                            onChange={(e) => setTitleInput(e.target.value)}
-                            onBlur={() => persistTitle(titleInput)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.currentTarget.blur();
-                              }
-                            }}
-                            className="text-lg font-semibold text-white bg-transparent border-b border-transparent focus:border-[#4ea8dd] focus:outline-none truncate max-w-[300px]"
-                            placeholder="Untitled Meeting"
-                          />
-                          <div className="flex items-center gap-2">
-                            {/* Transcribing indicator */}
-                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-[#4ea8dd]/20 text-[#4ea8dd] border border-[#4ea8dd]/30">
-                              <span className="relative flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4ea8dd] opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#4ea8dd]"></span>
-                              </span>
-                              <span>{isRecording ? 'Transcribing' : 'Paused'}</span>
-                            </div>
-                            {isSavingTitle && <Loader2 className="w-4 h-4 animate-spin text-[#4ea8dd]" />}
-                          </div>
-                        </div>
-                        {/* Meta chips */}
-                        <div className="flex items-center gap-2">
-                          <div className="relative">
-                            <button
-                              ref={timeButtonRef}
-                              onClick={() => setShowTimePopover(!showTimePopover)}
-                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-400 hover:bg-white/10 transition"
-                            >
-                              <Clock className="w-3.5 h-3.5" />
-                              <span>{displayDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                            </button>
-                            {showTimePopover && (
-                              <div
-                                ref={timePopoverRef}
-                                className="absolute top-full right-0 mt-2 bg-[#0C0C0F] rounded-xl border border-white/10 shadow-2xl z-50 overflow-hidden min-w-max"
-                              >
-                                <div className="p-3 border-b border-white/10 flex items-center justify-between">
-                                  <h3 className="text-sm font-semibold text-white">Meeting Time</h3>
-                                  <button
-                                    onClick={() => setShowTimePopover(false)}
-                                    className="p-1 text-slate-400 hover:text-slate-200 transition rounded hover:bg-white/5"
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                                <div className="p-3 space-y-2">
-                                  <div>
-                                    <p className="text-[10px] text-slate-500 uppercase font-medium mb-0.5">Date</p>
-                                    <p className="text-xs text-white">{displayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[10px] text-slate-500 uppercase font-medium mb-0.5">Time</p>
-                                    <p className="text-xs text-white">{displayDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                                  </div>
-                                </div>
+                  <div className="relative flex-1 min-h-0 flex flex-col rounded-3xl bg-gradient-to-br from-[#101A26] via-[#0E141E] to-[#0B0F16] shadow-[0_20px_70px_rgba(8,12,20,0.65)] p-6 sm:p-7 transition-all duration-300 overflow-hidden">
+                    <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(78,168,221,0.18),transparent_45%),radial-gradient(circle_at_bottom,rgba(139,92,246,0.14),transparent_40%)]" />
+                    <div className="absolute inset-0 pointer-events-none rounded-3xl shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_-1px_20px_rgba(10,20,30,0.45)]" />
+                    <div className="relative flex-1 min-h-0 flex flex-col">
+                      {/* Recording Header */}
+                      <div className="flex-shrink-0 mb-5">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex flex-col gap-3 flex-1">
+                            {/* Editable title */}
+                            <input
+                              value={titleInput}
+                              onChange={(e) => setTitleInput(e.target.value)}
+                              onBlur={() => persistTitle(titleInput)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              className="text-2xl font-semibold text-white bg-transparent border-b border-transparent focus:border-[#4ea8dd] focus:outline-none truncate max-w-[420px]"
+                              placeholder="Untitled Meeting"
+                            />
+                            <div className="flex items-center gap-2">
+                              {/* Transcribing indicator */}
+                              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-[#4ea8dd]/15 text-[#8bd0ff] border border-[#4ea8dd]/30 shadow-[0_0_20px_rgba(78,168,221,0.25)]">
+                                <span className="relative flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4ea8dd] opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#4ea8dd]"></span>
+                                </span>
+                                <span>{isRecording ? 'Transcribing' : 'Paused'}</span>
                               </div>
-                            )}
+                              {isSavingTitle && <Loader2 className="w-4 h-4 animate-spin text-[#4ea8dd]" />}
+                            </div>
                           </div>
-                          {activeCalendarContext && displayAttendees.length > 0 && (
+                          {/* Meta chips */}
+                          <div className="flex items-center gap-2">
                             <div className="relative">
                               <button
-                                ref={participantsButtonRef}
-                                onClick={() => setShowParticipantsPopover(!showParticipantsPopover)}
-                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-400 hover:bg-white/10 transition"
+                                ref={timeButtonRef}
+                                onClick={() => setShowTimePopover(!showTimePopover)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs text-slate-300 hover:bg-white/10 transition shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
                               >
-                                <Users className="w-3.5 h-3.5" />
-                                <span>{displayAttendees.length}</span>
+                                <Clock className="w-3.5 h-3.5" />
+                                <span>{displayDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                               </button>
-                              {showParticipantsPopover && (
+                              {showTimePopover && (
                                 <div
-                                  ref={participantsPopoverRef}
-                                  className="absolute top-full right-0 mt-2 bg-[#0C0C0F] rounded-xl border border-white/10 shadow-2xl z-50 overflow-hidden min-w-[280px]"
+                                  ref={timePopoverRef}
+                                  className="absolute top-full right-0 mt-2 bg-[#0C0C0F] rounded-xl border border-white/10 shadow-2xl z-50 overflow-hidden min-w-max"
                                 >
                                   <div className="p-3 border-b border-white/10 flex items-center justify-between">
-                                    <h3 className="text-sm font-semibold text-white">Participants</h3>
+                                    <h3 className="text-sm font-semibold text-white">Meeting Time</h3>
                                     <button
-                                      onClick={() => setShowParticipantsPopover(false)}
+                                      onClick={() => setShowTimePopover(false)}
                                       className="p-1 text-slate-400 hover:text-slate-200 transition rounded hover:bg-white/5"
                                     >
                                       <X className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
-                                  <div className="p-3 max-h-[200px] overflow-y-auto">
-                                    <div className="space-y-2">
-                                      {displayAttendees.map((email, idx) => (
-                                        <div key={idx} className="flex items-center gap-2 text-xs">
-                                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white font-semibold text-[10px]">
-                                            {email.charAt(0).toUpperCase()}
-                                          </div>
-                                          <span className="text-slate-300 truncate">{email}</span>
-                                        </div>
-                                      ))}
+                                  <div className="p-3 space-y-2">
+                                    <div>
+                                      <p className="text-[10px] text-slate-500 uppercase font-medium mb-0.5">Date</p>
+                                      <p className="text-xs text-white">{displayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[10px] text-slate-500 uppercase font-medium mb-0.5">Time</p>
+                                      <p className="text-xs text-white">{displayDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                                     </div>
                                   </div>
                                 </div>
                               )}
                             </div>
-                          )}
+                            {activeCalendarContext && displayAttendees.length > 0 && (
+                              <div className="relative">
+                                <button
+                                  ref={participantsButtonRef}
+                                  onClick={() => setShowParticipantsPopover(!showParticipantsPopover)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs text-slate-300 hover:bg-white/10 transition shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                                >
+                                  <Users className="w-3.5 h-3.5" />
+                                  <span>{displayAttendees.length}</span>
+                                </button>
+                                {showParticipantsPopover && (
+                                  <div
+                                    ref={participantsPopoverRef}
+                                    className="absolute top-full right-0 mt-2 bg-[#0C0C0F] rounded-xl border border-white/10 shadow-2xl z-50 overflow-hidden min-w-[280px]"
+                                  >
+                                    <div className="p-3 border-b border-white/10 flex items-center justify-between">
+                                      <h3 className="text-sm font-semibold text-white">Participants</h3>
+                                      <button
+                                        onClick={() => setShowParticipantsPopover(false)}
+                                        className="p-1 text-slate-400 hover:text-slate-200 transition rounded hover:bg-white/5"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                    <div className="p-3 max-h-[200px] overflow-y-auto">
+                                      <div className="space-y-2">
+                                        {displayAttendees.map((email, idx) => (
+                                          <div key={idx} className="flex items-center gap-2 text-xs">
+                                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white font-semibold text-[10px]">
+                                              {email.charAt(0).toUpperCase()}
+                                            </div>
+                                            <span className="text-slate-300 truncate">{email}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Full Notes Panel */}
-                    <div className="flex-1 min-h-0 rounded-xl border border-white/10 bg-[#0C0C0F] p-6 flex flex-col overflow-hidden">
-                      <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                        <h3 className="text-sm uppercase tracking-widest font-semibold text-slate-400">Your Notes</h3>
-                        <div className="flex items-center gap-3">
-                          <div className="w-28">
-                            <AudioLevelMeter label="Mic" level={audioLevels.mic} />
+                      {/* Full Notes Panel */}
+                      <div className="flex-1 min-h-0 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 flex flex-col overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                        <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                          <div>
+                            <h3 className="text-xs uppercase tracking-[0.3em] font-semibold text-slate-400">Your Notes</h3>
+                            <p className="text-xs text-slate-500 mt-1">Capture action items, decisions, and next steps.</p>
                           </div>
-                          <div className="w-28">
-                            <AudioLevelMeter label="System" level={audioLevels.system} />
+                          <div className="flex items-center gap-3">
+                            <div className="w-28">
+                              <AudioLevelMeter label="Mic" level={audioLevels.mic} />
+                            </div>
+                            <div className="w-28">
+                              <AudioLevelMeter label="System" level={audioLevels.system} />
+                            </div>
                           </div>
                         </div>
+                        <div className="flex-1 min-h-0 overflow-hidden">
+                          <textarea
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            placeholder="Take notes during your meeting..."
+                            className="w-full h-full resize-none bg-transparent text-base text-slate-100 placeholder-slate-500 focus:outline-none leading-relaxed overflow-auto"
+                          />
+                        </div>
                       </div>
-                      <div className="flex-1 min-h-0 overflow-hidden">
-                        <textarea
-                          value={notes}
-                          onChange={(e) => setNotes(e.target.value)}
-                          placeholder="Take notes during your meeting..."
-                          className="w-full h-full resize-none bg-transparent text-base text-white placeholder-slate-500 focus:outline-none leading-relaxed overflow-auto"
-                        />
-                      </div>
-                    </div>
 
-                    {/* Bottom Controls - Right aligned stop button */}
-                    <div className="flex-shrink-0 mt-2 flex items-center justify-end gap-2">
-                      {recordingState === 'paused' && (
+                      {/* Bottom Controls */}
+                      <div className="flex-shrink-0 mt-3 flex items-center justify-end gap-2">
+                        {recordingState === 'paused' && (
+                          <button
+                            onClick={async () => {
+                              await window.kakarot.recording.discard();
+                              setPhase('recording');
+                              clearLiveTranscript();
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-700/80 text-white text-xs font-medium hover:bg-red-600/80 transition"
+                          >
+                            <X className="w-3 h-3" />
+                            Discard
+                          </button>
+                        )}
                         <button
-                          onClick={async () => {
-                            await window.kakarot.recording.discard();
-                            setPhase('recording');
-                            clearLiveTranscript();
-                          }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-700/80 text-white text-xs font-medium hover:bg-red-600/80 transition"
+                          onClick={handleStopRecording}
+                          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white/10 text-slate-100 text-xs font-semibold border border-white/10 hover:bg-white/15 transition shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
                         >
-                          <X className="w-3 h-3" />
-                          Discard
+                          <Square className="w-3.5 h-3.5" />
+                          {recordingState === 'paused' ? 'Resume Transcribing' : 'Stop Transcribing'}
                         </button>
-                      )}
-                      <button
-                        onClick={handleStopRecording}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700/80 text-slate-300 text-xs font-medium hover:bg-slate-600/80 transition"
-                      >
-                        <Square className="w-3 h-3" />
-                        {recordingState === 'paused' ? 'Resume Transcribing' : 'Stop Transcribing'}
-                      </button>
-                    </div>
+                      </div>
 
-                    {/* Live Transcription Capsule - Inside the card */}
-                    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10">
-                      <button
-                        onClick={() => setShowTranscriptPopover((open) => !open)}
-                        className={`flex items-center gap-2.5 rounded-full px-5 py-3 shadow-2xl transition-all duration-200 ${
-                          showTranscriptPopover
-                            ? 'bg-[#7C3AED] text-white shadow-purple-500/30'
-                            : 'bg-[#1A1A1A] border border-white/10 text-white hover:bg-[#252525]'
-                        }`}
-                        aria-label="Toggle live transcript"
-                      >
-                        <Mic className="w-4 h-4" />
-                        <span className="text-sm font-medium">Live Transcription</span>
-                      </button>
+                      {/* Live Transcription Capsule - Inside the card */}
+                      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10">
+                        <button
+                          onClick={() => setShowTranscriptPopover((open) => !open)}
+                          className={`flex items-center gap-2.5 rounded-full px-5 py-3 shadow-2xl transition-all duration-200 ${
+                            showTranscriptPopover
+                              ? 'bg-gradient-to-r from-[#7C3AED] to-[#4F46E5] text-white shadow-purple-500/30'
+                              : 'bg-[#121316] border border-white/10 text-white hover:bg-[#1b1d22]'
+                          }`}
+                          aria-label="Toggle live transcript"
+                        >
+                          <Mic className="w-4 h-4" />
+                          <span className="text-sm font-medium">Live Transcription</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -1419,66 +1371,5 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
       onClose={() => setShowSearchPopup(false)}
     />
     </>
-  );
-}
-
-function LiveCalloutTracker({ entries, onClear }: { entries: LiveCalloutEntry[]; onClear: () => void }) {
-  const formatRelativeTime = (timestampMs: number) => {
-    const totalSeconds = Math.max(0, Math.floor(timestampMs / 1000));
-    const minutes = Math.floor(totalSeconds / 60)
-      .toString()
-      .padStart(2, '0');
-    const seconds = (totalSeconds % 60).toString().padStart(2, '0');
-    return `${minutes}:${seconds}`;
-  };
-
-  return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/40 backdrop-blur p-4 shadow-soft-card flex flex-col gap-3 min-h-[120px] max-h-56">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-          <MessageSquare className="w-4 h-4 text-[#8B5CF6]" />
-          <span>Live Callout Tracker</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-          <Clock3 className="w-3.5 h-3.5" />
-          <span>Watching transcript</span>
-          {entries.length > 0 && (
-            <button
-              onClick={onClear}
-              className="ml-2 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] text-slate-600 dark:text-slate-300"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
-        {entries.length === 0 ? (
-          <p className="text-sm text-slate-500 dark:text-slate-400">Listening for questions or mentions...</p>
-        ) : (
-          entries.map((entry) => (
-            <div
-              key={entry.id}
-              className="border border-slate-200/70 dark:border-slate-700/70 rounded-lg bg-white/70 dark:bg-slate-800/70 p-3"
-            >
-              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-                <span className="uppercase tracking-wide font-semibold text-[11px] text-[#8B5CF6]">
-                  {entry.type === 'question' ? 'Question' : 'Mention'}
-                </span>
-                <span>{formatRelativeTime(entry.timestampMs)}</span>
-              </div>
-              <p className="text-sm text-slate-900 dark:text-white leading-snug">{entry.text}</p>
-              {entry.context && (
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                  <span className="font-semibold text-slate-600 dark:text-slate-300">Context: </span>
-                  {entry.context}
-                </p>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
   );
 }

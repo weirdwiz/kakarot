@@ -10,7 +10,7 @@ import { MicActivityMonitor } from '../services/MicActivityMonitor';
 import { AECProcessor } from '../audio/native/AECProcessor';
 import { AECSync } from '../audio/AECSync';
 import { showCalloutWindow } from '../windows/calloutWindow';
-import { AUDIO_CONFIG, matchesQuestionPattern } from '../config/constants';
+import { AUDIO_CONFIG, matchesQuestionPattern, FEATURE_FLAGS } from '../config/constants';
 import { getDatabase, saveDatabase } from '../data/database';
 import type { CalendarAttendee, RecordingState } from '@shared/types';
 import type { IndicatorWindow } from '../windows/IndicatorWindow';
@@ -58,7 +58,7 @@ export function registerRecordingHandlers(
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, state);
     options?.onRecordingStateChange?.(state);
   };
-  const calloutService = new CalloutService();
+  const calloutService: CalloutService | null = FEATURE_FLAGS.enableCallouts ? new CalloutService() : null;
   const selfAppTokens = [app.getName(), 'com.kakarot.app']
     .filter(Boolean)
     .map((token) => token.toLowerCase());
@@ -226,7 +226,7 @@ export function registerRecordingHandlers(
       setRecordingState('processing');
 
       // Cancel any pending callouts immediately to prevent timer firing during cleanup
-      calloutService.reset();
+      calloutService?.reset();
 
       // CRITICAL: Stop audio capture FIRST before cleaning up AEC resources
       // This prevents race conditions where callbacks try to access null AEC objects
@@ -502,20 +502,22 @@ export function registerRecordingHandlers(
       if (isFinal) {
         meetingRepo.addTranscriptSegment(segment);
 
-        // Add to callout service sliding window for context
-        calloutService.addTranscriptSegment(segment);
+        if (calloutService) {
+          // Add to callout service sliding window for context
+          calloutService.addTranscriptSegment(segment);
 
-        // Check for questions from system audio (other speakers)
-        if (segment.source === 'system' && matchesQuestionPattern(segment.text)) {
-          calloutService.scheduleCallout(segment.text, (callout) => {
-            calloutWindow.webContents.send(IPC_CHANNELS.CALLOUT_SHOW, callout);
-            showCalloutWindow();
-          });
-        }
+          // Check for questions from system audio (other speakers)
+          if (segment.source === 'system' && matchesQuestionPattern(segment.text)) {
+            calloutService.scheduleCallout(segment.text, (callout) => {
+              calloutWindow.webContents.send(IPC_CHANNELS.CALLOUT_SHOW, callout);
+              showCalloutWindow();
+            });
+          }
 
-        // Check if mic response should cancel pending callout
-        if (segment.source === 'mic') {
-          calloutService.checkForMicResponse(segment.text);
+          // Check if mic response should cancel pending callout
+          if (segment.source === 'mic') {
+            calloutService.checkForMicResponse(segment.text);
+          }
         }
       }
     });
@@ -673,7 +675,7 @@ export function registerRecordingHandlers(
   ipcMain.handle(IPC_CHANNELS.RECORDING_PAUSE, async () => {
     isPaused = true;
     // Cancel pending callouts - don't show callouts while paused
-    calloutService.cancelPendingCallout();
+    calloutService?.cancelPendingCallout();
     
     // Pause system audio
     if (systemAudioService) {
@@ -728,7 +730,7 @@ export function registerRecordingHandlers(
     const meetingId = meetingRepo.getCurrentMeetingId();
 
     // Cancel any pending callouts
-    calloutService.reset();
+    calloutService?.reset();
     activeCalendarContext = null;
     stopMicActivityMonitor();
 
