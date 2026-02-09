@@ -52,6 +52,11 @@ contextBridge.exposeInMainWorld('kakarot', {
       ipcRenderer.on(IPC_CHANNELS.RECORDING_STATE, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.RECORDING_STATE, handler);
     },
+    onAutoStop: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on(IPC_CHANNELS.RECORDING_AUTO_STOPPED, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.RECORDING_AUTO_STOPPED, handler);
+    },
     onNotesComplete: (callback: (data: { meetingId: string; title: string; overview: string }) => void) => {
       const handler = (_: unknown, data: { meetingId: string; title: string; overview: string }) => callback(data);
       ipcRenderer.on(IPC_CHANNELS.MEETING_NOTES_COMPLETE, handler);

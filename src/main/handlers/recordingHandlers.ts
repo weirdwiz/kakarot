@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron';
+import { app, ipcMain, BrowserWindow } from 'electron';
 import { IPC_CHANNELS } from '@shared/ipcChannels';
 import { getContainer } from '../core/container';
 import { createLogger } from '../core/logger';
@@ -6,6 +6,7 @@ import { createTranscriptionProvider, ITranscriptionProvider } from '../services
 import { getDeepgramTokenService } from '../services/DeepgramTokenService';
 import { SystemAudioService } from '../services/SystemAudioService';
 import { CalloutService } from '../services/CalloutService';
+import { MicActivityMonitor } from '../services/MicActivityMonitor';
 import { AECProcessor } from '../audio/native/AECProcessor';
 import { AECSync } from '../audio/AECSync';
 import { showCalloutWindow } from '../windows/calloutWindow';
@@ -19,6 +20,8 @@ let transcriptionProvider: ITranscriptionProvider | null = null;
 let systemAudioService: SystemAudioService | null = null;
 let aecProcessor: AECProcessor | null = null;
 let aecSync: AECSync | null = null;
+let micActivityMonitor: MicActivityMonitor | null = null;
+let stopInProgress = false;
 let activeCalendarContext: {
   calendarEventId: string;
   calendarEventTitle: string;
@@ -28,6 +31,9 @@ let activeCalendarContext: {
   calendarProvider: string;
 } | null = null;
 let isPaused = false;
+let lastMicApps: string[] = [];
+let meetingAppSeen = false;
+let autoStopTimer: NodeJS.Timeout | null = null;
 
 // 📊 Audio packet counter for logging
 let micAudioDataCount = 0;
@@ -40,6 +46,338 @@ export function registerRecordingHandlers(
   calloutWindow: BrowserWindow
 ): void {
   const calloutService = new CalloutService();
+  const selfAppTokens = [app.getName(), 'com.kakarot.app']
+    .filter(Boolean)
+    .map((token) => token.toLowerCase());
+  const AUTO_STOP_GRACE_MS = 5000;
+  const MEETING_APP_BUNDLE_IDS = new Set([
+    'com.google.chrome',
+    'com.google.chrome.canary',
+    'com.microsoft.edgemac',
+    'com.microsoft.edge',
+    'com.brave.browser',
+    'com.vivaldi.vivaldi',
+    'company.thebrowser.browser', // Arc
+    'org.mozilla.firefox',
+    'com.apple.safari',
+    'us.zoom.xos',
+    'com.microsoft.teams',
+    'com.microsoft.teams2',
+    'com.webex.meetingmanager',
+    'com.cisco.webexmeetingsapp',
+  ]);
+
+  const clearAutoStopTimer = (): void => {
+    if (autoStopTimer) {
+      clearTimeout(autoStopTimer);
+      autoStopTimer = null;
+    }
+  };
+
+  const resetMicMonitorState = (): void => {
+    clearAutoStopTimer();
+    lastMicApps = [];
+    meetingAppSeen = false;
+  };
+
+  const isSelfApp = (appIdOrName: string): boolean => {
+    const lower = appIdOrName.toLowerCase();
+    return selfAppTokens.some((token) => lower.includes(token));
+  };
+
+  const normalizeAppId = (entry: string): string => {
+    const trimmed = entry.trim();
+    const colonIndex = trimmed.indexOf(':');
+    const value = colonIndex >= 0 ? trimmed.slice(colonIndex + 1) : trimmed;
+    return value.toLowerCase();
+  };
+
+  const isMeetingApp = (entry: string): boolean => {
+    const normalized = normalizeAppId(entry);
+    if (MEETING_APP_BUNDLE_IDS.has(normalized)) {
+      return true;
+    }
+    return false;
+  };
+
+  const getMicEntries = (apps: string[]): string[] => {
+    return apps.filter((entry) => entry.toLowerCase().startsWith('mic:'));
+  };
+
+  const handleMicAppsUpdate = (apps: string[], raw: string, timestamp: number): void => {
+    lastMicApps = apps;
+    mainWindow.webContents.send(IPC_CHANNELS.MIC_APPS_UPDATE, {
+      apps,
+      raw,
+      timestamp,
+    });
+    logger.debug('Mic activity update', { apps, raw });
+
+    const micApps = getMicEntries(apps);
+    const externalMicApps = micApps.filter((entry) => !isSelfApp(entry));
+    const meetingApps = externalMicApps.filter((entry) => isMeetingApp(entry));
+
+    if (meetingApps.length > 0) {
+      meetingAppSeen = true;
+      clearAutoStopTimer();
+      return;
+    }
+
+    if (!meetingAppSeen || autoStopTimer) {
+      return;
+    }
+
+    autoStopTimer = setTimeout(() => {
+      autoStopTimer = null;
+      if (stopInProgress || !meetingAppSeen) {
+        return;
+      }
+
+      const latestMicApps = getMicEntries(lastMicApps);
+      const latestExternalMicApps = latestMicApps.filter((entry) => !isSelfApp(entry));
+      const latestMeetingApps = latestExternalMicApps.filter((entry) => isMeetingApp(entry));
+
+      if (latestMeetingApps.length === 0 && transcriptionProvider) {
+        logger.info('Auto-stopping recording (no meeting mic apps detected)', {
+          lastMicApps,
+        });
+        void stopRecording('auto');
+      } else {
+        logger.debug('Auto-stop aborted; meeting mic apps detected', {
+          latestMeetingApps,
+        });
+      }
+    }, AUTO_STOP_GRACE_MS);
+  };
+
+  const startMicActivityMonitor = (): void => {
+    if (micActivityMonitor) {
+      return;
+    }
+
+    micActivityMonitor = new MicActivityMonitor((update) => {
+      handleMicAppsUpdate(update.apps, update.raw, update.timestamp);
+    });
+    micActivityMonitor.start();
+    logger.info('Mic activity monitor started');
+  };
+
+  const stopMicActivityMonitor = (): void => {
+    if (micActivityMonitor) {
+      micActivityMonitor.stop();
+      micActivityMonitor = null;
+    }
+    resetMicMonitorState();
+    logger.info('Mic activity monitor stopped');
+  };
+
+  const stopRecording = async (reason: 'manual' | 'auto'): Promise<any> => {
+    if (stopInProgress) {
+      logger.warn('Recording stop requested while already stopping', { reason });
+      return null;
+    }
+    stopInProgress = true;
+    clearAutoStopTimer();
+    stopMicActivityMonitor();
+    if (reason === 'auto') {
+      mainWindow.webContents.send(IPC_CHANNELS.RECORDING_AUTO_STOPPED);
+    }
+
+    try {
+      logger.info('Recording stop requested', { reason });
+      const { meetingRepo, noteGenerationService, calendarService } = getContainer();
+      const meetingId = meetingRepo.getCurrentMeetingId();
+      const calendContext = activeCalendarContext;
+      activeCalendarContext = null;
+
+      mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'processing');
+
+      // Cancel any pending callouts immediately to prevent timer firing during cleanup
+      calloutService.reset();
+
+      // CRITICAL: Stop audio capture FIRST before cleaning up AEC resources
+      // This prevents race conditions where callbacks try to access null AEC objects
+
+      // Step 1: Stop system audio capture (prevents new callbacks from firing)
+      if (systemAudioService) {
+        const sas = systemAudioService;
+        systemAudioService = null;
+        await sas.stop().catch((error) => logger.error('System audio stop error', error));
+        logger.info('System audio capture stopped');
+      }
+
+      // Step 2: Stop native mic capture
+      if (aecProcessor && aecProcessor.isMicrophoneCapturing()) {
+        logger.info('Stopping native microphone capture');
+        aecProcessor.stopMicrophoneCapture();
+      }
+
+      // Step 3: Wait for any in-flight audio callbacks to complete
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Step 4: Now safe to clean up AEC resources
+      // Clean up AEC sync
+      if (aecSync) {
+        const finalStats = aecSync.getStats();
+        logger.info('Final AEC sync stats', finalStats);
+        aecSync.clear();
+        aecSync = null;
+      }
+
+      // Clean up AEC processor
+      if (aecProcessor) {
+        try {
+          aecProcessor.destroy();
+        } catch (error) {
+          logger.warn('Error destroying AEC processor', { error: (error as Error).message });
+        }
+        aecProcessor = null;
+      }
+
+      // Reset mic audio counter (no buffer to reset anymore)
+      micAudioDataCount = 0;
+
+      // Disconnect transcription and wait for it to flush
+      if (transcriptionProvider) {
+        const tp = transcriptionProvider;
+        transcriptionProvider = null;
+        await tp.disconnect().catch((error) => logger.error('Transcription disconnect error', error));
+        logger.info('Transcription provider disconnected');
+      }
+
+      isPaused = false;
+
+      // Wait for any remaining finals to arrive and be stored
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      const meeting = await meetingRepo.endCurrentMeeting();
+      logger.info('Meeting ended', { id: meeting?.id, transcriptCount: meeting?.transcript.length });
+
+      // Auto-generate notes in background (only if sufficient transcript)
+      if (meeting && meetingId) {
+        // Re-fetch meeting to get all transcript segments
+        const fullMeeting = meetingRepo.findById(meeting.id);
+        
+        // Skip note generation if transcript has fewer than 2 segments
+        if (fullMeeting && fullMeeting.transcript.length < 2) {
+          logger.info('Skipping notes generation - insufficient transcript', {
+            meetingId: meeting.id,
+            transcriptLength: fullMeeting.transcript.length
+          });
+          // CRITICAL: Emit completion event so frontend can navigate correctly
+          mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
+            meetingId: meeting.id,
+            title: fullMeeting.title || 'Untitled Meeting',
+            overview: '',
+          });
+          mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+          return meeting;
+        }
+
+        mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_GENERATING, { meetingId: meeting.id });
+
+        if (fullMeeting && fullMeeting.transcript.length > 0) {
+          // Generate notes safely with try/catch
+          try {
+            logger.info('Notes generation started', { meetingId: meeting.id });
+            const notes = await noteGenerationService.generateNotes(fullMeeting);
+            
+            if (notes) {
+              logger.info('Notes generated successfully', { meetingId: meeting.id });
+              // Store the full structured notes object for rich UI rendering
+              meetingRepo.updateNotes(meeting.id, notes, notes.notesMarkdown, notes.notesMarkdown);
+              meetingRepo.updateOverview(meeting.id, notes.overview);
+
+              // Persist extracted participants to meeting.people for prep search
+              if (notes.participants && notes.participants.length > 0) {
+                const peopleData = notes.participants.map((name: string) => ({ name }));
+                meetingRepo.updatePeople(meeting.id, peopleData);
+                logger.info('Stored extracted participants', {
+                  meetingId: meeting.id,
+                  participantCount: notes.participants.length,
+                  participants: notes.participants
+                });
+              }
+
+              saveDatabase();
+
+              // Preserve calendar-derived titles; only override when we don't have a calendar context
+              if (!calendContext) {
+                logger.info('Updating meeting title with AI-generated title (no calendar context)', {
+                  meetingId: meeting.id,
+                  aiTitle: notes.title
+                });
+                const db = getDatabase();
+                db.run('UPDATE meetings SET title = ? WHERE id = ?', [notes.title, meeting.id]);
+                saveDatabase();
+              } else {
+                logger.info('Preserving calendar-derived title (calendar context exists)', {
+                  meetingId: meeting.id,
+                  calendarTitle: fullMeeting.title,
+                  aiTitleNotUsed: notes.title
+                });
+              }
+
+              // Link notes back to calendar event if context exists
+              if (calendContext) {
+                calendarService.linkNotesToEvent(
+                  calendContext.calendarEventId,
+                  meeting.id,
+                  calendContext.calendarProvider as 'google' | 'outlook' | 'icloud'
+                ).catch((err) => {
+                  logger.error('Failed to link notes to calendar event', {
+                    calendarEventId: calendContext.calendarEventId,
+                    error: (err as Error).message,
+                  });
+                });
+              }
+
+              mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
+                meetingId: meeting.id,
+                title: notes.title,
+                overview: notes.overview,
+              });
+            } else {
+              logger.info('Notes generation skipped (no notes returned)', { meetingId: meeting.id });
+              mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
+                meetingId: meeting.id,
+                title: fullMeeting.title || 'Untitled Meeting',
+                overview: '',
+              });
+            }
+          } catch (error) {
+            logger.error('Notes generation failed', { 
+              meetingId: meeting.id, 
+              error: (error as Error).message 
+            });
+            // Still emit completion event so renderer can navigate
+            mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
+              meetingId: meeting.id,
+              title: fullMeeting.title || 'Untitled Meeting',
+              overview: '',
+            });
+          }
+          mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+        } else {
+          logger.warn('No transcript segments to generate notes from');
+          mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+        }
+      } else {
+        logger.warn('No meeting or meetingId available for notes generation');
+        // CRITICAL: Still emit completion event so frontend doesn't get stuck
+        mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
+          meetingId: meetingId || 'unknown',
+          title: 'Meeting Error',
+          overview: '',
+        });
+        mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
+      }
+
+      return meeting;
+    } finally {
+      stopInProgress = false;
+    }
+  };
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_START, async (_, calendarContext?: any) => {
     logger.info('Recording start requested', { hasCalendarContext: !!calendarContext });
@@ -69,6 +407,7 @@ export function registerRecordingHandlers(
     });
 
     mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'recording');
+    startMicActivityMonitor();
 
     // Initialize AEC processor for echo cancellation
     try {
@@ -284,198 +623,7 @@ export function registerRecordingHandlers(
     return meetingId;
   });
 
-  ipcMain.handle(IPC_CHANNELS.RECORDING_STOP, async () => {
-    logger.info('Recording stop requested');
-    const { meetingRepo, noteGenerationService, calendarService } = getContainer();
-    const meetingId = meetingRepo.getCurrentMeetingId();
-    const calendContext = activeCalendarContext;
-    activeCalendarContext = null;
-
-    mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'processing');
-
-    // Cancel any pending callouts immediately to prevent timer firing during cleanup
-    calloutService.reset();
-
-    // CRITICAL: Stop audio capture FIRST before cleaning up AEC resources
-    // This prevents race conditions where callbacks try to access null AEC objects
-
-    // Step 1: Stop system audio capture (prevents new callbacks from firing)
-    if (systemAudioService) {
-      const sas = systemAudioService;
-      systemAudioService = null;
-      await sas.stop().catch((error) => logger.error('System audio stop error', error));
-      logger.info('System audio capture stopped');
-    }
-
-    // Step 2: Stop native mic capture
-    if (aecProcessor && aecProcessor.isMicrophoneCapturing()) {
-      logger.info('Stopping native microphone capture');
-      aecProcessor.stopMicrophoneCapture();
-    }
-
-    // Step 3: Wait for any in-flight audio callbacks to complete
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    // Step 4: Now safe to clean up AEC resources
-    // Clean up AEC sync
-    if (aecSync) {
-      const finalStats = aecSync.getStats();
-      logger.info('Final AEC sync stats', finalStats);
-      aecSync.clear();
-      aecSync = null;
-    }
-
-    // Clean up AEC processor
-    if (aecProcessor) {
-      try {
-        aecProcessor.destroy();
-      } catch (error) {
-        logger.warn('Error destroying AEC processor', { error: (error as Error).message });
-      }
-      aecProcessor = null;
-    }
-
-    // Reset mic audio counter (no buffer to reset anymore)
-    micAudioDataCount = 0;
-
-    // Disconnect transcription and wait for it to flush
-    if (transcriptionProvider) {
-      const tp = transcriptionProvider;
-      transcriptionProvider = null;
-      await tp.disconnect().catch((error) => logger.error('Transcription disconnect error', error));
-      logger.info('Transcription provider disconnected');
-    }
-
-    isPaused = false;
-
-    // Wait for any remaining finals to arrive and be stored
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    const meeting = await meetingRepo.endCurrentMeeting();
-    logger.info('Meeting ended', { id: meeting?.id, transcriptCount: meeting?.transcript.length });
-
-    // Auto-generate notes in background (only if sufficient transcript)
-    if (meeting && meetingId) {
-      // Re-fetch meeting to get all transcript segments
-      const fullMeeting = meetingRepo.findById(meeting.id);
-      
-      // Skip note generation if transcript has fewer than 2 segments
-      if (fullMeeting && fullMeeting.transcript.length < 2) {
-        logger.info('Skipping notes generation - insufficient transcript', {
-          meetingId: meeting.id,
-          transcriptLength: fullMeeting.transcript.length
-        });
-        // CRITICAL: Emit completion event so frontend can navigate correctly
-        mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
-          meetingId: meeting.id,
-          title: fullMeeting.title || 'Untitled Meeting',
-          overview: '',
-        });
-        mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
-        return meeting;
-      }
-
-      mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_GENERATING, { meetingId: meeting.id });
-
-      if (fullMeeting && fullMeeting.transcript.length > 0) {
-        // Generate notes safely with try/catch
-        try {
-          logger.info('Notes generation started', { meetingId: meeting.id });
-          const notes = await noteGenerationService.generateNotes(fullMeeting);
-          
-          if (notes) {
-            logger.info('Notes generated successfully', { meetingId: meeting.id });
-            // Store the full structured notes object for rich UI rendering
-            meetingRepo.updateNotes(meeting.id, notes, notes.notesMarkdown, notes.notesMarkdown);
-            meetingRepo.updateOverview(meeting.id, notes.overview);
-
-            // Persist extracted participants to meeting.people for prep search
-            if (notes.participants && notes.participants.length > 0) {
-              const peopleData = notes.participants.map((name: string) => ({ name }));
-              meetingRepo.updatePeople(meeting.id, peopleData);
-              logger.info('Stored extracted participants', {
-                meetingId: meeting.id,
-                participantCount: notes.participants.length,
-                participants: notes.participants
-              });
-            }
-
-            saveDatabase();
-
-            // Preserve calendar-derived titles; only override when we don't have a calendar context
-            if (!calendContext) {
-              logger.info('Updating meeting title with AI-generated title (no calendar context)', {
-                meetingId: meeting.id,
-                aiTitle: notes.title
-              });
-              const db = getDatabase();
-              db.run('UPDATE meetings SET title = ? WHERE id = ?', [notes.title, meeting.id]);
-              saveDatabase();
-            } else {
-              logger.info('Preserving calendar-derived title (calendar context exists)', {
-                meetingId: meeting.id,
-                calendarTitle: fullMeeting.title,
-                aiTitleNotUsed: notes.title
-              });
-            }
-
-            // Link notes back to calendar event if context exists
-            if (calendContext) {
-              calendarService.linkNotesToEvent(
-                calendContext.calendarEventId,
-                meeting.id,
-                calendContext.calendarProvider as 'google' | 'outlook' | 'icloud'
-              ).catch((err) => {
-                logger.error('Failed to link notes to calendar event', {
-                  calendarEventId: calendContext.calendarEventId,
-                  error: (err as Error).message,
-                });
-              });
-            }
-
-            mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
-              meetingId: meeting.id,
-              title: notes.title,
-              overview: notes.overview,
-            });
-          } else {
-            logger.info('Notes generation skipped (no notes returned)', { meetingId: meeting.id });
-            mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
-              meetingId: meeting.id,
-              title: fullMeeting.title || 'Untitled Meeting',
-              overview: '',
-            });
-          }
-        } catch (error) {
-          logger.error('Notes generation failed', { 
-            meetingId: meeting.id, 
-            error: (error as Error).message 
-          });
-          // Still emit completion event so renderer can navigate
-          mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
-            meetingId: meeting.id,
-            title: fullMeeting.title || 'Untitled Meeting',
-            overview: '',
-          });
-        }
-        mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
-      } else {
-        logger.warn('No transcript segments to generate notes from');
-        mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
-      }
-    } else {
-      logger.warn('No meeting or meetingId available for notes generation');
-      // CRITICAL: Still emit completion event so frontend doesn't get stuck
-      mainWindow.webContents.send(IPC_CHANNELS.MEETING_NOTES_COMPLETE, {
-        meetingId: meetingId || 'unknown',
-        title: 'Meeting Error',
-        overview: '',
-      });
-      mainWindow.webContents.send(IPC_CHANNELS.RECORDING_STATE, 'idle');
-    }
-
-    return meeting;
-  });
+  ipcMain.handle(IPC_CHANNELS.RECORDING_STOP, async () => stopRecording('manual'));
 
   ipcMain.handle(IPC_CHANNELS.RECORDING_PAUSE, async () => {
     isPaused = true;
@@ -537,6 +685,7 @@ export function registerRecordingHandlers(
     // Cancel any pending callouts
     calloutService.reset();
     activeCalendarContext = null;
+    stopMicActivityMonitor();
 
     // Stop system audio capture
     if (systemAudioService) {

@@ -8,6 +8,7 @@ export const IPC_CHANNELS = {
   RECORDING_RESUME: 'recording:resume',
   RECORDING_DISCARD: 'recording:discard',
   RECORDING_STATE: 'recording:state',
+  RECORDING_AUTO_STOPPED: 'recording:autoStopped',
 
   // Audio
   AUDIO_CHECK_NATIVE: 'audio:check-native',
@@ -19,6 +20,7 @@ export const IPC_CHANNELS = {
   AUDIO_LEVELS: 'audio:levels',
   AUDIO_DATA: 'audio:data',
   AUDIO_GET_SOURCES: 'audio:getSources',
+  MIC_APPS_UPDATE: 'mic:apps',
 
   // Transcription
   TRANSCRIPT_UPDATE: 'transcript:update',

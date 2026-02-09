@@ -408,6 +408,21 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     };
   }, [setLastCompletedNoteId]);
 
+  React.useEffect(() => {
+    const unsubscribe = window.kakarot.recording.onAutoStop?.(() => {
+      console.log('[RecordingView] Auto stop UI flow triggered');
+      setPhase('processing');
+      setErrorMessage('');
+      stopCapture().catch((err) => {
+        console.warn('[RecordingView] stopCapture failed during auto stop', err);
+      });
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [stopCapture]);
+
   // Hook into native notification click event for starting recording
   React.useEffect(() => {
     console.log('[RecordingView] Setting up notification listener');
