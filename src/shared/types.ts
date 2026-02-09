@@ -367,6 +367,8 @@ export interface CalendarEvent {
   location?: string;
   attendees?: CalendarAttendee[];
   description?: string;
+  status?: string;
+  isCancelled?: boolean;
 }
 
 // Structured custom meeting objective (for Interact section)
@@ -992,4 +994,3 @@ export interface PrepChatResponse {
   /** Updated conversation state */
   conversation?: PrepConversation;
 }
-

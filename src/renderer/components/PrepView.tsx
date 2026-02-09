@@ -184,16 +184,166 @@ export default function PrepView({ onSelectTab }: PrepViewProps) {
   const standardOverrides = settings?.standardMeetingTypeOverrides || [];
 
   // Consume initial prep query from app store (set by ManualNotesView Prep button)
+  const saveConversationToHistory = useCallback((conv: PrepConversation) => {
+    setChatHistory((prev) => {
+      const idx = prev.findIndex((c) => c.id === conv.id);
+      const updated = idx >= 0
+        ? prev.map((c, i) => (i === idx ? conv : c))
+        : [conv, ...prev];
+      const trimmed = updated.slice(0, 50);
+      try {
+        localStorage.setItem('treeto-prep-chat-history', JSON.stringify(trimmed));
+      } catch {
+        // ignore storage errors
+      }
+      return trimmed;
+    });
+  }, []);
+
+  const sendPrepMessage = useCallback(
+    async (message: string) => {
+      const trimmed = message.trim();
+      if (!trimmed || isChatLoading) return;
+
+      setChatInput('');
+      setIsChatLoading(true);
+      setGeneratingError(null);
+      setStreamingText('');
+      setStreamingThinking('');
+      setIsStreamingThinking(true);
+      setStreamingMessageId(null);
+
+      thinkingTimer.reset();
+      thinkingTimer.start();
+
+      if (streamCleanupRef.current) {
+        streamCleanupRef.current();
+        streamCleanupRef.current = null;
+      }
+
+      try {
+        const tempUserMsgId = `msg-${Date.now()}-user`;
+        const tempAssistantMsgId = `msg-${Date.now()}-assistant`;
+        setStreamingMessageId(tempAssistantMsgId);
+
+        const userMsg: PrepChatMessage = {
+          id: tempUserMsgId,
+          role: 'user',
+          content: trimmed,
+          timestamp: new Date().toISOString(),
+        };
+
+        const tempConversation: PrepConversation = chatConversation
+          ? {
+              ...chatConversation,
+              messages: [...chatConversation.messages, userMsg],
+              updatedAt: new Date().toISOString(),
+            }
+          : {
+              id: `conv-${Date.now()}`,
+              messages: [userMsg],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+
+        setChatConversation(tempConversation);
+
+        setTimeout(() => {
+          autoScrollToBottom();
+        }, 50);
+
+        const cleanup = window.kakarot.prep.chatStreamStart(
+          { message: trimmed },
+          chatConversation || undefined,
+          {
+            onChunk: (chunk: string) => {
+              if (isStreamingThinking) {
+                const thinkingDuration = thinkingTimer.stop();
+                console.log(`Thinking phase complete: ${thinkingDuration}ms`);
+                setIsStreamingThinking(false);
+              }
+
+              setStreamingText((prev) => prev + chunk);
+
+              autoScrollToBottom();
+            },
+            onStart: (_metadata: { conversationId: string; meetingReferences: { meetingId: string; title: string; date: string }[] }) => {
+              // Metadata received - could use for showing meeting references
+            },
+            onEnd: (response: PrepChatResponse) => {
+              const finalDuration = thinkingTimer.elapsedMs;
+              if (thinkingTimer.isRunning) {
+                thinkingTimer.stop();
+              }
+
+              if (response.conversation && finalDuration > 0) {
+                const lastMessage = response.conversation.messages[response.conversation.messages.length - 1];
+                if (lastMessage && lastMessage.role === 'assistant') {
+                  lastMessage.thinkingDuration = finalDuration;
+                  lastMessage.thinking = `Processing your question and analyzing context (${Math.round(finalDuration / 1000)}s)`;
+                }
+              }
+
+              setChatConversation(response.conversation || null);
+              if (response.conversation) saveConversationToHistory(response.conversation);
+              setStreamingText('');
+              setStreamingThinking('');
+              setIsStreamingThinking(false);
+              setStreamingMessageId(null);
+              setIsChatLoading(false);
+              chatInputRef.current?.focus();
+            },
+            onError: (error: string) => {
+              thinkingTimer.stop();
+              setGeneratingError(error);
+              setStreamingText('');
+              setStreamingThinking('');
+              setIsStreamingThinking(false);
+              setStreamingMessageId(null);
+              setIsChatLoading(false);
+              chatInputRef.current?.focus();
+            },
+          }
+        );
+
+        streamCleanupRef.current = cleanup;
+      } catch (error) {
+        setGeneratingError(error instanceof Error ? error.message : 'Failed to send message');
+        setIsChatLoading(false);
+        setIsStreamingThinking(false);
+        setStreamingMessageId(null);
+      }
+    },
+    [
+      autoScrollToBottom,
+      chatConversation,
+      isChatLoading,
+      saveConversationToHistory,
+      thinkingTimer,
+    ]
+  );
+
+  const handleChatSend = useCallback(() => {
+    sendPrepMessage(chatInput);
+  }, [chatInput, sendPrepMessage]);
+
   useEffect(() => {
-    if (initialPrepQuery) {
-      setChatInput(initialPrepQuery);
-      setInitialPrepQuery(null); // Clear after consuming
-      // Focus the input after a short delay to ensure it's mounted
-      setTimeout(() => {
-        chatInputRef.current?.focus();
-      }, 100);
+    if (!initialPrepQuery) {
+      return;
     }
-  }, [initialPrepQuery, setInitialPrepQuery]);
+
+    setChatInput(initialPrepQuery);
+    setInitialPrepQuery(null);
+    setTimeout(() => {
+      chatInputRef.current?.focus();
+    }, 100);
+
+    const timer = setTimeout(() => {
+      sendPrepMessage(initialPrepQuery);
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [initialPrepQuery, setInitialPrepQuery, sendPrepMessage]);
 
   // Load chat history from localStorage
   useEffect(() => {
@@ -635,153 +785,6 @@ export default function PrepView({ onSelectTab }: PrepViewProps) {
     setShowQuickSearchDropdown(false);
     handleQuickPrep(person.email || person.name || '');
   }, [handleQuickPrep]);
-
-  // Handle chat message send (omnibar)
-  const handleChatSend = useCallback(async () => {
-    if (!chatInput.trim() || isChatLoading) return;
-
-    const userMessage = chatInput.trim();
-    setChatInput('');
-    setIsChatLoading(true);
-    setGeneratingError(null);
-    setStreamingText('');
-    setStreamingThinking('');
-    setIsStreamingThinking(true); // Show "Thinking..." while waiting for first chunk
-    setStreamingMessageId(null);
-
-    // Start thinking timer - shows elapsed time until first chunk arrives
-    thinkingTimer.reset();
-    thinkingTimer.start();
-
-    // Clean up any previous stream
-    if (streamCleanupRef.current) {
-      streamCleanupRef.current();
-      streamCleanupRef.current = null;
-    }
-
-    try {
-      // Create temporary user message for immediate display
-      const tempUserMsgId = `msg-${Date.now()}-user`;
-      const tempAssistantMsgId = `msg-${Date.now()}-assistant`;
-      setStreamingMessageId(tempAssistantMsgId);
-
-      // Add user message to conversation immediately
-      const userMsg: PrepChatMessage = {
-        id: tempUserMsgId,
-        role: 'user',
-        content: userMessage,
-        timestamp: new Date().toISOString(),
-      };
-
-      // Create temporary conversation with user message
-      const tempConversation: PrepConversation = chatConversation
-        ? {
-            ...chatConversation,
-            messages: [...chatConversation.messages, userMsg],
-            updatedAt: new Date().toISOString(),
-          }
-        : {
-            id: `conv-${Date.now()}`,
-            messages: [userMsg],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
-
-      setChatConversation(tempConversation);
-
-      // Auto-scroll to show user message
-      setTimeout(() => {
-        autoScrollToBottom();
-      }, 50);
-
-      // Start streaming
-      const cleanup = window.kakarot.prep.chatStreamStart(
-        { message: userMessage },
-        chatConversation || undefined,
-        {
-          onChunk: (chunk: string) => {
-            // First chunk: stop thinking timer and switch to content mode
-            if (isStreamingThinking) {
-              const thinkingDuration = thinkingTimer.stop();
-              console.log(`Thinking phase complete: ${thinkingDuration}ms`);
-              setIsStreamingThinking(false);
-            }
-
-            // Append to content (this will create the typewriter effect)
-            setStreamingText(prev => prev + chunk);
-
-            // Auto-scroll while streaming
-            autoScrollToBottom();
-          },
-          onStart: (_metadata: { conversationId: string; meetingReferences: { meetingId: string; title: string; date: string }[] }) => {
-            // Metadata received - could use for showing meeting references
-          },
-          onEnd: (response: PrepChatResponse) => {
-            // Ensure timer is stopped and save the thinking duration
-            const finalDuration = thinkingTimer.elapsedMs;
-            if (thinkingTimer.isRunning) {
-              thinkingTimer.stop();
-            }
-
-            // Add thinking duration to the assistant's message
-            if (response.conversation && finalDuration > 0) {
-              const lastMessage = response.conversation.messages[response.conversation.messages.length - 1];
-              if (lastMessage && lastMessage.role === 'assistant') {
-                lastMessage.thinkingDuration = finalDuration;
-                // Add placeholder thinking text to show the timer worked
-                lastMessage.thinking = `Processing your question and analyzing context (${Math.round(finalDuration / 1000)}s)`;
-              }
-            }
-
-            // Streaming complete - update with final conversation
-            setChatConversation(response.conversation || null);
-            if (response.conversation) saveConversationToHistory(response.conversation);
-            setStreamingText('');
-            setStreamingThinking('');
-            setIsStreamingThinking(false);
-            setStreamingMessageId(null);
-            setIsChatLoading(false);
-            chatInputRef.current?.focus();
-          },
-          onError: (error: string) => {
-            thinkingTimer.stop();
-            setGeneratingError(error);
-            setStreamingText('');
-            setStreamingThinking('');
-            setIsStreamingThinking(false);
-            setStreamingMessageId(null);
-            setIsChatLoading(false);
-            chatInputRef.current?.focus();
-          },
-        }
-      );
-
-      streamCleanupRef.current = cleanup;
-    } catch (error) {
-      thinkingTimer.stop();
-      setGeneratingError(error instanceof Error ? error.message : 'Failed to get response');
-      console.error('Chat failed:', error);
-      setIsChatLoading(false);
-      chatInputRef.current?.focus();
-    }
-  }, [chatInput, isChatLoading, chatConversation, autoScrollToBottom, thinkingTimer]);
-
-  // Start new conversation
-  const saveConversationToHistory = useCallback((conv: PrepConversation) => {
-    setChatHistory((prev) => {
-      const idx = prev.findIndex((c) => c.id === conv.id);
-      const updated = idx >= 0
-        ? prev.map((c, i) => (i === idx ? conv : c))
-        : [conv, ...prev];
-      const trimmed = updated.slice(0, 50);
-      try {
-        localStorage.setItem('treeto-prep-chat-history', JSON.stringify(trimmed));
-      } catch {
-        // ignore storage errors
-      }
-      return trimmed;
-    });
-  }, []);
 
   const handleNewConversation = useCallback(() => {
     setChatConversation(null);

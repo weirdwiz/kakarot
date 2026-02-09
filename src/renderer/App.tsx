@@ -8,7 +8,7 @@ import SettingsView from './components/SettingsView';
 import PeopleView from './components/PeopleView';
 import Sidebar from './components/Sidebar';
 import OnboardingFlow from './components/onboarding/OnboardingFlow';
-import type { AudioLevels, AppSettings, Meeting } from '../shared/types';
+import type { AudioLevels, AppSettings, CalendarEvent, Meeting } from '../shared/types';
 import ThemeToggle from './components/ThemeToggle';
 import ToastContainer from './components/Toast';
 
@@ -32,6 +32,53 @@ export default function App() {
   } = useAppStore();
   const { isCompleted: onboardingCompleted, completeOnboarding, resetOnboarding } = useOnboardingStore();
   const [pillarTab, setPillarTab] = useState<'notes' | 'prep'>('notes');
+  const [cachedCalendarEvents, setCachedCalendarEvents] = useState<CalendarEvent[]>([]);
+
+  const classifyCalendarEvents = useCallback(
+    (events: CalendarEvent[], dismissedIds: Set<string>) => {
+      const now = Date.now();
+      const oneMinute = 60_000;
+      const upcoming = events.filter((event) => {
+        const eventStart = new Date(event.start).getTime();
+        const status = event.status?.toLowerCase();
+        const isCancelled = event.isCancelled || status === 'cancelled';
+        return !isCancelled && eventStart - now > oneMinute;
+      });
+
+      const live = events.filter((event) => {
+        const eventStart = new Date(event.start).getTime();
+        const eventEnd = new Date(event.end).getTime();
+        const status = event.status?.toLowerCase();
+        const isCancelled = event.isCancelled || status === 'cancelled';
+        if (isCancelled) {
+          return false;
+        }
+        const windowStart = eventStart - oneMinute;
+        const isWithinWindow = now >= windowStart && now <= eventEnd;
+        return isWithinWindow && !dismissedIds.has(event.id);
+      });
+
+      setUpcomingCalendarEvents(upcoming);
+      setLiveCalendarEvents(live);
+    },
+    [setLiveCalendarEvents, setUpcomingCalendarEvents]
+  );
+
+  useEffect(() => {
+    classifyCalendarEvents(cachedCalendarEvents, dismissedEventIds);
+  }, [cachedCalendarEvents, dismissedEventIds, classifyCalendarEvents]);
+
+  useEffect(() => {
+    if (cachedCalendarEvents.length === 0) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      classifyCalendarEvents(cachedCalendarEvents, dismissedEventIds);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [cachedCalendarEvents, dismissedEventIds, classifyCalendarEvents]);
 
   // Determine if we need full-height layout (no scrolling, card fills space)
   const isLiveRecording = recordingState === 'recording' || recordingState === 'paused';
@@ -54,26 +101,15 @@ export default function App() {
     try {
       // Load calendar events
       const events = await window.kakarot.calendar.getUpcoming();
+      setCachedCalendarEvents(events);
+
+      // Immediately classify the freshly fetched events
+      classifyCalendarEvents(events, currentDismissedIds);
 
       // Load calendar mappings
       const settings = await window.kakarot.settings.get() as AppSettings;
       const mappings = settings.calendarEventMappings || {};
       setCalendarMappings(mappings);
-
-      const now = Date.now();
-      const oneMinute = 60_000;
-
-      // Upcoming: events whose start is more than 1 minute away
-      const upcoming = events.filter((e) => new Date(e.start).getTime() - now > oneMinute);
-      setUpcomingCalendarEvents(upcoming);
-
-      // Live: events currently between start and end (not dismissed)
-      const live = events.filter((e) => {
-        const startMs = new Date(e.start).getTime();
-        const endMs = new Date(e.end).getTime();
-        return now >= startMs && now <= endMs && !currentDismissedIds.has(e.id);
-      });
-      setLiveCalendarEvents(live);
     } catch (err) {
       console.error('Failed to load calendar events:', err);
     }
@@ -101,7 +137,7 @@ export default function App() {
     }
 
     setDashboardDataLoaded(true);
-  }, [setLiveCalendarEvents, setUpcomingCalendarEvents, setPreviousMeetings, setCalendarMappings, setDashboardDataLoaded]);
+  }, [classifyCalendarEvents, setPreviousMeetings, setCalendarMappings, setDashboardDataLoaded]);
 
   useEffect(() => {
     // Load initial settings

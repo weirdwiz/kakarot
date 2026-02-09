@@ -69,7 +69,10 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
    * Handle clicking on an upcoming meeting (Prep button)
    * Prepares to record with this calendar context
    */
-  const handleSelectUpcomingMeeting = (event: CalendarEvent) => {
+  const handleSelectUpcomingMeeting = (
+    event: CalendarEvent,
+    options?: { showPrep?: boolean }
+  ) => {
     const hasNotes = calendarMappings[event.id]?.notesId;
 
     if (hasNotes) {
@@ -79,8 +82,10 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
       // Prepare to record with this calendar context
       setCalendarContext(event);
       setActiveCalendarContext(event);
-      setView('recording');
-      onSelectTab?.('prep');
+      if (options?.showPrep ?? true) {
+        setView('recording');
+        onSelectTab?.('prep');
+      }
     }
   };
 
@@ -160,7 +165,9 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
           <UpcomingMeetingsPopup
             meetings={upcomingCalendarEvents}
             onClose={() => setShowUpcomingPopup(false)}
-            onSelectMeeting={handleSelectUpcomingMeeting}
+            onSelectMeeting={(event) =>
+              handleSelectUpcomingMeeting(event, { showPrep: false })
+            }
             onTakeNotes={handleTakeManualNotes}
           />
         )}

@@ -377,6 +377,7 @@ declare global {
         onStateChange: (callback: (state: RecordingState) => void) => () => void;
         onNotesComplete: (callback: (data: { meetingId: string; title: string; overview: string }) => void) => () => void;
         onNotificationStartRecording: (callback: (context: any) => void) => () => void;
+        onAutoStop: (callback: () => void) => () => void;
       };
       audio: {
         onLevels: (callback: (levels: AudioLevels) => void) => () => void;
