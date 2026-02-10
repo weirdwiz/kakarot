@@ -16,8 +16,11 @@ import { IPC_CHANNELS } from '@shared/ipcChannels';
 import { FEATURE_FLAGS } from './config/constants';
 import type { Callout, RecordingState } from '@shared/types';
 
-// Load .env from project root
+// Load .env: in dev from project root, in production from Resources/ next to app.asar
 config({ path: resolve(__dirname, '../../.env') });
+if (app.isPackaged) {
+  config({ path: resolve(process.resourcesPath, '.env'), override: true });
+}
 
 initializeErrorHandler();
 

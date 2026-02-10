@@ -8,6 +8,7 @@ import SettingsView from './components/SettingsView';
 import PeopleView from './components/PeopleView';
 import Sidebar from './components/Sidebar';
 import OnboardingFlow from './components/onboarding/OnboardingFlow';
+import { ArrowLeft } from 'lucide-react';
 import type { AudioLevels, AppSettings, CalendarEvent, Meeting } from '../shared/types';
 import ThemeToggle from './components/ThemeToggle';
 import ToastContainer from './components/Toast';
@@ -216,22 +217,19 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden min-w-[640px] bg-[#050505]">
-      <Sidebar />
+    <div className="flex h-screen overflow-hidden min-w-[640px] bg-[#0C0C0C]">
+      <Sidebar pillarTab={pillarTab} onPillarTabChange={setPillarTab} />
       <div className="flex-1 flex flex-col">
         {/* Fixed Header */}
-        <header className="sticky top-0 z-30 backdrop-blur-md bg-[#0C0C0C]/80 border-b-2 border-[#4ea8dd]/30 drag-region">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-[48px] flex items-center justify-between">
-            {/* Back button (left, sticks to sidebar edge) */}
+        <header className="sticky top-0 z-30 backdrop-blur-md bg-[#0C0C0C]/80 border-b border-[#2A2A2A] drag-region">
+          <div className="px-4 sm:px-6 h-[48px] flex items-center">
             <div className="flex items-center no-drag">
               {(() => {
                 const state = useAppStore.getState();
-                // Determine if we're on the homepage (BentoDashboard)
-                // We're on homepage if: in recording view, notes tab, no meeting selected, and either idle or showing recording home
-                const isOnHomepage = view === 'recording' && 
-                                    pillarTab === 'notes' && 
-                                    !state.selectedMeeting && 
-                                    !state.activeCalendarContext && 
+                const isOnHomepage = view === 'recording' &&
+                                    pillarTab === 'notes' &&
+                                    !state.selectedMeeting &&
+                                    !state.activeCalendarContext &&
                                     !recordingResult &&
                                     (recordingState === 'idle' || showRecordingHome);
 
@@ -248,7 +246,6 @@ export default function App() {
                       const state = useAppStore.getState();
                       const currentlyLive = state.recordingState === 'recording' || state.recordingState === 'paused';
 
-                      // Navigate to home screen
                       state.setView('recording');
                       setPillarTab('notes');
                       state.setActiveCalendarContext(null);
@@ -259,60 +256,46 @@ export default function App() {
                     }}
                   >
                     <span className="inline-flex items-center gap-1">
-                      ← Back
+                      <ArrowLeft className="w-4 h-4" />
+                      Back
                     </span>
                   </button>
                 );
               })()}
             </div>
-            {/* Navigation Pills (Center) */}
-            <div className="flex-1 flex justify-center no-drag">
-              <div className="flex items-center gap-2 px-1.5 py-1.5 rounded-full border border-white/10 bg-[#0C0C0C]/70">
-                {(['notes','prep'] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => {
-                      setPillarTab(tab);
-                      const state = useAppStore.getState();
-                      // Switch to recording view when clicking any tab
-                      if (state.view !== 'recording') {
-                        state.setView('recording');
-                      }
-                    }}
-                    className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${
-                      pillarTab === tab && view === 'recording'
-                        ? 'bg-[#4ea8dd] text-white shadow-soft-card'
-                        : 'text-slate-300 hover:bg-white/5'
-                    }`}
-                  >
-                    {tab === 'notes' ? 'Home' : 'Prep'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Spacer for layout balance */}
-            <div className="w-32" />
           </div>
         </header>
 
         {/* Scrollable Content */}
         <main className={`flex-1 ${needsFullHeight ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-          <div className={`${view === 'recording' ? 'h-full max-w-2xl mx-auto px-6' : 'max-w-6xl mx-auto px-6 sm:px-8'} ${needsFullHeight ? 'h-full flex flex-col py-6' : 'py-6'}`}>
-            <div className={`rounded-2xl border border-white/10 bg-[#121212] shadow-soft-card ${needsFullHeight ? 'flex-1 min-h-0 flex flex-col' : ''}`}>
-              <div className={`${needsFullHeight ? 'h-full flex flex-col p-4' : 'p-4 sm:p-6'}`}>
-                {view === 'recording' && (
-                  pillarTab === 'notes' ? (
-                    <RecordingView onSelectTab={setPillarTab} />
-                  ) : (
-                    <PrepView onSelectTab={setPillarTab} />
-                  )
-                )}
+          <div
+            key={`${view}-${pillarTab}`}
+            className={`
+              animate-view-enter
+              ${needsFullHeight ? 'h-full flex flex-col' : ''}
+              py-4 px-4 sm:px-6
+              ${!(view === 'history' || view === 'people') ? 'max-w-5xl mx-auto' : ''}
+            `}
+          >
+            {(view === 'history' || view === 'people') ? (
+              <div className={needsFullHeight ? 'flex-1 min-h-0' : ''}>
                 {view === 'history' && <HistoryView />}
                 {view === 'people' && <PeopleView />}
-                {view === 'settings' && <SettingsView />}
               </div>
-            </div>
+            ) : (
+              <div className={`rounded-2xl border border-[#2A2A2A] bg-[#161616] ${needsFullHeight ? 'flex-1 min-h-0 flex flex-col' : ''}`}>
+                <div className={`${needsFullHeight ? 'h-full flex flex-col p-5' : 'p-5 sm:p-6'}`}>
+                  {view === 'recording' && (
+                    pillarTab === 'notes' ? (
+                      <RecordingView onSelectTab={setPillarTab} />
+                    ) : (
+                      <PrepView onSelectTab={setPillarTab} />
+                    )
+                  )}
+                  {view === 'settings' && <SettingsView />}
+                </div>
+              </div>
+            )}
           </div>
         </main>
       </div>

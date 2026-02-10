@@ -137,9 +137,9 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
   };
 
   return (
-    <div className="h-full flex flex-col items-center overflow-auto p-4">
+    <div className="h-full flex flex-col items-center overflow-auto px-2 py-4">
       {/* Centered column container with max width */}
-      <div className="w-full max-w-2xl flex flex-col gap-3">
+      <div className="w-full max-w-3xl flex flex-col gap-3">
         {/* Live meeting bar */}
         <CompactMeetingBar
           events={liveCalendarEvents}

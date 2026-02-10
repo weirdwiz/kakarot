@@ -51,6 +51,7 @@ export function useAudioCapture() {
 
   const startCapture = useCallback(async () => {
     try {
+      isPausedRef.current = false;
       micAudioContextRef.current = new AudioContext();
 
       if (micAudioContextRef.current.state === 'suspended') {

@@ -236,7 +236,7 @@ export default function SettingsView() {
 
   if (!localSettings) {
     return (
-      <div className="h-full flex items-center justify-center text-gray-500">
+      <div className="h-full flex items-center justify-center text-slate-500">
         Loading settings...
       </div>
     );
@@ -246,26 +246,26 @@ export default function SettingsView() {
     <div className="h-full overflow-y-auto">
       <div className="max-w-2xl mx-auto p-6 space-y-8">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Settings</h1>
-          <p className="text-gray-400 text-sm mt-1">
+          <h1 className="text-3xl font-display text-[#F0EBE3]">Settings</h1>
+          <p className="text-[#5C5750] text-sm mt-1">
             Configure your preferences and integrations
           </p>
         </div>
 
         {/* UI Preferences */}
         <section className="space-y-4">
-          <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
+          <h2 className="text-lg font-medium text-white border-b border-[#2A2A2A] pb-2">
             General
           </h2>
 
           <div className="space-y-3">
             {/* Live Meeting Indicator */}
-            <div className="flex items-start justify-between px-4 py-3 rounded-lg border border-gray-700 bg-gray-800">
+            <div className="flex items-start justify-between px-4 py-3 rounded-lg border border-[#2A2A2A] bg-[#1E1E1E]">
               <div className="flex-1 pr-4">
                 <h3 className="text-sm font-medium text-white mb-1">
                   Show the live meeting indicator
                 </h3>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-slate-400">
                   The meeting indicator sits on the right of your screen, and shows when you're transcribing
                 </p>
               </div>
@@ -276,12 +276,12 @@ export default function SettingsView() {
             </div>
 
             {/* Open on Login */}
-            <div className="flex items-start justify-between px-4 py-3 rounded-lg border border-gray-700 bg-gray-800">
+            <div className="flex items-start justify-between px-4 py-3 rounded-lg border border-[#2A2A2A] bg-[#1E1E1E]">
               <div className="flex-1 pr-4">
                 <h3 className="text-sm font-medium text-white mb-1">
                   Open Treeto when you log in
                 </h3>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-slate-400">
                   Treeto will open automatically when you log in
                 </p>
               </div>
@@ -302,16 +302,16 @@ export default function SettingsView() {
 
         {/* Transcription */}
         <section className="space-y-4">
-          <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
+          <h2 className="text-lg font-medium text-white border-b border-[#2A2A2A] pb-2">
             Transcription
           </h2>
 
           <div>
-            <label className="block text-sm text-gray-300 mb-2">Language</label>
+            <label className="block text-sm text-slate-300 mb-2">Language</label>
             <select
               value={localSettings.transcriptionLanguage}
               onChange={(e) => handleChange('transcriptionLanguage', e.target.value)}
-              className="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4ea8dd]"
+              className="w-full bg-[#1E1E1E] border border-[#2A2A2A] text-[#F0EBE3] rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#C17F3E]/30 focus:border-[#C17F3E]/20"
             >
               <option value="auto">Auto-detect</option>
               <optgroup label="Common Languages">
@@ -358,7 +358,7 @@ export default function SettingsView() {
                 <option value="gu">Gujarati</option>
               </optgroup>
             </select>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               Language availability depends on transcription provider
             </p>
           </div>
@@ -366,10 +366,10 @@ export default function SettingsView() {
 
         {/* Calendar Integrations */}
         <section className="space-y-4">
-          <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
+          <h2 className="text-lg font-medium text-white border-b border-[#2A2A2A] pb-2">
             Calendar Integrations
           </h2>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-slate-400">
             Connect your calendars to automatically prepare for upcoming meetings
           </p>
 
@@ -381,7 +381,7 @@ export default function SettingsView() {
               isLoading={connectingProvider === 'google'}
               onConnect={() => handleConnectCalendar('google')}
               onDisconnect={() => showDisconnectConfirm('calendar', 'google', 'Google Calendar')}
-              icon={<Calendar className="w-5 h-5 text-gray-400" />}
+              icon={<Calendar className="w-5 h-5 text-slate-400" />}
             />
             <CalendarConnectionButton
               provider="outlook"
@@ -390,7 +390,7 @@ export default function SettingsView() {
               isLoading={connectingProvider === 'outlook'}
               onConnect={() => handleConnectCalendar('outlook')}
               onDisconnect={() => showDisconnectConfirm('calendar', 'outlook', 'Outlook Calendar')}
-              icon={<Calendar className="w-5 h-5 text-gray-400" />}
+              icon={<Calendar className="w-5 h-5 text-slate-400" />}
             />
           </div>
         </section>
@@ -398,19 +398,19 @@ export default function SettingsView() {
         {/* Visible Calendars */}
         {connectedCalendars.google && (
           <section className="space-y-4">
-            <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
+            <h2 className="text-lg font-medium text-white border-b border-[#2A2A2A] pb-2">
               Visible Calendars
             </h2>
             <div className="space-y-2">
               {googleCalendars.length === 0 && (
-                <p className="text-sm text-gray-400">No calendars found</p>
+                <p className="text-sm text-slate-400">No calendars found</p>
               )}
               {googleCalendars.map((cal) => {
                 const enabled = visibleGoogleIds.includes(cal.id);
                 return (
-                  <div key={cal.id} className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-700 bg-gray-800">
+                  <div key={cal.id} className="flex items-center justify-between px-4 py-3 rounded-lg border border-[#2A2A2A] bg-[#1E1E1E]">
                     <div className="flex items-center gap-3">
-                      <span className="w-3 h-3 rounded-sm bg-emerald-500" />
+                      <span className="w-3 h-3 rounded-sm bg-[#F0EBE3]" />
                       <p className="text-sm text-white">{cal.name}</p>
                     </div>
                     <ToggleSwitch
@@ -435,10 +435,10 @@ export default function SettingsView() {
 
         {/* Slack Integration */}
         <section className="space-y-4">
-          <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
+          <h2 className="text-lg font-medium text-white border-b border-[#2A2A2A] pb-2">
             Slack Integration
           </h2>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-slate-400">
             Connect Slack to send notes directly to channels.
           </p>
           <SlackIntegration showTitle={false} />
@@ -446,10 +446,10 @@ export default function SettingsView() {
 
         {/* CRM Integrations */}
         <section className="space-y-4">
-          <h2 className="text-lg font-medium text-white border-b border-gray-700 pb-2">
+          <h2 className="text-lg font-medium text-white border-b border-[#2A2A2A] pb-2">
             CRM Integrations
           </h2>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-slate-400">
             Connect your CRM to automatically push meeting notes to contact records.
           </p>
 
@@ -464,8 +464,8 @@ export default function SettingsView() {
               disabled={connectingCRM === 'salesforce'}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
                 connectedCRMs.salesforce
-                  ? 'border-green-500/50 bg-green-500/10'
-                  : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+                  ? 'border-[#F0EBE3]/50 bg-[#F0EBE3]/10'
+                  : 'border-[#2A2A2A] bg-[#1E1E1E] hover:border-[#2A2A2A]'
               }`}
             >
               <div className="flex items-center gap-3">
@@ -475,12 +475,12 @@ export default function SettingsView() {
                     {connectedCRMs.salesforce ? 'Salesforce Connected' : 'Connect Salesforce'}
                   </p>
                   {connectedCRMs.salesforce && (
-                    <p className="text-xs text-gray-500">Notes will be synced to contact records</p>
+                    <p className="text-xs text-slate-500">Notes will be synced to contact records</p>
                   )}
                 </div>
               </div>
               {connectedCRMs.salesforce ? (
-                <span className="text-sm text-green-400">
+                <span className="text-sm text-[#F0EBE3]">
                   {connectingCRM === 'salesforce' ? 'Disconnecting...' : 'Disconnect'}
                 </span>
               ) : (
@@ -500,8 +500,8 @@ export default function SettingsView() {
               disabled={connectingCRM === 'hubspot'}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
                 connectedCRMs.hubspot
-                  ? 'border-green-500/50 bg-green-500/10'
-                  : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+                  ? 'border-[#F0EBE3]/50 bg-[#F0EBE3]/10'
+                  : 'border-[#2A2A2A] bg-[#1E1E1E] hover:border-[#2A2A2A]'
               }`}
             >
               <div className="flex items-center gap-3">
@@ -511,12 +511,12 @@ export default function SettingsView() {
                     {connectedCRMs.hubspot ? 'HubSpot Connected' : 'Connect HubSpot'}
                   </p>
                   {connectedCRMs.hubspot && (
-                    <p className="text-xs text-gray-500">Notes will be synced to contact records</p>
+                    <p className="text-xs text-slate-500">Notes will be synced to contact records</p>
                   )}
                 </div>
               </div>
               {connectedCRMs.hubspot ? (
-                <span className="text-sm text-green-400">
+                <span className="text-sm text-[#F0EBE3]">
                   {connectingCRM === 'hubspot' ? 'Disconnecting...' : 'Disconnect'}
                 </span>
               ) : (
@@ -530,11 +530,11 @@ export default function SettingsView() {
           {/* CRM Notes Behavior */}
           {(connectedCRMs.salesforce || connectedCRMs.hubspot) && (
             <div>
-              <label className="block text-sm text-gray-300 mb-3">
+              <label className="block text-sm text-slate-300 mb-3">
                 When sending notes to CRM
               </label>
               <div className="space-y-2">
-                <label className="flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-700 bg-gray-800 cursor-pointer hover:border-gray-600 transition">
+                <label className="flex items-center gap-3 px-4 py-3 rounded-lg border border-[#2A2A2A] bg-[#1E1E1E] cursor-pointer hover:border-[#2A2A2A] transition">
                   <input
                     type="radio"
                     name="crmNotes"
@@ -545,10 +545,10 @@ export default function SettingsView() {
                   />
                   <div>
                     <p className="text-sm font-medium text-white">Send All Notes Automatically</p>
-                    <p className="text-xs text-gray-500">Notes are always pushed to participant records</p>
+                    <p className="text-xs text-slate-500">Notes are always pushed to participant records</p>
                   </div>
                 </label>
-                <label className="flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-700 bg-gray-800 cursor-pointer hover:border-gray-600 transition">
+                <label className="flex items-center gap-3 px-4 py-3 rounded-lg border border-[#2A2A2A] bg-[#1E1E1E] cursor-pointer hover:border-[#2A2A2A] transition">
                   <input
                     type="radio"
                     name="crmNotes"
@@ -559,7 +559,7 @@ export default function SettingsView() {
                   />
                   <div>
                     <p className="text-sm font-medium text-white">Ask Before Sending</p>
-                    <p className="text-xs text-gray-500">You'll be prompted after each meeting</p>
+                    <p className="text-xs text-slate-500">You'll be prompted after each meeting</p>
                   </div>
                 </label>
               </div>
@@ -576,7 +576,7 @@ export default function SettingsView() {
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="px-6 py-3 bg-[#4ea8dd] hover:bg-[#3d96cb] disabled:opacity-50 text-white rounded-lg font-medium transition-all shadow-lg hover:shadow-xl"
+            className="px-6 py-3 bg-[#C17F3E] hover:bg-[#D4923F] disabled:opacity-50 text-[#0C0C0C] rounded-xl font-medium transition-all shadow-copper-soft hover:shadow-copper-glow"
           >
             {isSaving ? 'Saving...' : 'Save Settings'}
           </button>
@@ -607,7 +607,7 @@ function ToggleSwitch({ enabled, onChange }: ToggleSwitchProps) {
     <button
       onClick={() => onChange(!enabled)}
       className={`relative w-11 h-6 rounded-full transition-colors ${
-        enabled ? 'bg-[#4ea8dd]' : 'bg-gray-600'
+        enabled ? 'bg-[#C17F3E]' : 'bg-[#2A2A2A]'
       }`}
     >
       <div
@@ -661,8 +661,8 @@ function CalendarConnectionButton({
       disabled={isLoading}
       className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
         isConnected
-          ? 'border-green-500/50 bg-green-500/10'
-          : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+          ? 'border-[#F0EBE3]/50 bg-[#F0EBE3]/10'
+          : 'border-[#2A2A2A] bg-[#1E1E1E] hover:border-[#2A2A2A]'
       }`}
     >
       <div className="flex items-center gap-3">
@@ -672,11 +672,11 @@ function CalendarConnectionButton({
             {isConnected ? `${label} Connected` : `Connect Your ${label}`}
           </p>
           {isConnected && (
-            <p className="text-xs text-gray-500">Syncing your {provider.charAt(0).toUpperCase() + provider.slice(1)} events</p>
+            <p className="text-xs text-slate-500">Syncing your {provider.charAt(0).toUpperCase() + provider.slice(1)} events</p>
           )}
         </div>
       </div>
-      <span className={`text-sm ${isConnected ? 'text-green-400' : 'text-[#4ea8dd]'}`}>
+      <span className={`text-sm ${isConnected ? 'text-[#F0EBE3]' : 'text-[#C17F3E]'}`}>
         {getActionLabel()}
       </span>
     </button>

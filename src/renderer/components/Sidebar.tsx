@@ -1,11 +1,16 @@
 import { useState, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { History, Users, Settings } from 'lucide-react';
+import { Home, History, Users, Settings, Sparkles } from 'lucide-react';
 import logoImage from '../assets/logo transparent copy.png';
 import FeedbackPopover from './FeedbackPopover';
 import FeedbackModal from './FeedbackModal';
 
-export default function Sidebar() {
+interface SidebarProps {
+  pillarTab: 'notes' | 'prep';
+  onPillarTabChange: (tab: 'notes' | 'prep') => void;
+}
+
+export default function Sidebar({ pillarTab, onPillarTabChange }: SidebarProps) {
   const { view, setView, recordingState, settings } = useAppStore();
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -13,30 +18,49 @@ export default function Sidebar() {
   const logoRef = useRef<HTMLDivElement>(null);
 
   const navItems = [
-    { id: 'history' as const, label: 'History', icon: History },
-    { id: 'people' as const, label: 'People', icon: Users },
-    { id: 'settings' as const, label: 'Settings', icon: Settings },
+    { id: 'home', label: 'Home', icon: Home, view: 'recording' as const, pillar: 'notes' as const },
+    { id: 'prep', label: 'Prep', icon: Sparkles, view: 'recording' as const, pillar: 'prep' as const },
+    { id: 'history', label: 'History', icon: History, view: 'history' as const, pillar: null },
+    { id: 'people', label: 'People', icon: Users, view: 'people' as const, pillar: null },
+    { id: 'settings', label: 'Settings', icon: Settings, view: 'settings' as const, pillar: null },
   ];
+
+  const isActive = (item: typeof navItems[number]) => {
+    if (item.pillar) return view === item.view && pillarTab === item.pillar;
+    return view === item.view;
+  };
+
+  const handleClick = (item: typeof navItems[number]) => {
+    setView(item.view);
+    if (item.pillar) onPillarTabChange(item.pillar);
+  };
 
   const showIndicator = settings?.showLiveMeetingIndicator ?? true;
 
   return (
-    <aside className="w-20 bg-[#050505] border-r-2 border-[#4ea8dd]/30 flex flex-col items-center pt-[48px] pb-4 drag-region">
-      <nav className="flex-1 flex flex-col gap-2 no-drag">
-        {navItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setView(item.id)}
-            className={`w-12 h-12 rounded-xl flex items-center justify-center transition ${
-              view === item.id
-                ? 'bg-[#4ea8dd] text-white'
-                : 'text-slate-300 hover:bg-white/10'
-            }`}
-            title={item.label}
-          >
-            <item.icon className="w-5 h-5" />
-          </button>
-        ))}
+    <aside className="w-20 bg-[#0C0C0C] border-r border-[#1E1E1E] flex flex-col items-center pt-[48px] pb-4 drag-region">
+      <nav className="flex-1 flex flex-col gap-1.5 no-drag">
+        {navItems.map((item) => {
+          const active = isActive(item);
+          return (
+            <button
+              key={item.id}
+              onClick={() => handleClick(item)}
+              className={`relative w-14 h-14 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all duration-200 ease-out-expo group ${
+                active
+                  ? 'text-[#D4923F]'
+                  : 'text-[#5C5750] hover:text-[#9C9690] hover:bg-white/[0.03] active:scale-95'
+              }`}
+              title={item.label}
+            >
+              {active && (
+                <div className="absolute inset-0 rounded-xl bg-[#C17F3E]/15 shadow-[inset_0_0_0_1px_rgba(193,127,62,0.2)] animate-nav-activate" />
+              )}
+              <item.icon className={`relative w-5 h-5 transition-transform duration-200 ${active ? '' : 'group-hover:scale-110'}`} />
+              <span className={`relative text-[10px] mt-0.5 font-medium transition-colors duration-200 ${active ? 'text-[#D4923F]/70' : 'text-[#5C5750]'}`}>{item.label}</span>
+            </button>
+          );
+        })}
       </nav>
 
       {recordingState === 'recording' && showIndicator && (
@@ -46,11 +70,11 @@ export default function Sidebar() {
       )}
 
       {/* Logo at Bottom */}
-      <div className="mt-auto no-drag pt-2 border-t border-[#4ea8dd]/20">
+      <div className="mt-auto no-drag pt-2">
         <div
           ref={logoRef}
           onClick={() => setIsPopoverOpen(!isPopoverOpen)}
-          className="flex flex-col items-center gap-0 cursor-pointer hover:opacity-80 transition"
+          className="flex flex-col items-center gap-1 cursor-pointer hover:opacity-80 active:scale-95 transition-all duration-200"
         >
           <div className="w-40 h-40 -mb-14">
             <img
@@ -59,7 +83,7 @@ export default function Sidebar() {
               className="w-full h-full object-contain"
             />
           </div>
-          <span className="text-[10px] font-medium tracking-wide uppercase text-slate-300">Treeto.</span>
+          <span className="text-[10px] font-medium tracking-[0.15em] uppercase text-[#5C5750]">Treeto.</span>
         </div>
       </div>
 

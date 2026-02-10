@@ -142,8 +142,8 @@ export default function LiveTranscript({ segments, currentPartials }: LiveTransc
           <div
             className={`max-w-[80%] rounded-2xl px-4 py-3 ${
               group.source === 'mic'
-                ? 'bg-gray-900 text-white rounded-br-md'
-                : 'bg-gray-100 text-gray-900 rounded-bl-md border border-gray-200'
+                ? 'bg-[#1E1E1E] text-white rounded-br-md'
+                : 'bg-[#161616] text-gray-900 rounded-bl-md border border-[#2A2A2A]'
             }`}
           >
             <div className="text-xs opacity-70 mb-1">
@@ -166,8 +166,8 @@ export default function LiveTranscript({ segments, currentPartials }: LiveTransc
           <div
             className={`max-w-[80%] rounded-2xl px-4 py-3 ${
               partial.source === 'mic'
-                ? 'bg-gray-900 rounded-br-md'
-                : 'bg-gray-100 rounded-bl-md border border-gray-200'
+                ? 'bg-[#1E1E1E] rounded-br-md'
+                : 'bg-[#161616] rounded-bl-md border border-[#2A2A2A]'
             }`}
           >
             <div className={`text-xs opacity-70 mb-1 ${partial.source === 'mic' ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -187,7 +187,7 @@ export default function LiveTranscript({ segments, currentPartials }: LiveTransc
                   {word.text}{' '}
                 </span>
               ))}
-              <span className={`inline-block w-2 h-4 ml-1 opacity-50 animate-pulse ${partial.source === 'mic' ? 'bg-gray-400' : 'bg-gray-500'}`} />
+              <span className={`inline-block w-2 h-4 ml-1 opacity-50 animate-pulse ${partial.source === 'mic' ? 'bg-[#C17F3E]' : 'bg-[#2A2A2A]'}`} />
             </p>
           </div>
         </div>

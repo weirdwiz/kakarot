@@ -254,7 +254,7 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
   const endTime = meeting ? new Date(meeting.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
   return (
-    <div className="flex-1 h-full bg-gradient-to-br from-[#0C0C0F] via-[#0D0D0F] to-[#0C0C14] text-slate-ink dark:text-gray-100 flex flex-col overflow-hidden">
+    <div className="flex-1 h-full bg-gradient-to-br from-[#0C0C0C] via-[#0D0D0F] to-[#0C0C14] text-slate-ink dark:text-[#F0EBE3] flex flex-col overflow-hidden">
       <div className="w-full flex justify-center flex-1 overflow-hidden px-4 sm:px-6 py-4 sm:py-6">
         <div className="w-full max-w-4xl flex flex-col flex-1 min-h-0 gap-4">
           {/* Header Section */}
@@ -281,14 +281,14 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
                   {showTimePopover && (
                     <div
                       ref={timePopoverRef}
-                      className="absolute top-full left-0 mt-2 bg-slate-900 dark:bg-slate-950 rounded-xl border border-slate-800 dark:border-slate-700 shadow-2xl z-50 overflow-hidden min-w-max"
+                      className="absolute top-full left-0 mt-2 bg-[#0C0C0C] dark:bg-[#0C0C0C] rounded-xl border border-slate-800 dark:border-[#2A2A2A] shadow-2xl z-50 overflow-hidden min-w-max"
                     >
                       {/* Header */}
                       <div className="p-4 border-b border-slate-800 flex items-center justify-between">
                         <h3 className="text-base font-semibold text-white">Meeting Time</h3>
                         <button
                           onClick={() => setShowTimePopover(false)}
-                          className="p-1 text-slate-400 hover:text-slate-200 transition rounded hover:bg-slate-800/50"
+                          className="p-1 text-slate-400 hover:text-slate-200 transition rounded hover:bg-[#1E1E1E]/50"
                         >
                           <X className="w-4 h-4" />
                         </button>
@@ -314,7 +314,7 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
                           <div className="pt-2 border-t border-slate-800">
                             <button
                               onClick={handleJoinMeeting}
-                              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-xs font-medium rounded-lg transition"
+                              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#C17F3E] to-[#C17F3E] hover:from-[#D4923F] hover:to-[#D4923F] text-white text-xs font-medium rounded-lg transition"
                             >
                               <div className="w-7 h-7 flex items-center justify-center">
                                 {renderPlatformLogo(meetingPlatform.type)}
@@ -328,7 +328,7 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
                         <div className="pt-2 border-t border-slate-800">
                           <button 
                             onClick={handleOpenCalendar}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition"
+                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1E1E1E] hover:bg-[#2A2A2A] text-white text-xs font-medium rounded-lg transition"
                             style={calendarProvider.type !== 'default' ? { backgroundColor: `${calendarProvider.color}20`, borderColor: calendarProvider.color } : undefined}
                           >
                             <div className="w-7 h-7 flex items-center justify-center">
@@ -389,7 +389,7 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
                   {onStartRecording && (
                     <button
                       onClick={onStartRecording}
-                      className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium transition-colors"
+                      className="px-3 py-2 rounded-lg bg-[#1E1E1E] dark:bg-[#2A2A2A] hover:bg-[#2A2A2A] dark:hover:bg-[#C17F3E] text-slate-700 dark:text-slate-300 text-sm font-medium transition-colors"
                     >
                       Transcribe Now
                     </button>

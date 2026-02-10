@@ -9,7 +9,7 @@ import ManualNotesView from './ManualNotesView';
 import MeetingContextPreview from './MeetingContextPreview';
 import AttendeesList from './AttendeesList';
 import SearchPopup from './SearchPopup';
-import { FileText, Square, Search, Loader2, Calendar as CalendarIcon, Users, Folder, Share2, Copy, Check, X, Clock, ChevronDown, Mic } from 'lucide-react';
+import { Square, Search, Loader2, Calendar as CalendarIcon, Users, Share2, Copy, Check, X, Clock, ChevronDown, Mic } from 'lucide-react';
 import { formatMeetingDate } from '../lib/formatters';
 import type { TranscriptSegment } from '@shared/types';
 import type { CalendarEvent, AppSettings, GeneratedStructuredNotes } from '@shared/types';
@@ -147,7 +147,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     const text = titleInput?.trim() || 'Untitled Meeting';
     const inputEl = titleInputRef.current;
     const computed = inputEl ? window.getComputedStyle(inputEl) : null;
-    const fontFamily = computed?.fontFamily || 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
+    const fontFamily = computed?.fontFamily || 'Outfit, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
     const fontWeight = computed?.fontWeight || '700';
 
     const maxSize = 48;
@@ -192,8 +192,9 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
     } else if (recordingState === 'recording' && prevState === 'paused') {
       // Only resume if we're coming from a paused state, not from idle (fresh start)
       resumeCapture();
-    } else if (recordingState === 'idle' && (prevState === 'paused' || prevState === 'recording')) {
-      // Fully stop capture when discarding or ending (paused/recording -> idle)
+    } else if (recordingState === 'idle' && prevState !== 'idle') {
+      // Fully stop capture when transitioning to idle from ANY state
+      // This covers recording->idle, paused->idle, AND processing->idle as a safety net
       stopCapture();
     }
   }, [recordingState, pauseCapture, resumeCapture, stopCapture]);
@@ -713,7 +714,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
         }}
       />
     ) : (
-    <div className="flex-1 min-h-0 bg-gradient-to-br from-[#0C0C0F] via-[#0D0D0F] to-[#0C0C14] text-slate-ink dark:text-gray-100 flex flex-col overflow-hidden">
+    <div className="flex-1 min-h-0 text-slate-ink dark:text-[#F0EBE3] flex flex-col">
       {/* Meeting Context Preview Modal */}
       {calendarContext && isIdle && (
         <MeetingContextPreview
@@ -724,13 +725,13 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
         />
       )}
 
-      <div className="w-full flex flex-col flex-1 min-h-0 overflow-hidden">
+      <div className="w-full flex flex-col flex-1 min-h-0">
         {/* Greeting + Unified Action Row - Only show when truly idle (not viewing completed notes) */}
         {showHomeHero && (
-          <div className="flex-shrink-0 mx-auto w-full max-w-2xl px-4 sm:px-6 py-4 space-y-3">
+          <div className="flex-shrink-0 mx-auto w-full max-w-2xl px-4 sm:px-6 py-4 space-y-3 animate-view-enter">
             {/* Greeting */}
             <div>
-              <h1 className="text-3xl font-medium text-slate-900 dark:text-white">
+              <h1 className="text-4xl font-display text-slate-900 dark:text-[#F0EBE3]">
                 {getGreeting()}
               </h1>
             </div>
@@ -739,11 +740,11 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
             <div className="flex items-center gap-2">
               {/* Search Bar - 75% width */}
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#5C5750]" />
                 <input
                   type="text"
                   placeholder="Search meetings or notes"
-                  className="w-full pl-10 pr-4 py-1.5 bg-white/70 dark:bg-graphite/80 border border-white/30 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/50 backdrop-blur-md transition cursor-pointer"
+                  className="w-full pl-10 pr-4 py-2 bg-[#1E1E1E] border border-[#2A2A2A] rounded-xl text-sm text-[#F0EBE3] placeholder:text-[#5C5750] focus:outline-none focus:ring-1 focus:ring-[#C17F3E]/30 focus:border-[#C17F3E]/20 transition cursor-pointer"
                   onClick={() => setShowSearchPopup(true)}
                   onFocus={() => setShowSearchPopup(true)}
                   readOnly
@@ -754,18 +755,18 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
               <button
                 onClick={() => handleStartRecording()}
                 disabled={isRecording || isPaused || isGenerating}
-                className="px-3 py-1.5 bg-[#4ea8dd] text-white font-semibold rounded-lg flex items-center gap-1 shadow-soft-card transition hover:opacity-95 disabled:opacity-60 disabled:cursor-not-allowed flex-shrink-0 text-sm"
+                className="px-4 py-2 bg-[#C17F3E] text-[#0C0C0C] font-semibold rounded-xl flex items-center gap-1.5 shadow-copper-soft transition-all duration-200 hover:bg-[#D4923F] hover:shadow-copper-glow active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 text-sm"
               >
-                <FileText className="w-3.5 h-3.5" />
-                + Take Notes
+                <Mic className="w-3.5 h-3.5" />
+                Start Recording
               </button>
             </div>
           </div>
         )}
 
         {/* Dashboard or meeting content */}
-        <div className={`w-full flex justify-center flex-1 min-h-0 overflow-hidden ${isRecordingLayout ? 'px-0' : 'px-4 sm:px-6'}`}>
-          <div className={`w-full ${isRecordingLayout ? 'max-w-none' : 'max-w-2xl'} flex flex-col flex-1 min-h-0 overflow-hidden`}>
+        <div className={`w-full flex justify-center flex-1 min-h-0 ${isRecordingLayout ? 'px-0' : 'px-4 sm:px-6'}`}>
+          <div className={`w-full ${isRecordingLayout ? 'max-w-none' : 'max-w-2xl'} flex flex-col flex-1 min-h-0`}>
             {showBentoWhileLive ? (
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                 {/* Amber banner with back button */}
@@ -773,7 +774,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                   <div className="flex items-center justify-between p-3 rounded-xl border border-amber-200/60 dark:border-amber-500/40 bg-amber-50/70 dark:bg-amber-900/30 text-amber-800 dark:text-amber-100">
                     <div className="text-sm font-medium">{recordingTitle || 'Meeting'} - Transcription in Progress</div>
                     <button
-                      className="text-xs px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800"
+                      className="text-xs px-3 py-1.5 rounded-md bg-[#0C0C0C] text-white hover:bg-[#1E1E1E]"
                       onClick={() => setShowRecordingHome(false)}
                     >
                       Back to the meeting
@@ -789,9 +790,9 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
               <div className="flex-1 min-h-0 flex flex-col">
                 {/* Recording layout */}
                 {(isRecording || isPaused) && !isGenerating ? (
-                  <div className="relative flex-1 min-h-0 flex flex-col rounded-3xl bg-gradient-to-br from-[#101A26] via-[#0E141E] to-[#0B0F16] shadow-[0_20px_70px_rgba(8,12,20,0.65)] p-6 sm:p-7 transition-all duration-300 overflow-hidden">
-                    <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(78,168,221,0.18),transparent_45%),radial-gradient(circle_at_bottom,rgba(139,92,246,0.14),transparent_40%)]" />
-                    <div className="absolute inset-0 pointer-events-none rounded-3xl shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_-1px_20px_rgba(10,20,30,0.45)]" />
+                  <div className="relative flex-1 min-h-0 flex flex-col rounded-2xl bg-gradient-to-br from-[#141414] via-[#0C0C0C] to-[#080808] shadow-[0_20px_70px_rgba(0,0,0,0.65)] p-6 sm:p-7 overflow-hidden border border-[#1E1E1E] animate-modal-in">
+                    <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(193,127,62,0.08),transparent_45%),radial-gradient(circle_at_bottom,rgba(240,235,227,0.03),transparent_40%)]" />
+                    <div className="absolute inset-0 pointer-events-none rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.03),inset_0_-1px_20px_rgba(0,0,0,0.45)]" />
                     <div className="relative flex-1 min-h-0 flex flex-col">
                       {/* Recording Header */}
                       <div className="flex-shrink-0 mb-5">
@@ -807,19 +808,19 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                                   e.currentTarget.blur();
                                 }
                               }}
-                              className="text-2xl font-semibold text-white bg-transparent border-b border-transparent focus:border-[#4ea8dd] focus:outline-none truncate max-w-[420px]"
+                              className="text-2xl font-semibold text-white bg-transparent border-b border-transparent focus:border-[#C17F3E] focus:outline-none truncate max-w-[420px]"
                               placeholder="Untitled Meeting"
                             />
                             <div className="flex items-center gap-2">
                               {/* Transcribing indicator */}
-                              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-[#4ea8dd]/15 text-[#8bd0ff] border border-[#4ea8dd]/30 shadow-[0_0_20px_rgba(78,168,221,0.25)]">
+                              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-[#C17F3E]/10 text-[#D4923F] border border-[#C17F3E]/20 shadow-[0_0_20px_rgba(193,127,62,0.15)]">
                                 <span className="relative flex h-2 w-2">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4ea8dd] opacity-75"></span>
-                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#4ea8dd]"></span>
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#C17F3E] opacity-60"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#C17F3E]"></span>
                                 </span>
                                 <span>{isRecording ? 'Transcribing' : 'Paused'}</span>
                               </div>
-                              {isSavingTitle && <Loader2 className="w-4 h-4 animate-spin text-[#4ea8dd]" />}
+                              {isSavingTitle && <Loader2 className="w-4 h-4 animate-spin text-[#C17F3E]" />}
                             </div>
                           </div>
                           {/* Meta chips */}
@@ -836,7 +837,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                               {showTimePopover && (
                                 <div
                                   ref={timePopoverRef}
-                                  className="absolute top-full right-0 mt-2 bg-[#0C0C0F] rounded-xl border border-white/10 shadow-2xl z-50 overflow-hidden min-w-max"
+                                  className="absolute top-full right-0 mt-2 bg-[#0C0C0C] rounded-xl border border-white/10 shadow-2xl z-50 overflow-hidden min-w-max animate-popover-in"
                                 >
                                   <div className="p-3 border-b border-white/10 flex items-center justify-between">
                                     <h3 className="text-sm font-semibold text-white">Meeting Time</h3>
@@ -873,7 +874,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                                 {showParticipantsPopover && (
                                   <div
                                     ref={participantsPopoverRef}
-                                    className="absolute top-full right-0 mt-2 bg-[#0C0C0F] rounded-xl border border-white/10 shadow-2xl z-50 overflow-hidden min-w-[280px]"
+                                    className="absolute top-full right-0 mt-2 bg-[#0C0C0C] rounded-xl border border-white/10 shadow-2xl z-50 overflow-hidden min-w-[280px] animate-popover-in"
                                   >
                                     <div className="p-3 border-b border-white/10 flex items-center justify-between">
                                       <h3 className="text-sm font-semibold text-white">Participants</h3>
@@ -888,7 +889,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                                       <div className="space-y-2">
                                         {displayAttendees.map((email, idx) => (
                                           <div key={idx} className="flex items-center gap-2 text-xs">
-                                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white font-semibold text-[10px]">
+                                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#C17F3E] to-[#C17F3E] flex items-center justify-center text-white font-semibold text-[10px]">
                                               {email.charAt(0).toUpperCase()}
                                             </div>
                                             <span className="text-slate-300 truncate">{email}</span>
@@ -905,11 +906,11 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                       </div>
 
                       {/* Full Notes Panel */}
-                      <div className="flex-1 min-h-0 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 flex flex-col overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                      <div className="flex-1 min-h-0 rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-6 flex flex-col overflow-hidden">
                         <div className="flex items-center justify-between mb-4 flex-shrink-0">
                           <div>
-                            <h3 className="text-xs uppercase tracking-[0.3em] font-semibold text-slate-400">Your Notes</h3>
-                            <p className="text-xs text-slate-500 mt-1">Capture action items, decisions, and next steps.</p>
+                            <h3 className="text-xs uppercase tracking-[0.2em] font-medium text-[#9C9690]">Your Notes</h3>
+                            <p className="text-xs text-[#5C5750] mt-1">Capture action items, decisions, and next steps.</p>
                           </div>
                           <div className="flex items-center gap-3">
                             <div className="w-28">
@@ -947,7 +948,11 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                         )}
                         <button
                           onClick={handleStopRecording}
-                          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white/10 text-slate-100 text-xs font-semibold border border-white/10 hover:bg-white/15 transition shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
+                          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 shadow-[0_10px_30px_rgba(0,0,0,0.35)] active:scale-[0.96] ${
+                            recordingState === 'paused'
+                              ? 'bg-white/10 text-slate-100 border border-white/10 hover:bg-white/15'
+                              : 'bg-red-600/80 text-white hover:bg-red-600'
+                          }`}
                         >
                           <Square className="w-3.5 h-3.5" />
                           {recordingState === 'paused' ? 'Resume Transcribing' : 'Stop Transcribing'}
@@ -958,10 +963,10 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                       <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10">
                         <button
                           onClick={() => setShowTranscriptPopover((open) => !open)}
-                          className={`flex items-center gap-2.5 rounded-full px-5 py-3 shadow-2xl transition-all duration-200 ${
+                          className={`flex items-center gap-2.5 rounded-full px-5 py-3 shadow-2xl transition-all duration-200 active:scale-[0.96] ${
                             showTranscriptPopover
-                              ? 'bg-gradient-to-r from-[#7C3AED] to-[#4F46E5] text-white shadow-purple-500/30'
-                              : 'bg-[#121316] border border-white/10 text-white hover:bg-[#1b1d22]'
+                              ? 'bg-[#C17F3E] text-[#0C0C0C] shadow-copper-glow'
+                              : 'bg-[#161616] border border-[#2A2A2A] text-[#9C9690] hover:text-[#F0EBE3] hover:border-[#3A3A3A] hover:shadow-elevated'
                           }`}
                           aria-label="Toggle live transcript"
                         >
@@ -986,17 +991,17 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                         <div className="relative" ref={shareRef}>
                           <button
                             onClick={() => setShowSharePopover((prev) => !prev)}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/30 dark:border-white/10 bg-white/70 dark:bg-slate-800/70 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-white/90 dark:hover:bg-slate-700/90 transition"
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/30 dark:border-white/10 bg-white/70 dark:bg-[#161616] text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-white/90 dark:hover:bg-[#2A2A2A] transition"
                           >
                             <Share2 className="w-4 h-4" />
                             Share
                           </button>
                           {showSharePopover && (
-                            <div className="absolute right-0 mt-2 w-56 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-soft-card p-3 space-y-2">
+                            <div className="absolute right-0 mt-2 w-56 rounded-lg border border-slate-200 dark:border-[#2A2A2A] bg-white dark:bg-[#161616] shadow-soft-card p-3 space-y-2 animate-popover-in">
                               <p className="text-xs text-slate-500 dark:text-slate-400">Share your meeting notes</p>
                               <button
                                 onClick={handleCopyShareLink}
-                                className="w-full flex items-center justify-between px-3 py-2 rounded-md bg-slate-100 dark:bg-slate-700 text-sm font-medium text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-600 transition"
+                                className="w-full flex items-center justify-between px-3 py-2 rounded-md bg-[#1E1E1E] dark:bg-[#2A2A2A] text-sm font-medium text-slate-800 dark:text-slate-100 hover:bg-[#2A2A2A] dark:hover:bg-[#C17F3E] transition"
                               >
                                 <span className="flex items-center gap-2">
                                   {shareCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
@@ -1007,7 +1012,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                               <button
                                 onClick={handleSlack}
                                 disabled={isSlackConnecting}
-                                className="w-full flex items-center justify-between px-3 py-2 rounded-md bg-slate-100 dark:bg-slate-700 text-sm font-medium text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-600 transition disabled:opacity-50"
+                                className="w-full flex items-center justify-between px-3 py-2 rounded-md bg-[#1E1E1E] dark:bg-[#2A2A2A] text-sm font-medium text-slate-800 dark:text-slate-100 hover:bg-[#2A2A2A] dark:hover:bg-[#C17F3E] transition disabled:opacity-50"
                               >
                                 <span className="flex items-center gap-2">
                                   <img src={slackLogo} alt="Slack" className="w-4 h-4" />
@@ -1015,11 +1020,11 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                                 </span>
                               </button>
                               {showSlackOptions && (
-                                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                                <div className="pt-2 border-t border-slate-200 dark:border-[#2A2A2A] space-y-2">
                                   <select
                                     value={slackChannelId}
                                     onChange={(e) => setSlackChannelId(e.target.value)}
-                                    className="w-full px-2 py-1.5 text-sm rounded-md bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100"
+                                    className="w-full px-2 py-1.5 text-sm rounded-md bg-[#1E1E1E] dark:bg-[#1E1E1E] border border-slate-200 dark:border-[#2A2A2A] text-slate-800 dark:text-slate-100"
                                   >
                                     <option value="">Select channel...</option>
                                     {slackChannels.map((channel) => (
@@ -1031,28 +1036,32 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                                   <button
                                     onClick={handleSlackSend}
                                     disabled={!slackChannelId || isSlackSending}
-                                    className="w-full px-3 py-1.5 rounded-md bg-[#4ea8dd] hover:bg-[#3d96cb] text-white text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="w-full px-3 py-1.5 rounded-md bg-[#C17F3E] hover:bg-[#D4923F] text-white text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
                                     {isSlackSending ? 'Sending...' : 'Send'}
                                   </button>
                                 </div>
                               )}
-                              <p className="text-[11px] text-slate-500 dark:text-slate-400 break-all leading-tight bg-slate-50 dark:bg-slate-900/60 rounded-md px-2 py-1">{shareLink}</p>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 break-all leading-tight bg-[#1E1E1E] dark:bg-[#1E1E1E] rounded-md px-2 py-1">{shareLink}</p>
                             </div>
                           )}
                         </div>
                       ) : null}
                     </div>
                     {isGenerating ? (
-                      <div className="flex-1 flex items-center justify-center">
+                      <div className="flex-1 flex items-center justify-center animate-fade-in">
                         <div className="text-center">
-                          <Loader2 className="w-10 h-10 animate-spin mx-auto text-[#8B5CF6]" />
-                          <p className="mt-3 text-base font-medium text-slate-900 dark:text-white">Generating Notes…</p>
-                          <p className="text-sm text-slate-600 dark:text-slate-300">This usually takes a few seconds.</p>
+                          <div className="relative w-14 h-14 mx-auto mb-4">
+                            <div className="absolute inset-0 rounded-full border-2 border-[#2A2A2A]" />
+                            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[#C17F3E] animate-spin" />
+                            <div className="absolute inset-2 rounded-full bg-[#C17F3E]/10 animate-glow-pulse" />
+                          </div>
+                          <p className="text-base font-medium text-white">Generating Notes</p>
+                          <p className="text-sm text-slate-400 mt-1">Processing your conversation</p>
                         </div>
                       </div>
                     ) : phase === 'completed' && completedMeeting ? (
-                      <div className="flex-1 overflow-y-auto pb-32 space-y-6">
+                      <div className="flex-1 overflow-y-auto pb-32 space-y-6 animate-view-enter">
                         <div className="space-y-4">
                           <div className="flex items-center gap-3 min-w-0" ref={titleContainerRef}>
                             <input
@@ -1066,14 +1075,14 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                                 }
                               }}
                               style={{ fontSize: `${titleFontSize}px` }}
-                              className="flex-1 min-w-0 w-full font-bold text-slate-900 dark:text-white leading-tight bg-transparent border-b border-transparent focus:border-[#8B5CF6] focus:outline-none"
+                              className="flex-1 min-w-0 w-full font-bold text-slate-900 dark:text-white leading-tight bg-transparent border-b border-transparent focus:border-[#F0EBE3] focus:outline-none"
                               placeholder="Untitled Meeting"
                             />
-                            {isSavingTitle && <Loader2 className="w-5 h-5 animate-spin text-[#8B5CF6]" />}
+                            {isSavingTitle && <Loader2 className="w-5 h-5 animate-spin text-[#F0EBE3]" />}
                           </div>
 
                           <div className="flex gap-3 overflow-visible">
-                            <div className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-1.5">
+                            <div className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-[#2A2A2A] bg-[#1E1E1E]/80 dark:bg-[#1E1E1E] px-3 py-1.5">
                               <CalendarIcon className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                               <div className="text-sm text-slate-800 dark:text-slate-200">{formatMeetingDate(displayDate)}</div>
                             </div>
@@ -1083,7 +1092,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                                 <AttendeesList attendeeEmails={displayAttendees} />
                               </div>
                             ) : (
-                              <div className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 px-3 py-1.5">
+                              <div className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-[#2A2A2A] bg-[#1E1E1E]/80 dark:bg-[#1E1E1E] px-3 py-1.5">
                                 <Users className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                                 <div className="text-sm text-slate-800 dark:text-slate-200">Add attendees</div>
                               </div>
@@ -1093,7 +1102,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                         </div>
 
                         {completedMeeting.overview && (
-                          <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-5 border border-slate-200 dark:border-slate-800">
+                          <div className="bg-[#1E1E1E] dark:bg-[#1E1E1E] rounded-xl p-5 border border-slate-200 dark:border-[#2A2A2A]">
                             <p className="text-base leading-relaxed text-slate-800 dark:text-slate-100">{completedMeeting.overview}</p>
                           </div>
                         )}
@@ -1101,7 +1110,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                         {/* Structured Notes View - prefer when available */}
                         {completedMeeting.notes && typeof completedMeeting.notes === 'object' &&
                          (completedMeeting.notes as GeneratedStructuredNotes).topics?.length > 0 ? (
-                          <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-5 border border-slate-200 dark:border-slate-800">
+                          <div className="bg-[#1E1E1E] dark:bg-[#1E1E1E] rounded-xl p-5 border border-slate-200 dark:border-[#2A2A2A]">
                             <StructuredNotesView
                               notes={completedMeeting.notes as GeneratedStructuredNotes}
                               meetingId={completedMeeting.id}
@@ -1114,16 +1123,16 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                         ) : null}
 
                         {liveTranscript.length > 0 && (
-                          <div className="border-t border-slate-200 dark:border-slate-800 pt-6">
-                            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Transcript</h3>
+                          <div className="border-t border-slate-200 dark:border-[#2A2A2A] pt-6">
+                            <h3 className="text-lg font-medium text-[#F0EBE3] mb-4">Transcript</h3>
                             <div className="space-y-3">
                               {liveTranscript.map((segment) => (
                                 <div key={segment.id} className={`flex ${segment.source === 'mic' ? 'justify-end' : 'justify-start'}`}>
                                   <div
                                     className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
                                       segment.source === 'mic'
-                                        ? 'bg-slate-900 dark:bg-slate-700 text-white'
-                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
+                                        ? 'bg-[#C17F3E]/15 text-[#F0EBE3] border border-[#C17F3E]/10'
+                                        : 'bg-[#1E1E1E] text-[#9C9690] border border-[#2A2A2A]'
                                     }`}
                                   >
                                     <p>{segment.text}</p>
@@ -1141,7 +1150,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                         {errorMessage || 'Notes generation failed.'}
                         <div className="mt-2">
                           <button
-                            className="px-3 py-1.5 bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-gray-100 rounded-md text-xs"
+                            className="px-3 py-1.5 bg-[#2A2A2A] dark:bg-[#2A2A2A] text-slate-900 dark:text-[#F0EBE3] rounded-md text-xs"
                             onClick={async () => {
                               try {
                                 const meetingsList = await window.kakarot.meetings.list();
@@ -1174,14 +1183,14 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
 
       {/* Transcript Popover - Fixed position, triggered by capsule inside the card */}
       {(isRecording || isPaused) && !isGenerating && showTranscriptPopover && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 w-[480px] max-h-[450px] rounded-2xl border border-[#4ea8dd]/30 bg-[#0C0C0F] shadow-2xl shadow-[#4ea8dd]/30 overflow-hidden flex flex-col">
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 w-[480px] max-h-[450px] rounded-2xl border border-[#2A2A2A] bg-[#0C0C0C] shadow-2xl shadow-black/50 overflow-hidden flex flex-col animate-popover-in-up">
           {/* Popover Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4ea8dd] opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#4ea8dd]"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#C17F3E] opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#C17F3E]"></span>
                 </span>
                 <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Live Transcript</span>
               </div>
@@ -1232,8 +1241,8 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                     <div
                       className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
                         group.source === 'mic'
-                          ? 'bg-[#7C3AED] text-white rounded-br-md'
-                          : 'bg-[#2A2A2A] text-slate-200 rounded-bl-md'
+                          ? 'bg-[#C17F3E]/20 text-[#F0EBE3] border border-[#C17F3E]/15 rounded-br-md'
+                          : 'bg-[#1E1E1E] text-[#9C9690] border border-[#2A2A2A] rounded-bl-md'
                       }`}
                     >
                       <p className="leading-relaxed">{group.text}</p>
@@ -1243,7 +1252,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                 {/* System partial */}
                 {currentPartials.system && (
                   <div className="flex justify-start">
-                    <div className="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm opacity-60 bg-[#2A2A2A] text-slate-200 rounded-bl-md">
+                    <div className="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm opacity-50 bg-[#1E1E1E] text-[#9C9690] border border-[#2A2A2A] rounded-bl-md">
                       <p className="leading-relaxed">{currentPartials.system.text}</p>
                     </div>
                   </div>
@@ -1251,7 +1260,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                 {/* Mic partial */}
                 {currentPartials.mic && (
                   <div className="flex justify-end">
-                    <div className="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm opacity-60 bg-[#7C3AED] text-white rounded-br-md">
+                    <div className="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm opacity-50 bg-[#C17F3E]/20 text-[#F0EBE3] border border-[#C17F3E]/15 rounded-br-md">
                       <p className="leading-relaxed">{currentPartials.mic.text}</p>
                     </div>
                   </div>
@@ -1272,7 +1281,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                   });
                 }
               }}
-              className="absolute bottom-16 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full bg-[#7C3AED] text-white text-xs font-medium shadow-lg hover:bg-[#6D28D9] transition"
+              className="absolute bottom-16 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full bg-[#C17F3E] text-[#0C0C0C] text-xs font-medium shadow-lg hover:bg-[#D4923F] transition"
             >
               <ChevronDown className="w-4 h-4" />
               New messages
@@ -1280,14 +1289,14 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
           )}
 
           {/* Legend */}
-          <div className="flex items-center justify-center gap-6 px-4 py-2.5 border-t border-white/10 bg-black/20 flex-shrink-0">
+          <div className="flex items-center justify-center gap-6 px-4 py-2.5 border-t border-[#1E1E1E] bg-[#0C0C0C] flex-shrink-0">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#2A2A2A]"></div>
-              <span className="text-xs text-slate-500">System Audio</span>
+              <div className="w-3 h-3 rounded-full bg-[#2A2A2A] border border-[#3A3A3A]"></div>
+              <span className="text-xs text-[#5C5750]">System Audio</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#7C3AED]"></div>
-              <span className="text-xs text-slate-500">Your Mic</span>
+              <div className="w-3 h-3 rounded-full bg-[#C17F3E]/30 border border-[#C17F3E]/20"></div>
+              <span className="text-xs text-[#5C5750]">Your Mic</span>
             </div>
           </div>
         </div>
@@ -1300,7 +1309,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
       {/* AI Response Panel - render above ask bar if response exists */}
       {aiResponse && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-19 max-w-2xl w-full max-h-[300px] overflow-y-auto pointer-events-auto">
-          <div className="mx-4 p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-soft-card">
+          <div className="mx-4 p-4 bg-[#1E1E1E] dark:bg-[#1E1E1E] rounded-xl border border-slate-200 dark:border-[#2A2A2A] shadow-soft-card">
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1">
                 <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap">
@@ -1320,8 +1329,8 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
 
       {/* CRM Meeting Complete Prompt Modal */}
       {showCRMPrompt && crmProvider && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg max-w-sm w-full border border-slate-200 dark:border-slate-700">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-backdrop-in">
+          <div className="bg-white dark:bg-[#161616] rounded-xl shadow-lg max-w-sm w-full border border-slate-200 dark:border-[#2A2A2A] animate-modal-in">
             <div className="p-6">
               <div className="flex items-start justify-between mb-4">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
@@ -1345,14 +1354,14 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
                 <button
                   onClick={handleCRMPromptNo}
                   disabled={isPushingNotes}
-                  className="flex-1 px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-medium hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-50 transition"
+                  className="flex-1 px-4 py-2 rounded-lg border border-slate-200 dark:border-[#2A2A2A] text-slate-700 dark:text-slate-200 font-medium hover:bg-[#1E1E1E] dark:hover:bg-[#2A2A2A]/50 disabled:opacity-50 transition"
                 >
                   No
                 </button>
                 <button
                   onClick={handleCRMPromptYes}
                   disabled={isPushingNotes}
-                  className="flex-1 px-4 py-2 rounded-lg bg-[#8B5CF6] text-white font-medium hover:bg-[#7C3AED] disabled:opacity-50 transition flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-2 rounded-lg bg-[#C17F3E] text-[#0C0C0C] font-medium hover:bg-[#D4923F] disabled:opacity-50 transition flex items-center justify-center gap-2"
                 >
                   {isPushingNotes && <Loader2 className="w-4 h-4 animate-spin" />}
                   Yes

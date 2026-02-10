@@ -51,7 +51,7 @@ export default function FeedbackPopover({
     <div
       ref={popoverRef}
       style={style}
-      className="z-50 w-56 bg-[#121212] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+      className="z-50 w-56 bg-[#161616] border border-white/10 rounded-xl shadow-2xl overflow-hidden animate-popover-in-up"
     >
       <div className="py-1">
         <button
@@ -61,7 +61,7 @@ export default function FeedbackPopover({
           }}
           className="w-full px-4 py-3 flex items-center gap-3 text-left text-slate-200 hover:bg-white/5 transition"
         >
-          <MessageCircle className="w-4 h-4 text-[#4ea8dd]" />
+          <MessageCircle className="w-4 h-4 text-[#C17F3E]" />
           <span className="text-sm font-medium">Leave a Message</span>
         </button>
         <button
@@ -71,7 +71,7 @@ export default function FeedbackPopover({
           }}
           className="w-full px-4 py-3 flex items-center gap-3 text-left text-slate-200 hover:bg-white/5 transition"
         >
-          <MessageSquare className="w-4 h-4 text-[#4ea8dd]" />
+          <MessageSquare className="w-4 h-4 text-[#C17F3E]" />
           <span className="text-sm font-medium">Give Feedback</span>
         </button>
       </div>

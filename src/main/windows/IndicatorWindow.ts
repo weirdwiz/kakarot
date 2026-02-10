@@ -36,7 +36,6 @@ export class IndicatorWindow {
       alwaysOnTop: true,
       skipTaskbar: true,
       focusable: false,
-      visibleOnFullScreen: true,
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
         contextIsolation: true,
@@ -73,7 +72,7 @@ export class IndicatorWindow {
 
   getPosition(): [number, number] | null {
     if (!this.window || this.window.isDestroyed()) return null;
-    return this.window.getPosition();
+    return this.window.getPosition() as [number, number];
   }
 
   setPosition(x: number, y: number): void {

@@ -23,10 +23,10 @@ export default function WelcomeStep({ onContinue }: WelcomeStepProps) {
       </div>
 
       <div className="space-y-3">
-        <h1 className="text-4xl font-semibold text-white">
+        <h1 className="text-4xl font-display text-[#F0EBE3]">
           Never blank out in a meeting again.
         </h1>
-        <p className="text-lg text-gray-400 max-w-xl mx-auto">
+        <p className="text-lg text-[#5C5750] max-w-xl mx-auto leading-relaxed">
           Finally a meeting copilot that stays out of the participant list and surfaces relevant context exactly when you need it.
         </p>
       </div>
@@ -34,7 +34,7 @@ export default function WelcomeStep({ onContinue }: WelcomeStepProps) {
       <div className="pt-8">
         <button
           onClick={onContinue}
-          className="w-full py-3 px-6 bg-[#4ea8dd] hover:bg-[#3d96cb] text-white rounded-lg font-medium transition-colors"
+          className="w-full py-3 px-6 bg-[#C17F3E] hover:bg-[#D4923F] text-[#0C0C0C] rounded-xl font-medium transition-colors shadow-copper-soft"
         >
           Get Started
         </button>
