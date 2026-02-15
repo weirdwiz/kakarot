@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useAppStore } from '../stores/appStore';
+import { useAppStore, type AppView } from '../stores/appStore';
 import { Home, History, Users, Settings, Sparkles } from 'lucide-react';
 import logoImage from '../assets/logo transparent copy.png';
 import FeedbackPopover from './FeedbackPopover';
@@ -10,29 +10,42 @@ interface SidebarProps {
   onPillarTabChange: (tab: 'notes' | 'prep') => void;
 }
 
+interface NavItem {
+  id: string;
+  label: string;
+  icon: typeof Home;
+  view: AppView;
+  pillar: 'notes' | 'prep' | null;
+}
+
 export default function Sidebar({ pillarTab, onPillarTabChange }: SidebarProps) {
-  const { view, setView, recordingState, settings } = useAppStore();
+  const { view, navigate, recordingState, settings } = useAppStore();
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'message' | 'feedback'>('feedback');
   const logoRef = useRef<HTMLDivElement>(null);
 
-  const navItems = [
-    { id: 'home', label: 'Home', icon: Home, view: 'recording' as const, pillar: 'notes' as const },
-    { id: 'prep', label: 'Prep', icon: Sparkles, view: 'recording' as const, pillar: 'prep' as const },
-    { id: 'history', label: 'History', icon: History, view: 'history' as const, pillar: null },
-    { id: 'people', label: 'People', icon: Users, view: 'people' as const, pillar: null },
-    { id: 'settings', label: 'Settings', icon: Settings, view: 'settings' as const, pillar: null },
+  const navItems: NavItem[] = [
+    { id: 'home', label: 'Home', icon: Home, view: 'home', pillar: 'notes' },
+    { id: 'prep', label: 'Prep', icon: Sparkles, view: 'home', pillar: 'prep' },
+    { id: 'history', label: 'History', icon: History, view: 'history', pillar: null },
+    { id: 'people', label: 'People', icon: Users, view: 'people', pillar: null },
+    { id: 'settings', label: 'Settings', icon: Settings, view: 'settings', pillar: null },
   ];
 
-  const isActive = (item: typeof navItems[number]) => {
-    if (item.pillar) return view === item.view && pillarTab === item.pillar;
+  const isActive = (item: NavItem) => {
+    if (item.pillar) {
+      const homeViews: AppView[] = ['home', 'recording', 'meeting-detail'];
+      return homeViews.includes(view) && pillarTab === item.pillar;
+    }
     return view === item.view;
   };
 
-  const handleClick = (item: typeof navItems[number]) => {
-    setView(item.view);
-    if (item.pillar) onPillarTabChange(item.pillar);
+  const handleClick = (item: NavItem) => {
+    if (item.pillar) {
+      onPillarTabChange(item.pillar);
+    }
+    navigate(item.view);
   };
 
   const showIndicator = settings?.showLiveMeetingIndicator ?? true;
@@ -87,7 +100,6 @@ export default function Sidebar({ pillarTab, onPillarTabChange }: SidebarProps) 
         </div>
       </div>
 
-      {/* Feedback Popover */}
       <FeedbackPopover
         isOpen={isPopoverOpen}
         onClose={() => setIsPopoverOpen(false)}
@@ -102,7 +114,6 @@ export default function Sidebar({ pillarTab, onPillarTabChange }: SidebarProps) 
         }}
       />
 
-      {/* Feedback Modal */}
       <FeedbackModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
