@@ -13,7 +13,7 @@ interface ManualNotesViewProps {
 }
 
 export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, onStartRecording }: ManualNotesViewProps) {
-  const { activeCalendarContext, calendarContext, setInitialPrepQuery } = useAppStore();
+  const { recordingContext, calendarPreview, setInitialPrepQuery } = useAppStore();
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -23,7 +23,7 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const initialLoadRef = useRef(false);
 
-  const meeting = activeCalendarContext || calendarContext;
+  const meeting = recordingContext || calendarPreview;
   
   // Load existing notes on mount
   useEffect(() => {

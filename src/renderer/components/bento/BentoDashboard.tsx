@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { CalendarEvent } from '@shared/types';
 import { useAppStore } from '@renderer/stores/appStore';
 import CompactMeetingBar from './CompactMeetingBar';
@@ -15,13 +15,12 @@ interface BentoDashboardProps {
 
 export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents, onStartNotes, onSelectTab }: BentoDashboardProps): JSX.Element {
   const [showUpcomingPopup, setShowUpcomingPopup] = useState(false);
-  
+
   const {
-    setView,
+    navigate,
     setSelectedMeeting,
-    setCalendarContext,
-    setActiveCalendarContext,
-    // Dashboard data from store (cached, loaded in App.tsx)
+    setCalendarPreview,
+    setRecordingContext,
     liveCalendarEvents,
     upcomingCalendarEvents,
     previousMeetings,
@@ -31,7 +30,6 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
     settings,
   } = useAppStore();
 
-  // Check if any calendar is connected
   const isCalendarConnected = !!(
     settings?.calendarConnections?.google ||
     settings?.calendarConnections?.outlook ||
@@ -43,7 +41,7 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
       const meeting = await window.kakarot.meetings.get(meetingId);
       if (meeting) {
         setSelectedMeeting(meeting);
-        setView('history');
+        navigate('meeting-detail', { meetingId });
       }
     } catch (err) {
       console.error('Failed to load meeting:', err);
@@ -62,13 +60,9 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
   };
 
   const handleNavigateSettings = () => {
-    setView('settings');
+    navigate('settings');
   };
 
-  /**
-   * Handle clicking on an upcoming meeting (Prep button)
-   * Prepares to record with this calendar context
-   */
   const handleSelectUpcomingMeeting = (
     event: CalendarEvent,
     options?: { showPrep?: boolean }
@@ -76,27 +70,21 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
     const hasNotes = calendarMappings[event.id]?.notesId;
 
     if (hasNotes) {
-      // View existing notes
       handleViewCalendarEventNotes(event.id);
     } else {
-      // Prepare to record with this calendar context
-      setCalendarContext(event);
-      setActiveCalendarContext(event);
+      setCalendarPreview(event);
+      setRecordingContext(event);
       if (options?.showPrep ?? true) {
-        setView('recording');
+        navigate('home');
         onSelectTab?.('prep');
       }
     }
   };
 
-  /**
-   * Handle taking manual notes on an upcoming meeting (Take Notes button)
-   * Opens manual notes interface without audio recording
-   */
   const handleTakeManualNotes = (event: CalendarEvent) => {
-    setCalendarContext(event);
-    setActiveCalendarContext(event);
-    setView('recording');
+    setCalendarPreview(event);
+    setRecordingContext(event);
+    navigate('recording');
     onSelectTab?.('notes');
   };
 
@@ -105,16 +93,13 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
       const event = liveCalendarEvents.find(e => e.id === eventId);
       if (!event) return;
 
-      // Add to dismissed IDs in store (this also updates localStorage)
       addDismissedEventId(eventId);
 
-      // Create dismissed meeting record
       await window.kakarot.meetings.createDismissed(
         event.title,
         event.attendees?.map((a: any) => typeof a === 'string' ? a : a.email)
       );
 
-      // Refresh previous meetings to show the dismissed meeting
       const meetings = await window.kakarot.meetings.list();
       const now = Date.now();
       const completed = meetings
@@ -138,9 +123,7 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
 
   return (
     <div className="h-full flex flex-col items-center overflow-auto px-2 py-4">
-      {/* Centered column container with max width */}
       <div className="w-full max-w-3xl flex flex-col gap-3">
-        {/* Live meeting bar */}
         <CompactMeetingBar
           events={liveCalendarEvents}
           isRecording={isRecording}
@@ -150,7 +133,6 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
           onDismiss={handleDismissLiveMeeting}
         />
 
-        {/* Upcoming meetings */}
         <UpcomingMeetingsList
           meetings={upcomingCalendarEvents}
           isCalendarConnected={isCalendarConnected}
@@ -160,7 +142,6 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
           onViewMore={() => setShowUpcomingPopup(true)}
         />
 
-        {/* Upcoming meetings popup modal */}
         {showUpcomingPopup && (
           <UpcomingMeetingsPopup
             meetings={upcomingCalendarEvents}
@@ -172,12 +153,11 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
           />
         )}
 
-        {/* Previous meetings */}
         <PreviousMeetingsList
           meetings={previousMeetings}
           onViewNotes={handleViewNotes}
           onViewCalendarEventNotes={handleViewCalendarEventNotes}
-          onViewMore={() => setView('history')}
+          onViewMore={() => navigate('history')}
         />
       </div>
     </div>

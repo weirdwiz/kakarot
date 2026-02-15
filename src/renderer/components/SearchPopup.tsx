@@ -22,7 +22,7 @@ interface CompanyResult {
 }
 
 export default function SearchPopup({ isOpen, onClose, initialQuery = '' }: SearchPopupProps) {
-  const { setView, setSearchQuery, setSelectedMeeting } = useAppStore();
+  const { navigate, setSelectedMeeting } = useAppStore();
   const [query, setQuery] = useState(initialQuery);
   const [contacts, setContacts] = useState<Person[]>([]);
   const [companies, setCompanies] = useState<CompanyResult[]>([]);
@@ -137,24 +137,26 @@ export default function SearchPopup({ isOpen, onClose, initialQuery = '' }: Sear
     };
   }, [query, performSearch]);
 
-  const handleTranscriptClick = () => {
-    if (transcriptResult) {
-      setSearchQuery(transcriptResult.term);
-      setView('history');
+  const handleTranscriptClick = async () => {
+    if (transcriptResult && transcriptResult.meetings.length > 0) {
+      // Navigate to the first matching meeting
+      const firstMatch = transcriptResult.meetings[0];
+      const full = await window.kakarot.meetings.get(firstMatch.id);
+      if (full) {
+        setSelectedMeeting(full);
+        navigate('meeting-detail', { meetingId: full.id });
+      }
       onClose();
     }
   };
 
-  const handleContactClick = async (person: Person) => {
-    // Navigate to people view - could enhance to select the person
-    setView('people');
+  const handleContactClick = async (_person: Person) => {
+    navigate('people');
     onClose();
   };
 
-  const handleCompanyClick = (company: CompanyResult) => {
-    // Search for contacts from this company domain
-    setSearchQuery(`@${company.domain}`);
-    setView('people');
+  const handleCompanyClick = (_company: CompanyResult) => {
+    navigate('people');
     onClose();
   };
 

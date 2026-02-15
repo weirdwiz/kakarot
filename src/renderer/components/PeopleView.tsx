@@ -8,7 +8,7 @@ import { NotesWithDeepDive } from './NotesWithDeepDive';
 import { StructuredNotesView } from './StructuredNotesView';
 
 export default function PeopleView() {
-  const { setSelectedMeeting, setView } = useAppStore();
+  const { setSelectedMeeting, navigate } = useAppStore();
   const [people, setPeople] = useState<Person[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
@@ -90,7 +90,7 @@ export default function PeopleView() {
   const handleMeetingClick = (meeting: Meeting) => {
     // Switch to history view and select the meeting
     setSelectedMeeting(meeting);
-    setView('history');
+    navigate('meeting-detail', { meetingId: meeting.id });
   };
 
   const handleViewNotes = (e: React.MouseEvent, meeting: Meeting) => {
