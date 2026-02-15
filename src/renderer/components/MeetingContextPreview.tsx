@@ -63,8 +63,8 @@ export default function MeetingContextPreview({ meeting, onDismiss, onPrep, onTr
           {/* Location */}
           {meeting.location && (
             <div className="flex items-start gap-3 text-sm">
-              <div className="p-2 rounded-lg bg-[#C17F3E]/10 flex-shrink-0">
-                <MapPin className="w-4 h-4 text-[#C17F3E] dark:text-[#C17F3E]" />
+              <div className="p-2 rounded-lg bg-[#4ea8dd]/10 flex-shrink-0">
+                <MapPin className="w-4 h-4 text-[#4ea8dd] dark:text-[#4ea8dd]" />
               </div>
               <p className="text-slate-700 dark:text-slate-300 break-all overflow-hidden flex-1">{meeting.location}</p>
             </div>
@@ -135,7 +135,7 @@ export default function MeetingContextPreview({ meeting, onDismiss, onPrep, onTr
               onPrep?.(meeting);
               onDismiss?.();
             }}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-[#C17F3E]/10 border border-[#C17F3E]/30 hover:bg-[#C17F3E]/20 hover:border-[#C17F3E]/50 transition-all text-[#C17F3E] font-medium"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-[#4ea8dd]/10 border border-[#4ea8dd]/30 hover:bg-[#4ea8dd]/20 hover:border-[#4ea8dd]/50 transition-all text-[#4ea8dd] font-medium"
           >
             <Sparkles className="w-4 h-4" />
             Prep

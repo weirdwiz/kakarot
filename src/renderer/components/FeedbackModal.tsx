@@ -88,7 +88,7 @@ export default function FeedbackModal({ isOpen, onClose, mode }: FeedbackModalPr
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Enter your name"
-              className="w-full px-3 py-2 bg-[#0C0C0C] border border-white/10 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#C17F3E]/50 focus:border-[#C17F3E]"
+              className="w-full px-3 py-2 bg-[#0C0C0C] border border-white/10 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#4ea8dd]/50 focus:border-[#4ea8dd]"
               required
             />
           </div>
@@ -104,7 +104,7 @@ export default function FeedbackModal({ isOpen, onClose, mode }: FeedbackModalPr
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Enter your email"
-              className="w-full px-3 py-2 bg-[#0C0C0C] border border-white/10 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#C17F3E]/50 focus:border-[#C17F3E]"
+              className="w-full px-3 py-2 bg-[#0C0C0C] border border-white/10 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#4ea8dd]/50 focus:border-[#4ea8dd]"
               required
             />
           </div>
@@ -120,7 +120,7 @@ export default function FeedbackModal({ isOpen, onClose, mode }: FeedbackModalPr
               onChange={(e) => setMessage(e.target.value)}
               placeholder={mode === 'message' ? 'Share your thoughts...' : 'Tell us what you think...'}
               rows={5}
-              className="w-full px-3 py-2 bg-[#0C0C0C] border border-white/10 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#C17F3E]/50 focus:border-[#C17F3E] resize-none"
+              className="w-full px-3 py-2 bg-[#0C0C0C] border border-white/10 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#4ea8dd]/50 focus:border-[#4ea8dd] resize-none"
               required
             />
           </div>
@@ -151,7 +151,7 @@ export default function FeedbackModal({ isOpen, onClose, mode }: FeedbackModalPr
               disabled={!isFormValid || isSubmitting}
               className={`flex-1 px-4 py-2 rounded-lg transition ${
                 isFormValid && !isSubmitting
-                  ? 'bg-[#C17F3E] hover:bg-[#C17F3E]/90 text-white'
+                  ? 'bg-[#4ea8dd] hover:bg-[#4ea8dd]/90 text-white'
                   : 'bg-white/5 text-slate-500 cursor-not-allowed'
               }`}
             >

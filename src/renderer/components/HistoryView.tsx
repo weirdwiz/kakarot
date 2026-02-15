@@ -111,7 +111,7 @@ export default function HistoryView() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              className="w-full bg-[#1E1E1E] border border-[#2A2A2A] text-slate-100 rounded-lg px-4 py-2.5 pl-10 text-sm focus:outline-none focus:ring-1 focus:ring-[#C17F3E]/30 focus:border-[#C17F3E]/20 placeholder:text-slate-500"
+              className="w-full bg-[#1E1E1E] border border-[#2A2A2A] text-slate-100 rounded-lg px-4 py-2.5 pl-10 text-sm focus:outline-none focus:ring-1 focus:ring-[#4ea8dd]/30 focus:border-[#4ea8dd]/20 placeholder:text-slate-500"
             />
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
           </div>
@@ -129,7 +129,7 @@ export default function HistoryView() {
                 onClick={() => handleSelectMeeting(meeting)}
                 className={`p-4 border-b border-[#2A2A2A] cursor-pointer transition-all duration-200 animate-stagger-in ${
                   selectedMeeting?.id === meeting.id
-                    ? 'bg-[#2A2A2A] border-l-2 border-l-[#D4923F]'
+                    ? 'bg-[#2A2A2A] border-l-2 border-l-[#3d96cb]'
                     : 'hover:bg-[#1E1E1E]'
                 }`}
                 style={{ animationDelay: `${index * 30}ms` }}
@@ -195,7 +195,7 @@ export default function HistoryView() {
       <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50">
         <button
           onClick={() => setShowChatPopover(!showChatPopover)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#C17F3E] hover:bg-[#D4923F] text-[#0C0C0C] rounded-full shadow-copper-soft transition-all duration-200 hover:shadow-copper-glow active:scale-[0.96]"
+          className="flex items-center gap-2 px-4 py-2 bg-[#4ea8dd] hover:bg-[#3d96cb] text-[#0C0C0C] rounded-full shadow-soft transition-all duration-200 hover:shadow-soft active:scale-[0.96]"
         >
           <MessageCircle className="w-4 h-4" />
           <span className="text-sm font-medium">Ask Me Anything</span>
@@ -222,7 +222,7 @@ export default function HistoryView() {
                   <div
                     className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
                       message.role === 'user'
-                        ? 'bg-[#C17F3E]/20 text-[#F0EBE3] border border-[#C17F3E]/15'
+                        ? 'bg-[#4ea8dd]/20 text-[#F0EBE3] border border-[#4ea8dd]/15'
                         : 'bg-[#1E1E1E] text-[#9C9690] border border-[#2A2A2A]'
                     }`}
                   >
@@ -252,13 +252,13 @@ export default function HistoryView() {
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyPress={handleChatKeyPress}
                 placeholder="Ask about your meetings..."
-                className="flex-1 bg-[#1E1E1E] border border-[#2A2A2A] text-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#C17F3E]/50 placeholder:text-slate-500"
+                className="flex-1 bg-[#1E1E1E] border border-[#2A2A2A] text-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4ea8dd]/50 placeholder:text-slate-500"
                 disabled={isChatLoading}
               />
               <button
                 onClick={handleSendMessage}
                 disabled={!chatInput.trim() || isChatLoading}
-                className="px-3 py-2 bg-[#C17F3E] hover:bg-[#D4923F] disabled:bg-[#2A2A2A] disabled:cursor-not-allowed text-[#0C0C0C] rounded-lg transition-colors"
+                className="px-3 py-2 bg-[#4ea8dd] hover:bg-[#3d96cb] disabled:bg-[#2A2A2A] disabled:cursor-not-allowed text-[#0C0C0C] rounded-lg transition-colors"
               >
                 <Send className="w-4 h-4" />
               </button>

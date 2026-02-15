@@ -61,7 +61,7 @@ export default function FeedbackPopover({
           }}
           className="w-full px-4 py-3 flex items-center gap-3 text-left text-slate-200 hover:bg-white/5 transition"
         >
-          <MessageCircle className="w-4 h-4 text-[#C17F3E]" />
+          <MessageCircle className="w-4 h-4 text-[#4ea8dd]" />
           <span className="text-sm font-medium">Leave a Message</span>
         </button>
         <button
@@ -71,7 +71,7 @@ export default function FeedbackPopover({
           }}
           className="w-full px-4 py-3 flex items-center gap-3 text-left text-slate-200 hover:bg-white/5 transition"
         >
-          <MessageSquare className="w-4 h-4 text-[#C17F3E]" />
+          <MessageSquare className="w-4 h-4 text-[#4ea8dd]" />
           <span className="text-sm font-medium">Give Feedback</span>
         </button>
       </div>

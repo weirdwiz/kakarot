@@ -210,7 +210,7 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
                   if (e.key === 'Escape') { setIsEditingTitle(false); setTitleDraft(meeting.title); }
                 }}
                 autoFocus
-                className="w-full bg-transparent border-b border-[#2A2A2A] focus:border-[#D4923F] focus:outline-none text-xl font-semibold text-white break-words"
+                className="w-full bg-transparent border-b border-[#2A2A2A] focus:border-[#3d96cb] focus:outline-none text-xl font-semibold text-white break-words"
               />
             ) : (
               <button
@@ -332,7 +332,7 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
               value={manualNotes}
               onChange={(e) => setManualNotes(e.target.value)}
               placeholder="Write your notes here..."
-              className="w-full min-h-[120px] bg-[#1E1E1E] border border-[#2A2A2A] text-slate-100 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-[#C17F3E]/30 focus:border-[#C17F3E]/20 placeholder:text-slate-500 resize-y"
+              className="w-full min-h-[120px] bg-[#1E1E1E] border border-[#2A2A2A] text-slate-100 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-[#4ea8dd]/30 focus:border-[#4ea8dd]/20 placeholder:text-slate-500 resize-y"
             />
           </div>
         )}
@@ -347,7 +347,7 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
                   <div
                     className={`max-w-[80%] rounded-2xl px-4 py-3 group ${
                       segment.source === 'mic'
-                        ? 'bg-[#C17F3E]/15 text-[#F0EBE3] border border-[#C17F3E]/10'
+                        ? 'bg-[#4ea8dd]/15 text-[#F0EBE3] border border-[#4ea8dd]/10'
                         : 'bg-[#1E1E1E] text-[#9C9690] border border-[#2A2A2A]'
                     }`}
                   >
@@ -404,7 +404,7 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
               {meeting.attendeeEmails && meeting.attendeeEmails.length > 0 ? (
                 meeting.attendeeEmails.map((email, idx) => (
                   <div key={idx} className="flex items-center gap-3 p-3 rounded-lg bg-[#1E1E1E] border border-[#2A2A2A]">
-                    <div className="w-8 h-8 rounded-full bg-[#C17F3E] flex items-center justify-center text-white text-sm font-medium">
+                    <div className="w-8 h-8 rounded-full bg-[#4ea8dd] flex items-center justify-center text-white text-sm font-medium">
                       {email.charAt(0).toUpperCase()}
                     </div>
                     <p className="text-sm text-white truncate flex-1">{email}</p>
@@ -437,7 +437,7 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
                     placeholder="Search contacts..."
                     value={contactSearchQuery}
                     onChange={(e) => setContactSearchQuery(e.target.value)}
-                    className="w-full px-3 py-2 bg-[#1E1E1E] border border-[#2A2A2A] rounded-lg text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#C17F3E]/50"
+                    className="w-full px-3 py-2 bg-[#1E1E1E] border border-[#2A2A2A] rounded-lg text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#4ea8dd]/50"
                   />
                   <div className="space-y-2 max-h-48 overflow-y-auto">
                     {isLoadingContacts ? (
@@ -459,7 +459,7 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
                             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-[#1E1E1E] hover:bg-[#2A2A2A] transition-colors text-left"
                           >
                             <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-                              selectedContacts.has(person.email) ? 'bg-[#C17F3E] border-[#C17F3E]' : 'border-slate-500'
+                              selectedContacts.has(person.email) ? 'bg-[#4ea8dd] border-[#4ea8dd]' : 'border-slate-500'
                             }`}>
                               {selectedContacts.has(person.email) && <Check className="w-3 h-3 text-white" />}
                             </div>
@@ -475,7 +475,7 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
                     <button onClick={() => setShowAddAttendeesPopover(false)} className="flex-1 px-3 py-2 rounded-lg bg-[#1E1E1E] hover:bg-[#2A2A2A] text-white text-sm transition-colors">
                       Cancel
                     </button>
-                    <button onClick={handleAddAttendees} className="flex-1 px-3 py-2 rounded-lg bg-[#C17F3E] hover:bg-[#D4923F] text-white text-sm font-medium transition-colors">
+                    <button onClick={handleAddAttendees} className="flex-1 px-3 py-2 rounded-lg bg-[#4ea8dd] hover:bg-[#3d96cb] text-white text-sm font-medium transition-colors">
                       Update
                     </button>
                   </div>

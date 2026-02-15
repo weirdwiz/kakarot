@@ -182,7 +182,7 @@ export default function PeopleView() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              className="w-full bg-[#1E1E1E] border border-[#2A2A2A] text-slate-100 rounded-lg px-4 py-2.5 pl-10 text-sm focus:outline-none focus:ring-1 focus:ring-[#C17F3E]/30 focus:border-[#C17F3E]/20 placeholder:text-slate-500"
+              className="w-full bg-[#1E1E1E] border border-[#2A2A2A] text-slate-100 rounded-lg px-4 py-2.5 pl-10 text-sm focus:outline-none focus:ring-1 focus:ring-[#4ea8dd]/30 focus:border-[#4ea8dd]/20 placeholder:text-slate-500"
             />
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
           </div>
@@ -209,7 +209,7 @@ export default function PeopleView() {
                 onClick={() => handleSelectPerson(person)}
                 className={`p-4 border-b border-[#2A2A2A] cursor-pointer transition-colors ${
                   selectedPerson?.email === person.email
-                    ? 'bg-[#2A2A2A] border-l-2 border-l-[#D4923F]'
+                    ? 'bg-[#2A2A2A] border-l-2 border-l-[#3d96cb]'
                     : 'hover:bg-[#1E1E1E]'
                 }`}
               >
@@ -266,7 +266,7 @@ export default function PeopleView() {
                           if (e.key === 'Enter') saveEdit();
                           if (e.key === 'Escape') cancelEdit();
                         }}
-                        className="flex-1 px-3 py-1.5 text-xl font-semibold text-white bg-[#161616] border border-[#2A2A2A] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C17F3E]/30 focus:border-[#C17F3E]/20"
+                        className="flex-1 px-3 py-1.5 text-xl font-semibold text-white bg-[#161616] border border-[#2A2A2A] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#4ea8dd]/30 focus:border-[#4ea8dd]/20"
                         autoFocus
                         placeholder="Enter name"
                       />
@@ -313,7 +313,7 @@ export default function PeopleView() {
                           if (e.key === 'Enter') saveEdit();
                           if (e.key === 'Escape') cancelEdit();
                         }}
-                        className="flex-1 px-3 py-1 text-sm text-slate-200 bg-[#161616] border border-[#2A2A2A] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C17F3E]/30 focus:border-[#C17F3E]/20"
+                        className="flex-1 px-3 py-1 text-sm text-slate-200 bg-[#161616] border border-[#2A2A2A] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#4ea8dd]/30 focus:border-[#4ea8dd]/20"
                         autoFocus
                         placeholder="Enter organization"
                       />
@@ -397,7 +397,7 @@ export default function PeopleView() {
                       <textarea
                         value={editValue}
                         onChange={(e) => setEditValue(e.target.value)}
-                        className="w-full h-64 px-4 py-3 text-sm text-slate-200 bg-[#161616] border border-[#2A2A2A] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C17F3E]/50 resize-none font-mono placeholder:text-slate-500"
+                        className="w-full h-64 px-4 py-3 text-sm text-slate-200 bg-[#161616] border border-[#2A2A2A] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4ea8dd]/50 resize-none font-mono placeholder:text-slate-500"
                         placeholder="Add notes about this contact..."
                         autoFocus
                       />
@@ -410,7 +410,7 @@ export default function PeopleView() {
                         </button>
                         <button
                           onClick={saveEdit}
-                          className="px-4 py-2 text-sm text-white bg-[#C17F3E] hover:bg-[#D4923F] rounded-lg transition-colors"
+                          className="px-4 py-2 text-sm text-white bg-[#4ea8dd] hover:bg-[#3d96cb] rounded-lg transition-colors"
                         >
                           Save Notes
                         </button>
@@ -437,7 +437,7 @@ export default function PeopleView() {
 
                   {isLoadingMeetings ? (
                     <div className="bg-[#161616] rounded-lg p-8 border border-[#2A2A2A] flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#C17F3E]"></div>
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4ea8dd]"></div>
                     </div>
                   ) : contactMeetings.length > 0 ? (
                     <div className="grid grid-cols-1 gap-3">
@@ -445,11 +445,11 @@ export default function PeopleView() {
                         <button
                           key={meeting.id}
                           onClick={() => handleMeetingClick(meeting)}
-                          className="bg-[#161616] rounded-lg p-4 border border-[#2A2A2A] hover:border-[#C17F3E]/50 hover:bg-[#161616] transition-all text-left"
+                          className="bg-[#161616] rounded-lg p-4 border border-[#2A2A2A] hover:border-[#4ea8dd]/50 hover:bg-[#161616] transition-all text-left"
                         >
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1 min-w-0">
-                              <h3 className="text-base font-medium text-white mb-1 hover:text-[#C17F3E] transition-colors line-clamp-1">
+                              <h3 className="text-base font-medium text-white mb-1 hover:text-[#4ea8dd] transition-colors line-clamp-1">
                                 {meeting.title}
                               </h3>
                               <div className="flex items-center gap-3 text-sm text-slate-400">
@@ -466,7 +466,7 @@ export default function PeopleView() {
                             {hasNotes(meeting) && (
                               <button
                                 onClick={(e) => handleViewNotes(e, meeting)}
-                                className="flex-shrink-0 px-3 py-1.5 text-sm font-medium text-[#C17F3E] border border-[#C17F3E]/50 hover:border-[#C17F3E] hover:bg-[#C17F3E]/10 rounded-lg transition-all"
+                                className="flex-shrink-0 px-3 py-1.5 text-sm font-medium text-[#4ea8dd] border border-[#4ea8dd]/50 hover:border-[#4ea8dd] hover:bg-[#4ea8dd]/10 rounded-lg transition-all"
                               >
                                 View Notes
                               </button>
@@ -612,7 +612,7 @@ export default function PeopleView() {
                         <div
                           className={`max-w-[80%] rounded-2xl px-4 py-3 ${
                             segment.source === 'mic'
-                              ? 'bg-[#C17F3E]/15 text-[#F0EBE3] border border-[#C17F3E]/10'
+                              ? 'bg-[#4ea8dd]/15 text-[#F0EBE3] border border-[#4ea8dd]/10'
                               : 'bg-[#1E1E1E] text-[#9C9690] border border-[#2A2A2A]'
                           }`}
                         >

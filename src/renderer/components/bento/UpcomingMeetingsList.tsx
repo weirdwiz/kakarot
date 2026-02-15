@@ -41,8 +41,8 @@ export default function UpcomingMeetingsList({ meetings, isCalendarConnected = f
       style={{ animationDelay: `${(index ?? 0) * 40}ms` }}
     >
       <div className="flex items-start gap-2.5">
-        <div className="flex-shrink-0 px-2 py-1 rounded bg-[#C17F3E]/10 border border-[#C17F3E]/15">
-          <p className="text-[10px] font-bold text-[#D4923F] leading-tight tracking-wider">
+        <div className="flex-shrink-0 px-2 py-1 rounded bg-[#4ea8dd]/10 border border-[#4ea8dd]/15">
+          <p className="text-[10px] font-bold text-[#3d96cb] leading-tight tracking-wider">
             {formatDate(meeting.start)}
           </p>
         </div>
@@ -109,7 +109,7 @@ export default function UpcomingMeetingsList({ meetings, isCalendarConnected = f
                 {onNavigateSettings && (
                   <button
                     onClick={onNavigateSettings}
-                    className="px-3 py-1.5 bg-[#C17F3E] hover:bg-[#D4923F] text-[#0C0C0C] text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors"
+                    className="px-3 py-1.5 bg-[#4ea8dd] hover:bg-[#3d96cb] text-[#0C0C0C] text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors"
                   >
                     <Settings className="w-3 h-3" />
                     Connect Calendar
@@ -152,7 +152,7 @@ export default function UpcomingMeetingsList({ meetings, isCalendarConnected = f
         <div className="mt-2 pt-2 border-t border-[#2A2A2A] flex-shrink-0">
           <button
             onClick={() => onViewMore?.()}
-            className="w-full text-xs text-[#C17F3E] hover:text-[#D4923F] font-medium text-center transition-colors"
+            className="w-full text-xs text-[#4ea8dd] hover:text-[#3d96cb] font-medium text-center transition-colors"
           >
             View more
           </button>
