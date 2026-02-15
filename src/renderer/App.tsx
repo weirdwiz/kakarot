@@ -180,16 +180,33 @@ export default function App() {
     return <OnboardingFlow onComplete={completeOnboarding} />;
   }
 
-  const isOnHome = navStack.length <= 1 && view === 'home';
+  const isOnHome = navStack.length <= 1 && view === 'home' && pillarTab === 'notes';
 
-  // handleStartRecording is passed to HomeView; RecordingView manages the actual recording
-  const handleStartRecording = (event?: CalendarEvent) => {
-    // Set calendar context if an event is passed, then navigate to recording
+  // Start recording: kick off IPC recording, then navigate to RecordingView
+  const handleStartRecording = async (event?: CalendarEvent) => {
     if (event) {
       useAppStore.getState().setCalendarPreview(event);
       useAppStore.getState().setRecordingContext(event);
     }
-    navigate('recording');
+
+    const calendarContextData = event ? {
+      calendarEventId: event.id,
+      calendarEventTitle: event.title,
+      calendarEventAttendees: event.attendees,
+      calendarEventStart: event.start.toISOString(),
+      calendarEventEnd: event.end.toISOString(),
+      calendarProvider: event.provider,
+    } : undefined;
+
+    try {
+      useAppStore.getState().clearLiveTranscript();
+      const meetingId = await window.kakarot.recording.start(calendarContextData);
+      useAppStore.getState().setCurrentMeetingId(meetingId);
+      useAppStore.getState().setCalendarPreview(null);
+      navigate('recording');
+    } catch (error) {
+      console.error('[App] Error starting recording:', error);
+    }
   };
 
   const renderContent = () => {
@@ -251,6 +268,11 @@ export default function App() {
                 }`}
                 onClick={() => {
                   if (isOnHome) return;
+                  // If on prep tab at home, switch back to notes tab
+                  if (view === 'home' && pillarTab === 'prep') {
+                    setPillarTab('notes');
+                    return;
+                  }
                   goBack();
                 }}
               >

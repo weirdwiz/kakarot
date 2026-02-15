@@ -32,7 +32,7 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
 
   const [upcomingMeetingId, setUpcomingMeetingId] = React.useState<string | null>(null);
   type MeetingPhase = 'idle' | 'recording' | 'processing';
-  const [phase, setPhase] = React.useState<MeetingPhase>('idle');
+  const [phase, setPhase] = React.useState<MeetingPhase>(recordingState === 'recording' || recordingState === 'paused' ? 'recording' : 'idle');
   const [titleInput, setTitleInput] = React.useState('');
   const [notes, setNotes] = React.useState('');
   const [isSavingTitle, setIsSavingTitle] = React.useState(false);
@@ -44,6 +44,16 @@ export default function RecordingView({ onSelectTab }: RecordingViewProps) {
   const isIdle = recordingState === 'idle';
   const isRecording = recordingState === 'recording';
   const isPaused = recordingState === 'paused';
+
+  // Start audio capture if recording was initiated before mount (e.g., from HomeView)
+  const didStartCaptureRef = React.useRef(false);
+  React.useEffect(() => {
+    if (isRecording && !didStartCaptureRef.current) {
+      didStartCaptureRef.current = true;
+      setPhase('recording');
+      startCapture().catch(console.error);
+    }
+  }, [isRecording, startCapture]);
 
   // Track previous recording state
   const prevRecordingStateRef = React.useRef<string>(recordingState);
