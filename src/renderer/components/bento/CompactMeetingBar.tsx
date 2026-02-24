@@ -54,7 +54,7 @@ export default function CompactMeetingBar({
 
   return (
     <div className="w-full space-y-2">
-      {events.map((event, index) => {
+      {events.map((event) => {
         const minutesUntil = getMinutesUntil(event.start);
         const isLive = minutesUntil <= 0 && new Date(event.end).getTime() - Date.now() > 0;
         const platform = getPlatformIcon(event.location);
