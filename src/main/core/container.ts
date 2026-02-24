@@ -124,6 +124,17 @@ export function getContainer(): AppContainer {
   return container;
 }
 
+export function destroyContainer(): void {
+  if (!container) return;
+
+  container.meetingNotificationService.stop();
+  container.calendarService.dispose();
+  container.aiProvider = null;
+  container = null;
+
+  logger.info('Container destroyed');
+}
+
 export async function refreshBackendConfig(): Promise<BackendConfig | null> {
   if (!container) {
     throw new Error('Container not initialized');

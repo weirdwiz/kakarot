@@ -5,7 +5,7 @@ import { createMainWindow } from './windows/mainWindow';
 import { createCalloutWindow } from './windows/calloutWindow';
 import { IndicatorWindow } from './windows/IndicatorWindow';
 import { initializeDatabase, closeDatabase } from './data/database';
-import { initializeContainer, getContainer } from './core/container';
+import { initializeContainer, getContainer, destroyContainer } from './core/container';
 import { registerAllHandlers } from './handlers';
 import { registerSlackHandlers } from './handlers/SlackHandlers'; // ✅ This works if file is in handlers folder
 import { createLogger, initializeFileLogging } from './core/logger';
@@ -278,8 +278,7 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   stopPerformanceLogging();
-  const container = getContainer();
-  container.meetingNotificationService.stop();
+  destroyContainer();
   closeDatabase();
   logger.info('Application closing');
 });

@@ -42,6 +42,12 @@ export class CalendarService {
 
   constructor(private readonly settingsRepo: SettingsRepository) {}
 
+  dispose(): void {
+    this.tokenRefreshPromises.clear();
+    this.requestQueue.length = 0;
+    this.activeRequests = 0;
+  }
+
   /**
    * Acquire a slot for making a calendar request.
    * If at capacity, waits until a slot is available.
