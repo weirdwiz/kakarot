@@ -17,7 +17,8 @@ export const useOnboardingStore = create<OnboardingState>()((set) => ({
     try {
       const settings = await window.kakarot.settings.get();
       set({ isCompleted: !!settings.onboardingCompleted, isLoading: false });
-    } catch {
+    } catch (err) {
+      console.error('Failed to load onboarding settings:', err);
       set({ isLoading: false });
     }
   },

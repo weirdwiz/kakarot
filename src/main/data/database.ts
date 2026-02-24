@@ -1,7 +1,7 @@
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { app } from 'electron';
 import { join } from 'path';
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, writeFile } from 'fs';
 import { createLogger } from '../core/logger';
 import { EXPORT_CONFIG } from '../config/constants';
 
@@ -46,9 +46,28 @@ export function getDatabase(): SqlJsDatabase {
 
 export function saveDatabase(): void {
   if (!db) return;
-  const data = db.export();
-  const buffer = Buffer.from(data);
-  writeFileSync(dbPath, buffer);
+  try {
+    const data = db.export();
+    const buffer = Buffer.from(data);
+    writeFileSync(dbPath, buffer);
+  } catch (err) {
+    logger.error('Failed to save database', err as Error);
+  }
+}
+
+export function saveDatabaseAsync(): void {
+  if (!db) return;
+  try {
+    const data = db.export();
+    const buffer = Buffer.from(data);
+    writeFile(dbPath, buffer, (err) => {
+      if (err) {
+        logger.error('Failed to save database (async)', err);
+      }
+    });
+  } catch (err) {
+    logger.error('Failed to export database for async save', err as Error);
+  }
 }
 
 export function closeDatabase(): void {

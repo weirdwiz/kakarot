@@ -23,6 +23,13 @@ export class SalesforceOAuthProvider {
 
   async authenticate(mainWindow: BrowserWindow): Promise<SalesforceOAuthToken> {
     return new Promise((resolve, reject) => {
+      const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
+      const timeout = setTimeout(() => {
+        if (!authWindow.isDestroyed()) authWindow.destroy();
+        reject(new Error('Salesforce OAuth timed out'));
+      }, OAUTH_TIMEOUT_MS);
+      const clearOAuthTimeout = () => clearTimeout(timeout);
+
       const authWindow = new BrowserWindow({
         width: 600,
         height: 700,
@@ -95,6 +102,7 @@ export class SalesforceOAuthProvider {
         this.salesforceService
           .exchangeCodeForToken(code)
           .then((token) => {
+            clearOAuthTimeout();
             authWindow.destroy();
             resolve(token);
           })
@@ -155,6 +163,7 @@ export class SalesforceOAuthProvider {
       });
 
       authWindow.on('closed', () => {
+        clearOAuthTimeout();
         if (!isProcessingCode) {
           logger.warn('OAuth window closed by user');
           reject(new Error('OAuth window closed'));

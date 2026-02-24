@@ -19,10 +19,6 @@ export class CalloutService {
   private recentTranscripts: TranscriptSegment[] = [];
   private pendingCallout: PendingCallout | null = null;
 
-  /**
-   * Add a transcript segment to the sliding window for context.
-   * Call this on every final transcript (both mic and system).
-   */
   addTranscriptSegment(segment: TranscriptSegment): void {
     this.recentTranscripts.push(segment);
     if (this.recentTranscripts.length > CALLOUT_CONFIG.MAX_CONTEXT_SEGMENTS) {
@@ -30,13 +26,7 @@ export class CalloutService {
     }
   }
 
-  /**
-   * Schedule a callout for a detected question.
-   * Starts a timer; if no mic response cancels it, generates callout after delay.
-   * If a new question arrives, replaces the pending one.
-   */
   scheduleCallout(question: string, onCallout: (callout: Callout) => void): void {
-    // Cancel existing pending callout
     if (this.pendingCallout) {
       clearTimeout(this.pendingCallout.timerId);
       logger.debug('Replaced pending callout with new question');
@@ -59,10 +49,6 @@ export class CalloutService {
     logger.debug('Scheduled callout', { question: question.slice(0, 50) });
   }
 
-  /**
-   * Check if a mic transcript should cancel the pending callout.
-   * Cancels if the user responded with 3+ words.
-   */
   checkForMicResponse(text: string): void {
     if (!this.pendingCallout) return;
 
@@ -73,9 +59,6 @@ export class CalloutService {
     }
   }
 
-  /**
-   * Cancel any pending callout without generating it.
-   */
   cancelPendingCallout(): void {
     if (this.pendingCallout) {
       clearTimeout(this.pendingCallout.timerId);
@@ -83,9 +66,6 @@ export class CalloutService {
     }
   }
 
-  /**
-   * Clear all state (call on recording stop).
-   */
   reset(): void {
     this.cancelPendingCallout();
     this.recentTranscripts = [];
@@ -105,9 +85,7 @@ export class CalloutService {
       .filter(Boolean)
       .join('\n\n');
 
-    // Get user profile for personalized responses
-    const settings = settingsRepo.getSettings();
-    const userProfile = settings.userProfile;
+    const userProfile = settingsRepo.getSettings().userProfile;
 
     const messages = buildCalloutMessages(question, allContext, userProfile);
     const response = await aiProvider.chat(messages, {

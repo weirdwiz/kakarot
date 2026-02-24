@@ -104,7 +104,6 @@ export class AECProcessor {
       try {
         // First try: use bindings module (works in dev/unbundled)
         logger.debug('Attempting to load native addon via bindings module...');
-          logger.debug('DEBUG:', { __dirname, cwd: process.cwd() });
         nativeModule = bindings('audio_capture_native');
         logger.debug('Loaded native addon via bindings module');
       } catch (bindingsError) {
@@ -122,12 +121,6 @@ export class AECProcessor {
         // Try same directory as the bundled code (after build copy)
         possiblePaths.push(
           path.join(__dirname, 'audio_capture_native.node')
-        );
-        
-        // Try absolute dev paths
-        possiblePaths.push(
-          path.resolve('/Users/moxo/Desktop/kakarot-master/native/build/Release/audio_capture_native.node'),
-          path.resolve('/Users/moxo/Desktop/kakarot-master/build/Release/audio_capture_native.node')
         );
         
         // Try cwd-relative paths

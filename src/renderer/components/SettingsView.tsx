@@ -663,6 +663,8 @@ interface ToggleSwitchProps {
 function ToggleSwitch({ enabled, onChange }: ToggleSwitchProps) {
   return (
     <button
+      role="switch"
+      aria-checked={enabled}
       onClick={() => onChange(!enabled)}
       className={`relative w-11 h-6 rounded-full transition-colors ${
         enabled ? 'bg-accent' : 'bg-edge'

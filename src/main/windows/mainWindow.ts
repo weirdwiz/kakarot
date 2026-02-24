@@ -1,7 +1,30 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, session, shell } from 'electron';
 import { join } from 'path';
 
+function setProductionCSP(): void {
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; " +
+          "script-src 'self'; " +
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+          "font-src 'self' https://fonts.gstatic.com; " +
+          "img-src 'self' data: blob:; " +
+          "worker-src 'self' blob:; " +
+          "connect-src 'self' wss:;"
+        ],
+      },
+    });
+  });
+}
+
 export function createMainWindow(): BrowserWindow {
+  if (app.isPackaged) {
+    setProductionCSP();
+  }
+
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,

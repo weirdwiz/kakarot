@@ -17,22 +17,14 @@ export class ExportService {
       mkdirSync(exportDir, { recursive: true });
     }
 
-    const safeTitle = meeting.title.replace(/[^a-z0-9]/gi, '_');
-    const filename = `${safeTitle}_${meeting.id.slice(0, 8)}`;
-
-    if (format === 'markdown') {
-      const md = this.toMarkdown(meeting);
-      const filePath = join(exportDir, `${filename}.md`);
-      writeFileSync(filePath, md);
-      logger.info('Exported meeting to markdown', { path: filePath });
-      return filePath;
+    if (format === 'pdf') {
+      logger.warn('PDF export not implemented, exporting as markdown');
     }
 
-    // PDF not implemented yet - fall back to markdown
-    const md = this.toMarkdown(meeting);
-    const filePath = join(exportDir, `${filename}.md`);
-    writeFileSync(filePath, md);
-    logger.warn('PDF export not implemented, exported as markdown');
+    const safeTitle = meeting.title.replace(/[^a-z0-9]/gi, '_');
+    const filePath = join(exportDir, `${safeTitle}_${meeting.id.slice(0, 8)}.md`);
+    writeFileSync(filePath, this.toMarkdown(meeting));
+    logger.info('Exported meeting to markdown', { path: filePath });
     return filePath;
   }
 

@@ -23,6 +23,13 @@ export class HubSpotOAuthProvider {
 
   async authenticate(mainWindow: BrowserWindow): Promise<HubSpotOAuthToken> {
     return new Promise((resolve, reject) => {
+      const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
+      const timeout = setTimeout(() => {
+        if (!authWindow.isDestroyed()) authWindow.destroy();
+        reject(new Error('HubSpot OAuth timed out'));
+      }, OAUTH_TIMEOUT_MS);
+      const clearOAuthTimeout = () => clearTimeout(timeout);
+
       const authWindow = new BrowserWindow({
         width: 600,
         height: 700,
@@ -99,6 +106,7 @@ export class HubSpotOAuthProvider {
 
         this.exchangeCodeForToken(code)
           .then((token) => {
+            clearOAuthTimeout();
             authWindow.destroy();
             resolve(token);
           })
@@ -175,6 +183,7 @@ export class HubSpotOAuthProvider {
       });
 
       authWindow.on('closed', () => {
+        clearOAuthTimeout();
         if (!isProcessingCode) {
           reject(new Error('OAuth window closed'));
         }

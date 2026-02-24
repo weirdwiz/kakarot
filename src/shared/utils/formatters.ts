@@ -94,6 +94,19 @@ export function formatRelativeTime(timestampMs: number): string {
   return `${minutes}:${seconds}`;
 }
 
+import type { CalendarAttendee } from '../types';
+
+export type AttendeeInput = string | CalendarAttendee;
+
+export function getAttendeeEmail(attendee: AttendeeInput): string {
+  return typeof attendee === 'string' ? attendee : attendee.email;
+}
+
+export function getAttendeeName(attendee: AttendeeInput): string {
+  if (typeof attendee === 'string') return attendee;
+  return attendee.name || attendee.email;
+}
+
 export function formatLastMeeting(date: Date): string {
   const now = new Date();
   const diffMs = now.getTime() - new Date(date).getTime();

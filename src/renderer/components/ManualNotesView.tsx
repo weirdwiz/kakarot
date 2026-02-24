@@ -349,7 +349,7 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
                 <AttendeesList 
                   attendeeEmails={
                     meeting?.attendees
-                      ? meeting.attendees.map((a: any) => 
+                      ? meeting.attendees.map((a) =>
                           typeof a === 'string' ? a : a.email
                         )
                       : []
@@ -398,7 +398,7 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
                     onClick={() => {
                       // Build attendee names for the prep query
                       const attendeeNames = meeting?.attendees
-                        ?.map((a: any) => {
+                        ?.map((a) => {
                           if (typeof a === 'string') {
                             // If it's just an email, extract name from email
                             const localPart = a.split('@')[0];

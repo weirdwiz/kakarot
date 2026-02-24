@@ -10,7 +10,7 @@ Kakarot is an Electron-based AI meeting assistant that captures dual audio (micr
 
 ```bash
 # Development (Vite + Electron with hot reload)
-npm run dev:electron
+npm run dev
 
 # Type checking only
 npm run typecheck

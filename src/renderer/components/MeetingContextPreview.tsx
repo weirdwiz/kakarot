@@ -38,12 +38,12 @@ export default function MeetingContextPreview({ meeting, onDismiss, onPrep, onTr
 
   const duration = Math.round((meeting.end.getTime() - meeting.start.getTime()) / (1000 * 60));
 
-  const getAttendeeEmail = (attendee: any): string | undefined => {
+  const getEmail = (attendee: string | { email: string; name?: string }): string | undefined => {
     if (!attendee) return undefined;
     return typeof attendee === 'string' ? attendee : attendee.email;
   };
 
-  const getAttendeeLabel = (attendee: any): string => {
+  const getLabel = (attendee: string | { email: string; name?: string }): string => {
     if (!attendee) return '';
     if (typeof attendee === 'string') return attendee;
     return attendee.name || attendee.email || '';
@@ -118,7 +118,7 @@ export default function MeetingContextPreview({ meeting, onDismiss, onPrep, onTr
                 </p>
                 <div className="flex flex-wrap gap-1 max-h-28 overflow-auto pr-1">
                   {meeting.attendees.map((attendee, i) => {
-                    const email = getAttendeeEmail(attendee);
+                    const email = getEmail(attendee);
                     const disabled = !email;
                     return (
                       <button
@@ -133,7 +133,7 @@ export default function MeetingContextPreview({ meeting, onDismiss, onPrep, onTr
                         }`}
                         title={email || undefined}
                       >
-                        {getAttendeeLabel(attendee)}
+                        {getLabel(attendee)}
                       </button>
                     );
                   })}

@@ -79,46 +79,42 @@ function writeToFile(formatted: string): void {
   }
 }
 
+const CONSOLE_METHODS: Record<LogLevel, 'log' | 'warn' | 'error'> = {
+  debug: 'log',
+  info: 'log',
+  warn: 'warn',
+  error: 'error',
+};
+
 export class Logger {
   constructor(private context: string) {}
 
+  private log(level: LogLevel, message: string, data?: LogContext): void {
+    if (!shouldLog(level)) return;
+    const formatted = formatMessage(this.context, level, message, data);
+    console[CONSOLE_METHODS[level]](formatted); // eslint-disable-line no-console
+    writeToFile(formatted);
+  }
+
   debug(message: string, data?: LogContext): void {
-    if (shouldLog('debug')) {
-      const formatted = formatMessage(this.context, 'debug', message, data);
-      // eslint-disable-next-line no-console
-      console.log(formatted);
-      writeToFile(formatted);
-    }
+    this.log('debug', message, data);
   }
 
   info(message: string, data?: LogContext): void {
-    if (shouldLog('info')) {
-      const formatted = formatMessage(this.context, 'info', message, data);
-      // eslint-disable-next-line no-console
-      console.log(formatted);
-      writeToFile(formatted);
-    }
+    this.log('info', message, data);
   }
 
   warn(message: string, data?: LogContext): void {
-    if (shouldLog('warn')) {
-      const formatted = formatMessage(this.context, 'warn', message, data);
-      console.warn(formatted);
-      writeToFile(formatted);
-    }
+    this.log('warn', message, data);
   }
 
   error(message: string, error?: Error | unknown, data?: LogContext): void {
-    if (shouldLog('error')) {
-      const errorInfo = error instanceof Error
-        ? { errorMessage: error.message, stack: error.stack }
-        : error
-          ? { errorValue: String(error) }
-          : {};
-      const formatted = formatMessage(this.context, 'error', message, { ...data, ...errorInfo });
-      console.error(formatted);
-      writeToFile(formatted);
-    }
+    const errorInfo = error instanceof Error
+      ? { errorMessage: error.message, stack: error.stack }
+      : error
+        ? { errorValue: String(error) }
+        : {};
+    this.log('error', message, { ...data, ...errorInfo });
   }
 }
 

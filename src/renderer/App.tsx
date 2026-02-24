@@ -1,4 +1,5 @@
 import React, { useEffect, useCallback, useState } from 'react';
+import { useShallow } from 'zustand/shallow';
 import { useAppStore, type PreviousMeetingItem } from './stores/appStore';
 import { useOnboardingStore } from './stores/onboardingStore';
 import RecordingView from './components/RecordingView';
@@ -12,6 +13,7 @@ import Sidebar from './components/Sidebar';
 import OnboardingFlow from './components/onboarding/OnboardingFlow';
 import type { AudioLevels, AppSettings, CalendarEvent, Meeting } from '../shared/types';
 import ToastContainer from './components/Toast';
+import ErrorBoundary from './components/ErrorBoundary';
 import { toast } from './stores/toastStore';
 
 const getEventKey = (event: CalendarEvent): string => {
@@ -35,23 +37,37 @@ export default function App() {
   const {
     view,
     recordingState,
-    setRecordingState,
-    setAudioLevels,
-    setPartialSegment,
-    addTranscriptSegment,
-    setSettings,
-    setLiveCalendarEvents,
-    setUpcomingCalendarEvents,
-    setPreviousMeetings,
-    setCalendarMappings,
-    setDashboardDataLoaded,
     dashboardDataLoaded,
     dismissedEventIds,
-    navigate,
     selectedMeeting,
     lastCompletedNoteId,
-  } = useAppStore();
-  const { isCompleted: onboardingCompleted, isLoading: onboardingLoading, completeOnboarding, resetOnboarding, loadFromSettings } = useOnboardingStore();
+  } = useAppStore(useShallow((state) => ({
+    view: state.view,
+    recordingState: state.recordingState,
+    dashboardDataLoaded: state.dashboardDataLoaded,
+    dismissedEventIds: state.dismissedEventIds,
+    selectedMeeting: state.selectedMeeting,
+    lastCompletedNoteId: state.lastCompletedNoteId,
+  })));
+
+  const setRecordingState = useAppStore((state) => state.setRecordingState);
+  const setAudioLevels = useAppStore((state) => state.setAudioLevels);
+  const setPartialSegment = useAppStore((state) => state.setPartialSegment);
+  const addTranscriptSegment = useAppStore((state) => state.addTranscriptSegment);
+  const setSettings = useAppStore((state) => state.setSettings);
+  const setLiveCalendarEvents = useAppStore((state) => state.setLiveCalendarEvents);
+  const setUpcomingCalendarEvents = useAppStore((state) => state.setUpcomingCalendarEvents);
+  const setPreviousMeetings = useAppStore((state) => state.setPreviousMeetings);
+  const setCalendarMappings = useAppStore((state) => state.setCalendarMappings);
+  const setDashboardDataLoaded = useAppStore((state) => state.setDashboardDataLoaded);
+  const navigate = useAppStore((state) => state.navigate);
+  const { isCompleted: onboardingCompleted, isLoading: onboardingLoading } = useOnboardingStore(useShallow((state) => ({
+    isCompleted: state.isCompleted,
+    isLoading: state.isLoading,
+  })));
+  const completeOnboarding = useOnboardingStore((state) => state.completeOnboarding);
+  const resetOnboarding = useOnboardingStore((state) => state.resetOnboarding);
+  const loadFromSettings = useOnboardingStore((state) => state.loadFromSettings);
   const [pillarTab, setPillarTab] = useState<'notes' | 'prep'>('notes');
   const [cachedCalendarEvents, setCachedCalendarEvents] = useState<CalendarEvent[]>([]);
 
@@ -282,36 +298,39 @@ export default function App() {
   const isFullWidthView = view === 'history' || view === 'people' || view === 'meeting-detail';
 
   return (
-    <div className="flex h-screen overflow-hidden min-w-[640px] bg-surface">
-      <Sidebar pillarTab={pillarTab} onPillarTabChange={setPillarTab} />
-      <div className="flex-1 flex flex-col">
-        {/* Content area with drag region at top for window dragging */}
-        <div className="h-[38px] flex-shrink-0 drag-region" />
-        <main className={`flex-1 ${needsFullHeight ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-          <div
-            key={`${view}-${pillarTab}`}
-            className={`
-              animate-view-enter
-              ${needsFullHeight ? 'h-full flex flex-col' : ''}
-              py-4 px-5 sm:px-8
-              ${!isFullWidthView ? 'max-w-5xl mx-auto' : ''}
-            `}
-          >
-            {isFullWidthView ? (
-              <div className={needsFullHeight ? 'flex-1 min-h-0 flex flex-col' : ''}>
-                {renderContent()}
+    <ErrorBoundary>
+      <div className="flex h-screen overflow-hidden min-w-[640px] bg-surface">
+        <Sidebar pillarTab={pillarTab} onPillarTabChange={setPillarTab} />
+        <div className="flex-1 flex flex-col">
+          <div className="h-[38px] flex-shrink-0 drag-region" />
+          <main className={`flex-1 ${needsFullHeight ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+            <ErrorBoundary>
+              <div
+                key={`${view}-${pillarTab}`}
+                className={`
+                  animate-view-enter
+                  ${needsFullHeight ? 'h-full flex flex-col' : ''}
+                  py-4 px-5 sm:px-8
+                  ${!isFullWidthView ? 'max-w-5xl mx-auto' : ''}
+                `}
+              >
+                {isFullWidthView ? (
+                  <div className={needsFullHeight ? 'flex-1 min-h-0 flex flex-col' : ''}>
+                    {renderContent()}
+                  </div>
+                ) : (
+                  <div className={`rounded-2xl border border-edge bg-card shadow-soft-card ${needsFullHeight ? 'flex-1 min-h-0 flex flex-col' : ''}`}>
+                    <div className={`${needsFullHeight ? 'h-full flex flex-col p-6' : 'p-6 sm:p-8'}`}>
+                      {renderContent()}
+                    </div>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className={`rounded-2xl border border-edge bg-card shadow-soft-card ${needsFullHeight ? 'flex-1 min-h-0 flex flex-col' : ''}`}>
-                <div className={`${needsFullHeight ? 'h-full flex flex-col p-6' : 'p-6 sm:p-8'}`}>
-                  {renderContent()}
-                </div>
-              </div>
-            )}
-          </div>
-        </main>
+            </ErrorBoundary>
+          </main>
+        </div>
+        <ToastContainer />
       </div>
-      <ToastContainer />
-    </div>
+    </ErrorBoundary>
   );
 }

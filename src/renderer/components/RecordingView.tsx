@@ -91,7 +91,7 @@ export default function RecordingView({ onSelectTab: _onSelectTab }: RecordingVi
             setUpcomingMeetingId(existing.notesId);
             return null;
           }
-          const attendeeEmails = meeting.attendees?.map((a: any) => typeof a === 'string' ? a : a.email) || [];
+          const attendeeEmails = meeting.attendees?.map((a) => typeof a === 'string' ? a : a.email) || [];
           return window.kakarot.meetings.createDismissed(meeting.title, attendeeEmails)
             .then(async (meetingId: string) => {
               setUpcomingMeetingId(meetingId);

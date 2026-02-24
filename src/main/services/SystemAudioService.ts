@@ -140,6 +140,7 @@ setAECProcessor(processor: AECProcessor | null): void {
       logger.error('Error stopping audio backend', error as Error);
     }
 
+    this.backend.removeAllListeners();
     this.backend = null;
     this.transcriptionProvider = null;
     this.audioLevelCallback = null;

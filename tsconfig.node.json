@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["vite.config.ts", "electron-builder.json5"]
+  "include": ["vite.config.ts"]
 }

@@ -97,11 +97,11 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
       const settingsResp = await window.kakarot.settings.get();
       const userEmail = settingsResp?.userProfile?.email?.toLowerCase();
       const attendeeNamesList = meeting.attendees
-        ?.filter((a: any) => {
+        ?.filter((a) => {
           const email = (typeof a === 'string' ? a : a.email || '').toLowerCase();
           return email && email !== userEmail;
         })
-        .map((a: any) => (typeof a === 'string' ? a : a.name || a.email))
+        .map((a) => (typeof a === 'string' ? a : a.name || a.email))
         .filter(Boolean) ?? [];
 
       if (attendeeNamesList.length > 0) {
@@ -130,7 +130,7 @@ export default function BentoDashboard({ isRecording, hideCompactBarWhenNoEvents
 
       await window.kakarot.meetings.createDismissed(
         event.title,
-        event.attendees?.map((a: any) => typeof a === 'string' ? a : a.email)
+        event.attendees?.map((a) => typeof a === 'string' ? a : a.email)
       );
 
       addDismissedEventId(eventId);

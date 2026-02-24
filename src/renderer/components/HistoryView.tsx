@@ -116,7 +116,7 @@ export default function HistoryView() {
 
   // Chat state
   const [showChatPopover, setShowChatPopover] = useState(false);
-  const [chatMessages, setChatMessages] = useState<Array<{role: 'user' | 'assistant', content: string}>>([]);
+  const [chatMessages, setChatMessages] = useState<Array<{id: string, role: 'user' | 'assistant', content: string}>>([]);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatInputRef = useRef<HTMLInputElement>(null);
@@ -135,17 +135,17 @@ export default function HistoryView() {
     if (!chatInput.trim() || isChatLoading) return;
     const userMessage = chatInput.trim();
     setChatInput('');
-    setChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setChatMessages(prev => [...prev, { id: `msg-${Date.now()}-user`, role: 'user', content: userMessage }]);
     setIsChatLoading(true);
     try {
       const response = await window.kakarot.chat.sendMessage(userMessage, {
         selectedMeetingId: selectedMeeting?.id,
         context: 'history_view'
       });
-      setChatMessages(prev => [...prev, { role: 'assistant', content: response }]);
+      setChatMessages(prev => [...prev, { id: `msg-${Date.now()}-assistant`, role: 'assistant', content: response }]);
     } catch (error) {
       console.error('Chat error:', error);
-      setChatMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }]);
+      setChatMessages(prev => [...prev, { id: `msg-${Date.now()}-error`, role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }]);
     } finally {
       setIsChatLoading(false);
     }
@@ -310,8 +310,8 @@ export default function HistoryView() {
                   Ask me anything about your meetings
                 </div>
               ) : (
-                chatMessages.map((message, index) => (
-                  <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                chatMessages.map((message) => (
+                  <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div
                       className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
                         message.role === 'user'

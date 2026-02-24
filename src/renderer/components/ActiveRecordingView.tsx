@@ -106,7 +106,7 @@ export default function ActiveRecordingView({
 
   const displayDate = recordingContext?.start || new Date();
   const displayAttendees: string[] = (
-    recordingContext?.attendees?.map((a: any) =>
+    recordingContext?.attendees?.map((a) =>
       typeof a === 'string' ? a : a.email
     ) || []
   );

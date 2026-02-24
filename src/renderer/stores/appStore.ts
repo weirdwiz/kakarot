@@ -111,7 +111,8 @@ const loadDismissedEventIds = (): Set<string> => {
   try {
     const stored = localStorage.getItem('dismissedEventIds');
     return stored ? new Set(JSON.parse(stored)) : new Set();
-  } catch {
+  } catch (err) {
+    console.error('Failed to load dismissed event IDs from localStorage:', err);
     return new Set();
   }
 };

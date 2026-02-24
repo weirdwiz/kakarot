@@ -81,6 +81,7 @@ export interface Meeting {
   actionItems: string[];
   participants: string[]; // Deprecated: use attendeeEmails
   attendeeEmails: string[]; // Email addresses from calendar
+  attendees?: (string | CalendarAttendee)[]; // Raw attendee data from calendar
   // Note entries (accumulated with timestamps)
   noteEntries: NoteEntry[];
   // Optional generated notes fields (legacy, for backward compatibility)

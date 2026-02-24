@@ -28,6 +28,18 @@ initializeErrorHandler();
 const logger = createLogger('Main');
 const PROTOCOL_SCHEME = 'treeto';
 
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+}
+
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
 app.setAsDefaultProtocolClient(PROTOCOL_SCHEME);
 
 app.on('open-url', (event, url) => {

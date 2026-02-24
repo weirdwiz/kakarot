@@ -356,10 +356,10 @@ contextBridge.exposeInMainWorld('kakarot', {
 
   // 👇 NEW: Slack Integration
   slack: {
-    connect: (): Promise<any> => ipcRenderer.invoke('slack:connect'),
-    getChannels: (token: string): Promise<any[]> => ipcRenderer.invoke('slack:getChannels', token),
-    sendNote: (token: string, channelId: string, text: string): Promise<void> => 
-      ipcRenderer.invoke('slack:sendNote', { accessToken: token, channelId, text }),
+    connect: (): Promise<unknown> => ipcRenderer.invoke(IPC_CHANNELS.SLACK_CONNECT),
+    getChannels: (token: string): Promise<unknown[]> => ipcRenderer.invoke(IPC_CHANNELS.SLACK_GET_CHANNELS, token),
+    sendNote: (token: string, channelId: string, text: string): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SLACK_SEND_NOTE, { accessToken: token, channelId, text }),
   },
 
   // Dev utilities

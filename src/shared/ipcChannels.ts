@@ -130,6 +130,11 @@ export const IPC_CHANNELS = {
   CRM_PUSH_NOTES: 'crm:pushNotes',
   CRM_MEETING_COMPLETE: 'crm:meetingComplete',
 
+  // Slack
+  SLACK_CONNECT: 'slack:connect',
+  SLACK_GET_CHANNELS: 'slack:getChannels',
+  SLACK_SEND_NOTE: 'slack:sendNote',
+
   // Dialog
   DIALOG_SELECT_FOLDER: 'dialog:selectFolder',
 

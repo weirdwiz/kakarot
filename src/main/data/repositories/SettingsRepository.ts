@@ -30,7 +30,13 @@ export class SettingsRepository {
     for (let i = 0; i < result[0].values.length; i++) {
       const key = result[0].values[i][0] as string;
       const value = result[0].values[i][1] as string;
-      let parsed = JSON.parse(value);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        logger.warn('Failed to parse settings value', { key });
+        continue;
+      }
       // Decrypt sensitive fields on read
       if (SENSITIVE_SETTINGS_KEYS.has(key) && typeof parsed === 'object' && parsed !== null) {
         parsed = decryptTokenFields(parsed);

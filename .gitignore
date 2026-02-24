@@ -5,13 +5,13 @@ node_modules/
 dist/
 release/
 out/
-public/
-remotion/
-build/.env.production
+build/
+*.node
 
 # Environment
 .env
-.env.local
+.env.*
+!.env.example
 
 # Local data (runtime storage, not src/main/data/)
 /data/
@@ -28,11 +28,9 @@ Thumbs.db
 
 # Logs
 *.log
-npm-debug.log*
 
 # TypeScript
 *.tsbuildinfo
-resources/.env.production
-.env
-.env.*
-!.env.example
+
+# Vite
+.vite/

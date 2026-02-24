@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { AppSettings, CustomMeetingType, StandardMeetingTypeOverride } from '@shared/types';
 import {
