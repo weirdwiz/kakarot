@@ -1,14 +1,14 @@
 declare module 'react-window' {
   import * as React from 'react';
 
-  export type ListChildComponentProps<T = any> = {
+  export type ListChildComponentProps<T = unknown> = {
     index: number;
     style: React.CSSProperties;
     data: T;
     isScrolling?: boolean;
   };
 
-  export type FixedSizeListProps<T = any> = {
+  export type FixedSizeListProps<T = unknown> = {
     height: number;
     width: number;
     itemCount: number;
@@ -21,5 +21,5 @@ declare module 'react-window' {
       | ((props: ListChildComponentProps<T>) => React.ReactNode);
   } & Omit<React.HTMLAttributes<HTMLDivElement>, 'children'>;
 
-  export class FixedSizeList<T = any> extends React.Component<FixedSizeListProps<T>> {}
+  export class FixedSizeList<T = unknown> extends React.Component<FixedSizeListProps<T>> {}
 }

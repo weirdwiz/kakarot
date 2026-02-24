@@ -49,7 +49,7 @@ export function initializeErrorHandler(): void {
     logger.error('Uncaught exception', {
       message: error.message,
       stack: error.stack,
-      origin
+      origin,
     });
 
     if (app.isReady()) {
@@ -67,7 +67,7 @@ export function initializeErrorHandler(): void {
 
     logger.error('Unhandled rejection', {
       message: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
 
     // Log but don't crash for unhandled rejections
@@ -79,17 +79,9 @@ export function initializeErrorHandler(): void {
     logger.warn('Process warning', {
       name: warning.name,
       message: warning.message,
-      stack: warning.stack
+      stack: warning.stack,
     });
   });
 
   logger.info('Global error handlers initialized');
-}
-
-export function reportError(error: Error, context?: Record<string, unknown>): void {
-  logger.error('Reported error', {
-    message: error.message,
-    stack: error.stack,
-    ...context
-  });
 }

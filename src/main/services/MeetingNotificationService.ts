@@ -3,7 +3,7 @@ import { CalendarService } from './CalendarService';
 import { createLogger } from '../core/logger';
 import { MicActivityMonitor } from './MicActivityMonitor';
 import { isMeetingApp } from '../utils/meetingAppDetection';
-import type { RecordingState } from '@shared/types';
+import type { CalendarEvent, RecordingState } from '@shared/types';
 
 const logger = createLogger('MeetingNotificationService');
 
@@ -42,7 +42,7 @@ export class MeetingNotificationService {
     }
 
     logger.info('Starting meeting notification service');
-    
+
     // Check every 60 seconds for meetings starting soon to avoid rate limiting
     this.checkInterval = setInterval(() => {
       this.checkUpcomingMeetings();
@@ -53,7 +53,7 @@ export class MeetingNotificationService {
 
     // Start mic activity monitor for "Meeting Detected" notifications (macOS only)
     this.startMicActivityMonitor();
-    
+
     logger.info('Meeting notification service started - checking every 60 seconds');
   }
 
@@ -95,9 +95,9 @@ export class MeetingNotificationService {
         return;
       }
 
-      logger.debug('Checking upcoming meetings', { 
+      logger.debug('Checking upcoming meetings', {
         count: meetings.length,
-        now: new Date(now).toLocaleTimeString()
+        now: new Date(now).toLocaleTimeString(),
       });
 
       for (const meeting of meetings) {
@@ -110,12 +110,12 @@ export class MeetingNotificationService {
         const withinOneMinuteWindow = timeUntilMeeting <= oneMinuteMs && timeUntilMeeting >= 0;
         const alreadyScheduled = this.pendingNotifications.has(meeting.id);
 
-        logger.debug('Meeting check', { 
-          title: meeting.title, 
+        logger.debug('Meeting check', {
+          title: meeting.title,
           scheduledTime: startDate.toLocaleTimeString(),
           timeUntilMinutes,
           withinOneMinuteWindow,
-          alreadyScheduled
+          alreadyScheduled,
         });
 
         // Clean up notifications for meetings that are now out of range (already started or far away)
@@ -125,10 +125,10 @@ export class MeetingNotificationService {
             clearTimeout(notification.timeout);
           }
           this.pendingNotifications.delete(meeting.id);
-          logger.debug('Removed out-of-range notification', { 
-            eventId: meeting.id, 
+          logger.debug('Removed out-of-range notification', {
+            eventId: meeting.id,
             title: meeting.title,
-            timeUntilMinutes 
+            timeUntilMinutes,
           });
           continue;
         }
@@ -166,18 +166,14 @@ export class MeetingNotificationService {
   /**
    * Show a native notification for the meeting
    */
-  private showMeetingNotification(meeting: any): void {
-    const startDate = meeting.start instanceof Date ? meeting.start : new Date(meeting.start);
-    const endDate =
-      meeting.end instanceof Date
-        ? meeting.end
-        : meeting.end
-          ? new Date(meeting.end)
-          : startDate;
+  private showMeetingNotification(meeting: CalendarEvent): void {
+    const startDate = new Date(meeting.start);
+    const endDate = new Date(meeting.end);
     const formatTime = (date: Date): string =>
       date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
     const timeRange = `${formatTime(startDate)} – ${formatTime(endDate)}`;
-    const truncate = (text: string, max = 60): string => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+    const truncate = (text: string, max = 60): string =>
+      text.length > max ? `${text.slice(0, max - 1)}…` : text;
 
     logger.debug('Creating notification', {
       title: meeting.title,
@@ -200,8 +196,7 @@ export class MeetingNotificationService {
     });
 
     // Handle notification action buttons
-    notification.on('action', (event: any) => {
-      const actionIndex = event;
+    notification.on('action', (_event: Electron.Event, actionIndex: number) => {
       if (actionIndex === 0) {
         logger.info('Notification action clicked (Join Meeting)', { title: meeting.title });
         this.handleJoinMeeting(meeting);
@@ -298,8 +293,7 @@ export class MeetingNotificationService {
       ],
     });
 
-    notification.on('action', (event: any) => {
-      const actionIndex = event;
+    notification.on('action', (_event: Electron.Event, actionIndex: number) => {
       if (actionIndex === 0) {
         logger.info('Meeting detected notification action clicked');
         this.startRecordingFromDetection();
@@ -356,21 +350,15 @@ export class MeetingNotificationService {
   /**
    * Handle joining the meeting
    */
-  private handleJoinMeeting(meeting: any): void {
-    logger.info('User clicked to join meeting', { 
-      eventId: meeting.id, 
+  private handleJoinMeeting(meeting: CalendarEvent): void {
+    logger.info('User clicked to join meeting', {
+      eventId: meeting.id,
       title: meeting.title,
-      hasLocation: !!meeting.location
+      hasLocation: !!meeting.location,
     });
 
     // Open meeting link if available
-    // Location might be a string or an object with a description
-    let meetingUrl = '';
-    if (typeof meeting.location === 'string') {
-      meetingUrl = meeting.location;
-    } else if (meeting.location && typeof meeting.location === 'object' && meeting.location.description) {
-      meetingUrl = meeting.location.description;
-    }
+    const meetingUrl = meeting.location || '';
 
     if (meetingUrl && (meetingUrl.startsWith('http://') || meetingUrl.startsWith('https://'))) {
       try {
@@ -388,14 +376,17 @@ export class MeetingNotificationService {
     // Send IPC message to start recording via notification:start-recording
     // This will be received by the renderer's preload listener
     if (global.mainWindow && !global.mainWindow.isDestroyed()) {
-      logger.info('Starting recording from notification click', { eventId: meeting.id, title: meeting.title });
+      logger.info('Starting recording from notification click', {
+        eventId: meeting.id,
+        title: meeting.title,
+      });
       global.mainWindow.webContents.send('notification:start-recording', {
         calendarEventId: meeting.id,
         calendarEventTitle: meeting.title,
         calendarEventAttendees: meeting.attendees || [],
-        calendarEventStart: meeting.start instanceof Date ? meeting.start.toISOString() : meeting.start,
-        calendarEventEnd: meeting.end instanceof Date ? meeting.end.toISOString() : meeting.end,
-        calendarProvider: meeting.provider || 'google',
+        calendarEventStart: new Date(meeting.start).toISOString(),
+        calendarEventEnd: new Date(meeting.end).toISOString(),
+        calendarProvider: meeting.provider,
       });
     } else {
       logger.error('Main window not available for IPC', { mainWindowExists: !!global.mainWindow });

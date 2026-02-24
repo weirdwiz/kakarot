@@ -2,7 +2,12 @@ import { app, shell } from 'electron';
 import { createServer } from 'http';
 import { randomBytes, createHash } from 'crypto';
 import type { AddressInfo } from 'net';
-import type { CalendarConnections, CalendarEvent, OAuthTokens } from '@shared/types';
+import type {
+  CalendarConnections,
+  CalendarEvent,
+  CalendarEventMapping,
+  OAuthTokens,
+} from '@shared/types';
 import { SettingsRepository } from '../data/repositories/SettingsRepository';
 import { createLogger } from '../core/logger';
 import { BACKEND_BASE_URL } from '../providers/BackendAPIProvider';
@@ -15,6 +20,49 @@ const logger = createLogger('CalendarService');
 // - fetchGoogleEvents() and fetchOutlookEvents() share token refresh and error handling
 // Extract common multi-provider fetching helper
 type Provider = 'google' | 'outlook' | 'icloud';
+
+// Google Calendar API response item shape (subset we use)
+interface GoogleCalendarItem {
+  id: string;
+  summary?: string;
+  start?: { dateTime?: string; date?: string };
+  end?: { dateTime?: string; date?: string };
+  location?: string;
+  description?: string;
+  organizer?: { email?: string };
+  creator?: { email?: string };
+  eventType?: string;
+  conferenceData?: {
+    entryPoints?: Array<{ entryPointType: string; uri?: string }>;
+  };
+  attendees?: Array<{ email: string; displayName?: string }>;
+  status?: string;
+}
+
+// Google Calendar List item shape
+interface GoogleCalendarListItem {
+  id: string;
+  summary?: string;
+  primary?: boolean;
+  accessRole?: string;
+  selected?: boolean;
+}
+
+// Outlook Calendar API response item shape (subset we use)
+interface OutlookCalendarItem {
+  id: string;
+  subject?: string;
+  start?: { dateTime?: string } | string;
+  end?: { dateTime?: string } | string;
+  type?: string;
+  location?: { displayName?: string };
+  onlineMeeting?: { joinUrl?: string };
+  isOnlineMeeting?: boolean;
+  onlineMeetingUrl?: string;
+  attendees?: Array<{ emailAddress?: { address?: string; name?: string } }>;
+  bodyPreview?: string;
+  status?: string;
+}
 
 interface OAuthConfig {
   provider: Provider;
@@ -99,7 +147,8 @@ export class CalendarService {
           authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
           tokenUrl: 'https://oauth2.googleapis.com/token',
           clientId,
-          scope: 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/contacts.readonly',
+          scope:
+            'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/contacts.readonly',
           requiredScopes: [
             'https://www.googleapis.com/auth/calendar.readonly',
             'https://www.googleapis.com/auth/contacts.readonly',
@@ -119,7 +168,7 @@ export class CalendarService {
           tokens.userName = profileResponse.data.name;
           tokens.userEmail = profileResponse.data.email;
           tokens.userPhoto = profileResponse.data.picture;
-          
+
           // Store in settings
           this.settingsRepo.updateSettings({
             userProfile: {
@@ -141,17 +190,19 @@ export class CalendarService {
           if (calendarList.length > 0) {
             // Include all available calendars by default (they've already been filtered to owner/writer in listCalendars)
             // This ensures invites sent to the user appear in upcoming meetings
-            const defaultVisible = calendarList.map(cal => cal.id);
-            
+            const defaultVisible = calendarList.map((cal) => cal.id);
+
             await this.setVisibleCalendars('google', defaultVisible);
-            logger.info('Auto-populated visible Google calendars', { 
+            logger.info('Auto-populated visible Google calendars', {
               total: calendarList.length,
               selected: defaultVisible.length,
-              calendars: calendarList.map(c => ({ id: c.id, name: c.name }))
+              calendars: calendarList.map((c) => ({ id: c.id, name: c.name })),
             });
           }
         } catch (err) {
-          logger.warn('Failed to auto-populate visible Google calendars', { error: (err as Error).message });
+          logger.warn('Failed to auto-populate visible Google calendars', {
+            error: (err as Error).message,
+          });
         }
 
         logger.info('Google calendar connected');
@@ -160,7 +211,9 @@ export class CalendarService {
       case 'outlook': {
         const clientId = process.env.OUTLOOK_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID;
         if (!clientId) {
-          throw new Error('Microsoft Calendar is not configured. Missing OUTLOOK_CLIENT_ID or MICROSOFT_CLIENT_ID.');
+          throw new Error(
+            'Microsoft Calendar is not configured. Missing OUTLOOK_CLIENT_ID or MICROSOFT_CLIENT_ID.'
+          );
         }
 
         const tokens = await this.runOAuthFlow({
@@ -178,18 +231,20 @@ export class CalendarService {
           const profileResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
             headers: { Authorization: `Bearer ${tokens.accessToken}` },
           });
-          const photoResponse = await axios.get('https://graph.microsoft.com/v1.0/me/photo/$value', {
-            headers: { Authorization: `Bearer ${tokens.accessToken}` },
-            responseType: 'arraybuffer',
-          }).catch(() => null);
-          
+          const photoResponse = await axios
+            .get('https://graph.microsoft.com/v1.0/me/photo/$value', {
+              headers: { Authorization: `Bearer ${tokens.accessToken}` },
+              responseType: 'arraybuffer',
+            })
+            .catch(() => null);
+
           tokens.userName = profileResponse.data.displayName;
           tokens.userEmail = profileResponse.data.mail || profileResponse.data.userPrincipalName;
           if (photoResponse) {
             const base64Photo = Buffer.from(photoResponse.data).toString('base64');
             tokens.userPhoto = `data:image/jpeg;base64,${base64Photo}`;
           }
-          
+
           // Store in settings
           this.settingsRepo.updateSettings({
             userProfile: {
@@ -260,12 +315,13 @@ export class CalendarService {
           );
           // Fetch all visible calendars in parallel
           const googlePromises = validCalIds.map((calId) =>
-            this.fetchGoogleEvents(googleTokens, start, end, calId).catch(
-              (err) => {
-                logger.warn('Failed to fetch events from Google calendar', { calendarId: calId, error: (err as Error).message });
-                return [];
-              }
-            )
+            this.fetchGoogleEvents(googleTokens, start, end, calId).catch((err) => {
+              logger.warn('Failed to fetch events from Google calendar', {
+                calendarId: calId,
+                error: (err as Error).message,
+              });
+              return [];
+            })
           );
           promises.push(...googlePromises);
         } else {
@@ -273,14 +329,17 @@ export class CalendarService {
           const primaryCalendarId = googleTokens.userEmail;
           if (primaryCalendarId) {
             promises.push(
-              this.fetchGoogleEvents(googleTokens, start, end, primaryCalendarId).catch(
-                (err) => {
-                  logger.warn('Failed to fetch primary Google calendar for today', { error: (err as Error).message });
-                  return [];
-                }
-              )
+              this.fetchGoogleEvents(googleTokens, start, end, primaryCalendarId).catch((err) => {
+                logger.warn('Failed to fetch primary Google calendar for today', {
+                  error: (err as Error).message,
+                });
+                return [];
+              })
             );
-            logger.warn('No visible calendars configured for today; using primary calendar fallback', { primaryCalendarId });
+            logger.warn(
+              'No visible calendars configured for today; using primary calendar fallback',
+              { primaryCalendarId }
+            );
           } else {
             logger.warn('No visible calendars and no primary calendar ID available for today');
           }
@@ -293,12 +352,12 @@ export class CalendarService {
     // Fetch Outlook calendars in parallel
     if (settings.calendarConnections.outlook) {
       promises.push(
-        this.fetchOutlookEvents(settings.calendarConnections.outlook, start, end).catch(
-          (err) => {
-            logger.warn('Failed to fetch Outlook events for today', { error: (err as Error).message });
-            return [];
-          }
-        )
+        this.fetchOutlookEvents(settings.calendarConnections.outlook, start, end).catch((err) => {
+          logger.warn('Failed to fetch Outlook events for today', {
+            error: (err as Error).message,
+          });
+          return [];
+        })
       );
     }
 
@@ -317,7 +376,10 @@ export class CalendarService {
     return results.sort((a, b) => a.start.getTime() - b.start.getTime());
   }
 
-  private persistConnection(provider: 'google' | 'outlook', tokens: OAuthTokens): CalendarConnections {
+  private persistConnection(
+    provider: 'google' | 'outlook',
+    tokens: OAuthTokens
+  ): CalendarConnections {
     const settings = this.settingsRepo.getSettings();
     const connections: CalendarConnections = {
       ...settings.calendarConnections,
@@ -384,7 +446,9 @@ export class CalendarService {
 
     // Exchange code for token via backend (keeps client_secret secure on server)
     const backendEndpoint = this.getBackendAuthEndpoint(config.provider);
-    logger.info(`[OAuth ${config.provider}] Exchanging code via backend`, { endpoint: backendEndpoint });
+    logger.info(`[OAuth ${config.provider}] Exchanging code via backend`, {
+      endpoint: backendEndpoint,
+    });
 
     const tokenResponse = await fetch(backendEndpoint, {
       method: 'POST',
@@ -407,9 +471,7 @@ export class CalendarService {
     const tokenJson = await tokenResponse.json();
     if (config.requiredScopes && config.requiredScopes.length > 0) {
       const grantedScopes = (tokenJson.scope || '').split(' ').filter(Boolean);
-      const missingScopes = config.requiredScopes.filter(
-        (scope) => !grantedScopes.includes(scope)
-      );
+      const missingScopes = config.requiredScopes.filter((scope) => !grantedScopes.includes(scope));
       if (missingScopes.length > 0) {
         throw new Error(`MISSING_SCOPES:${missingScopes.join(' ')}`);
       }
@@ -441,7 +503,10 @@ export class CalendarService {
     return endpoints[provider];
   }
 
-  private async startRedirectListener(provider: Provider, expectedState: string): Promise<{
+  private async startRedirectListener(
+    provider: Provider,
+    expectedState: string
+  ): Promise<{
     redirectUri: string;
     waitForCode: Promise<string>;
     close: () => void;
@@ -517,11 +582,19 @@ export class CalendarService {
       }
     };
 
-    (app.on as any)('treeto-oauth-url', handler);
+    // Custom protocol event not in Electron's type definitions
+    (app.on as (event: string, handler: (...args: unknown[]) => void) => void)(
+      'treeto-oauth-url',
+      handler as (...args: unknown[]) => void
+    );
 
     return {
       waitForCode,
-      close: () => (app.removeListener as any)('treeto-oauth-url', handler),
+      close: () =>
+        (app.removeListener as (event: string, handler: (...args: unknown[]) => void) => void)(
+          'treeto-oauth-url',
+          handler as (...args: unknown[]) => void
+        ),
     };
   }
 
@@ -531,15 +604,11 @@ export class CalendarService {
 
   private toCodeChallenge(verifier: string): string {
     const hash = createHash('sha256').update(verifier).digest();
-    return hash
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
+    return hash.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
 
   private async sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async ensureFreshToken(
@@ -605,7 +674,9 @@ export class CalendarService {
           // Handle rate limiting (429) with exponential backoff
           if (response.status === 429 && attempt < maxRetries - 1) {
             const backoffMs = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 1000, 10000);
-            logger.warn(`[OAuth ${provider}] Rate limited (429). Retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries - 1})`);
+            logger.warn(
+              `[OAuth ${provider}] Rate limited (429). Retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries - 1})`
+            );
             await this.sleep(backoffMs);
             continue;
           }
@@ -629,15 +700,18 @@ export class CalendarService {
 
         // Only retry on specific errors, not all errors
         const errorMessage = lastError.message;
-        const isRetryable = errorMessage.includes('Too many requests') ||
-                           errorMessage.includes('429') ||
-                           errorMessage.includes('ECONNRESET') ||
-                           errorMessage.includes('ETIMEDOUT') ||
-                           errorMessage.includes('ENOTFOUND');
+        const isRetryable =
+          errorMessage.includes('Too many requests') ||
+          errorMessage.includes('429') ||
+          errorMessage.includes('ECONNRESET') ||
+          errorMessage.includes('ETIMEDOUT') ||
+          errorMessage.includes('ENOTFOUND');
 
         if (isRetryable && attempt < maxRetries - 1) {
           const backoffMs = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 1000, 10000);
-          logger.warn(`[OAuth ${provider}] Retryable error encountered. Retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries - 1}): ${lastError.message}`);
+          logger.warn(
+            `[OAuth ${provider}] Retryable error encountered. Retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries - 1}): ${lastError.message}`
+          );
           await this.sleep(backoffMs);
           continue;
         }
@@ -649,7 +723,12 @@ export class CalendarService {
     throw lastError || new Error(`Failed to refresh token after ${maxRetries} attempts`);
   }
 
-  private async fetchGoogleEvents(tokens: OAuthTokens, start: Date, end: Date, calendarId: string = 'primary'): Promise<CalendarEvent[]> {
+  private async fetchGoogleEvents(
+    tokens: OAuthTokens,
+    start: Date,
+    end: Date,
+    calendarId: string = 'primary'
+  ): Promise<CalendarEvent[]> {
     // Perma-remove Birthdays calendar events
     if (calendarId && calendarId.includes('addressbook#contacts@group.v.calendar.google.com')) {
       return [];
@@ -657,7 +736,9 @@ export class CalendarService {
 
     const freshTokens = await this.ensureFreshToken('google', tokens);
 
-    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`);
+    const url = new URL(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`
+    );
     url.searchParams.set('timeMin', start.toISOString());
     url.searchParams.set('timeMax', end.toISOString());
     url.searchParams.set('singleEvents', 'true');
@@ -672,110 +753,128 @@ export class CalendarService {
     let lastError: Error | null = null;
 
     try {
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const response = await fetch(url, {
-          headers: {
-            Authorization: `Bearer ${freshTokens.accessToken}`,
-          },
-        });
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              Authorization: `Bearer ${freshTokens.accessToken}`,
+            },
+          });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          
-          // Handle 404 - calendar not accessible (likely shared calendar with no access)
-          if (response.status === 404) {
-            logger.warn(`[Google Calendar API] Calendar not found or not accessible (404) for calendar ${calendarId}. Skipping this calendar.`);
-            return [];
+          if (!response.ok) {
+            const errorText = await response.text();
+
+            // Handle 404 - calendar not accessible (likely shared calendar with no access)
+            if (response.status === 404) {
+              logger.warn(
+                `[Google Calendar API] Calendar not found or not accessible (404) for calendar ${calendarId}. Skipping this calendar.`
+              );
+              return [];
+            }
+
+            // Handle rate limiting (429) with exponential backoff
+            if (response.status === 429 && attempt < maxRetries - 1) {
+              const backoffMs = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 1000, 10000);
+              logger.warn(
+                `[Google Calendar API] Rate limited (429). Retrying in ${backoffMs}ms for calendar ${calendarId} (attempt ${attempt + 1}/${maxRetries - 1})`
+              );
+              await this.sleep(backoffMs);
+              continue;
+            }
+
+            throw new Error(`Google events request failed: ${errorText}`);
           }
-          
-          // Handle rate limiting (429) with exponential backoff
-          if (response.status === 429 && attempt < maxRetries - 1) {
+
+          const data = await response.json();
+          const events: CalendarEvent[] = (data.items || [])
+            .filter((item: GoogleCalendarItem) => {
+              // Filter out events from the Birthdays calendar by checking organizer
+              const organizerEmail = item.organizer?.email || '';
+              const creatorEmail = item.creator?.email || '';
+              const isBirthdaysCalendar =
+                organizerEmail.includes('addressbook#contacts@group.v.calendar.google.com') ||
+                creatorEmail.includes('addressbook#contacts@group.v.calendar.google.com');
+
+              // Filter out non-standard event types (outOfOffice, workingLocation, focusTime)
+              // Only include events with eventType 'default'
+              const eventType = item.eventType || 'default';
+              const isStandardEvent = eventType === 'default';
+
+              return !isBirthdaysCalendar && isStandardEvent;
+            })
+            .map((item: GoogleCalendarItem) => {
+              // Extract meeting link from conferenceData.entryPoints
+              let meetingLink = item.location;
+              if (item.conferenceData?.entryPoints) {
+                const videoEntry = item.conferenceData.entryPoints.find(
+                  (entry) => entry.entryPointType === 'video'
+                );
+                if (videoEntry?.uri) {
+                  meetingLink = videoEntry.uri;
+                }
+              }
+
+              const attendees =
+                item.attendees?.map((a) => ({
+                  email: a.email,
+                  name: a.displayName,
+                })) ?? [];
+
+              return {
+                id: item.id,
+                title: item.summary || 'Untitled',
+                start: new Date(item.start?.dateTime || item.start?.date || ''),
+                end: new Date(
+                  item.end?.dateTime ||
+                    item.end?.date ||
+                    item.start?.dateTime ||
+                    item.start?.date ||
+                    ''
+                ),
+                provider: 'google',
+                location: meetingLink,
+                attendees,
+                description: item.description,
+              };
+            });
+
+          return events;
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+
+          // Only retry on network-level errors, not on Google API errors
+          const errorMessage = lastError.message;
+          const isRetryable =
+            errorMessage.includes('429') ||
+            errorMessage.includes('ECONNRESET') ||
+            errorMessage.includes('ETIMEDOUT') ||
+            errorMessage.includes('ENOTFOUND');
+
+          if (isRetryable && attempt < maxRetries - 1) {
             const backoffMs = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 1000, 10000);
-            logger.warn(`[Google Calendar API] Rate limited (429). Retrying in ${backoffMs}ms for calendar ${calendarId} (attempt ${attempt + 1}/${maxRetries - 1})`);
+            logger.warn(
+              `[Google Calendar API] Retryable error for calendar ${calendarId}. Retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries - 1}): ${lastError.message}`
+            );
             await this.sleep(backoffMs);
             continue;
           }
-          
-          throw new Error(`Google events request failed: ${errorText}`);
+
+          throw lastError;
         }
-
-        const data = await response.json();
-        const events: CalendarEvent[] = (data.items || [])
-          .filter((item: any) => {
-            // Filter out events from the Birthdays calendar by checking organizer
-            const organizerEmail = item.organizer?.email || '';
-            const creatorEmail = item.creator?.email || '';
-            const isBirthdaysCalendar = 
-              organizerEmail.includes('addressbook#contacts@group.v.calendar.google.com') ||
-              creatorEmail.includes('addressbook#contacts@group.v.calendar.google.com');
-            
-            // Filter out non-standard event types (outOfOffice, workingLocation, focusTime)
-            // Only include events with eventType 'default'
-            const eventType = item.eventType || 'default';
-            const isStandardEvent = eventType === 'default';
-            
-            return !isBirthdaysCalendar && isStandardEvent;
-          })
-          .map((item: any) => {
-            // Extract meeting link from conferenceData.entryPoints
-            let meetingLink = item.location;
-            if (item.conferenceData?.entryPoints) {
-              const videoEntry = item.conferenceData.entryPoints.find(
-                (entry: any) => entry.entryPointType === 'video'
-              );
-              if (videoEntry?.uri) {
-                meetingLink = videoEntry.uri;
-              }
-            }
-            
-            const attendees = item.attendees?.map((a: any) => ({
-              email: a.email,
-              name: a.displayName,
-            })) ?? [];
-
-            return {
-              id: item.id,
-              title: item.summary || 'Untitled',
-              start: new Date(item.start?.dateTime || item.start?.date),
-              end: new Date(item.end?.dateTime || item.end?.date || item.start?.dateTime || item.start?.date),
-              provider: 'google',
-              location: meetingLink,
-              attendees,
-              description: item.description,
-            };
-          });
-
-        return events;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        
-        // Only retry on network-level errors, not on Google API errors
-        const errorMessage = lastError.message;
-        const isRetryable = errorMessage.includes('429') ||
-                           errorMessage.includes('ECONNRESET') ||
-                           errorMessage.includes('ETIMEDOUT') ||
-                           errorMessage.includes('ENOTFOUND');
-        
-        if (isRetryable && attempt < maxRetries - 1) {
-          const backoffMs = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 1000, 10000);
-          logger.warn(`[Google Calendar API] Retryable error for calendar ${calendarId}. Retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries - 1}): ${lastError.message}`);
-          await this.sleep(backoffMs);
-          continue;
-        }
-        
-        throw lastError;
       }
-    }
 
-    throw lastError || new Error(`Failed to fetch Google events after ${maxRetries} attempts`);
+      throw lastError || new Error(`Failed to fetch Google events after ${maxRetries} attempts`);
     } finally {
       // Always release the request slot
       this.releaseRequestSlot();
     }
   }
 
-  private async fetchOutlookEvents(tokens: OAuthTokens, start: Date, end: Date): Promise<CalendarEvent[]> {
+  private async fetchOutlookEvents(
+    tokens: OAuthTokens,
+    start: Date,
+    end: Date
+  ): Promise<CalendarEvent[]> {
     const freshTokens = await this.ensureFreshToken('outlook', tokens);
 
     const url = new URL('https://graph.microsoft.com/v1.0/me/calendarview');
@@ -791,85 +890,94 @@ export class CalendarService {
     let lastError: Error | null = null;
 
     try {
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const response = await fetch(url, {
-          headers: {
-            Authorization: `Bearer ${freshTokens.accessToken}`,
-            Prefer: 'outlook.timezone="UTC"',
-          },
-        });
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              Authorization: `Bearer ${freshTokens.accessToken}`,
+              Prefer: 'outlook.timezone="UTC"',
+            },
+          });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          
-          // Handle rate limiting (429) with exponential backoff
-          if (response.status === 429 && attempt < maxRetries - 1) {
+          if (!response.ok) {
+            const errorText = await response.text();
+
+            // Handle rate limiting (429) with exponential backoff
+            if (response.status === 429 && attempt < maxRetries - 1) {
+              const backoffMs = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 1000, 10000);
+              logger.warn(
+                `[Outlook Calendar API] Rate limited (429). Retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries - 1})`
+              );
+              await this.sleep(backoffMs);
+              continue;
+            }
+
+            throw new Error(`Outlook events request failed: ${errorText}`);
+          }
+
+          const data = await response.json();
+          const events: CalendarEvent[] = (data.value || [])
+            .filter((item: OutlookCalendarItem) => {
+              // Filter out non-standard event types (outOfOffice, workingLocation, focusTime)
+              // Only include events with type 'default'
+              const eventType = item.type || 'default';
+              const isStandardEvent = eventType === 'default';
+              return isStandardEvent;
+            })
+            .map((item: OutlookCalendarItem) => {
+              // Extract meeting link from onlineMeeting or location
+              let meetingLink = item.location?.displayName;
+              if (item.onlineMeeting?.joinUrl) {
+                meetingLink = item.onlineMeeting.joinUrl;
+              } else if (item.isOnlineMeeting && item.onlineMeetingUrl) {
+                meetingLink = item.onlineMeetingUrl;
+              }
+
+              const startVal = typeof item.start === 'object' ? item.start?.dateTime : item.start;
+              const endVal = typeof item.end === 'object' ? item.end?.dateTime : item.end;
+
+              return {
+                id: item.id,
+                title: item.subject || 'Untitled',
+                start: new Date(startVal || ''),
+                end: new Date(endVal || ''),
+                provider: 'outlook' as const,
+                location: meetingLink,
+                attendees:
+                  item.attendees?.map((a) => ({
+                    email: a.emailAddress?.address || '',
+                    name: a.emailAddress?.name,
+                  })) ?? [],
+                description: item.bodyPreview,
+              };
+            });
+
+          return events;
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+
+          // Only retry on network-level errors
+          const errorMessage = lastError.message;
+          const isRetryable =
+            errorMessage.includes('429') ||
+            errorMessage.includes('ECONNRESET') ||
+            errorMessage.includes('ETIMEDOUT') ||
+            errorMessage.includes('ENOTFOUND');
+
+          if (isRetryable && attempt < maxRetries - 1) {
             const backoffMs = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 1000, 10000);
-            logger.warn(`[Outlook Calendar API] Rate limited (429). Retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries - 1})`);
+            logger.warn(
+              `[Outlook Calendar API] Retryable error. Retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries - 1}): ${lastError.message}`
+            );
             await this.sleep(backoffMs);
             continue;
           }
-          
-          throw new Error(`Outlook events request failed: ${errorText}`);
-        }
 
-        const data = await response.json();
-        const events: CalendarEvent[] = (data.value || [])
-          .filter((item: any) => {
-            // Filter out non-standard event types (outOfOffice, workingLocation, focusTime)
-            // Only include events with type 'default'
-            const eventType = item.type || 'default';
-            const isStandardEvent = eventType === 'default';
-            return isStandardEvent;
-          })
-          .map((item: any) => {
-            // Extract meeting link from onlineMeeting or location
-            let meetingLink = item.location?.displayName;
-            if (item.onlineMeeting?.joinUrl) {
-              meetingLink = item.onlineMeeting.joinUrl;
-            } else if (item.isOnlineMeeting && item.onlineMeetingUrl) {
-              meetingLink = item.onlineMeetingUrl;
-            }
-            
-            return {
-              id: item.id,
-              title: item.subject || 'Untitled',
-              start: new Date(item.start?.dateTime || item.start),
-              end: new Date(item.end?.dateTime || item.end),
-              provider: 'outlook',
-              location: meetingLink,
-              attendees: item.attendees?.map((a: any) => ({
-                email: a.emailAddress?.address,
-                name: a.emailAddress?.name,
-              })) ?? [],
-              description: item.bodyPreview,
-            };
-          });
-
-        return events;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        
-        // Only retry on network-level errors
-        const errorMessage = lastError.message;
-        const isRetryable = errorMessage.includes('429') ||
-                           errorMessage.includes('ECONNRESET') ||
-                           errorMessage.includes('ETIMEDOUT') ||
-                           errorMessage.includes('ENOTFOUND');
-        
-        if (isRetryable && attempt < maxRetries - 1) {
-          const backoffMs = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 1000, 10000);
-          logger.warn(`[Outlook Calendar API] Retryable error. Retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries - 1}): ${lastError.message}`);
-          await this.sleep(backoffMs);
-          continue;
+          throw lastError;
         }
-        
-        throw lastError;
       }
-    }
 
-    throw lastError || new Error(`Failed to fetch Outlook events after ${maxRetries} attempts`);
+      throw lastError || new Error(`Failed to fetch Outlook events after ${maxRetries} attempts`);
     } finally {
       // Always release the request slot
       this.releaseRequestSlot();
@@ -901,12 +1009,13 @@ export class CalendarService {
           );
           // Fetch all visible calendars in parallel
           const googlePromises = validCalIds.map((calId) =>
-            this.fetchGoogleEvents(googleTokens, now, oneWeekFromNow, calId).catch(
-              (err) => {
-                logger.warn('Failed to fetch events from Google calendar', { calendarId: calId, error: (err as Error).message });
-                return [];
-              }
-            )
+            this.fetchGoogleEvents(googleTokens, now, oneWeekFromNow, calId).catch((err) => {
+              logger.warn('Failed to fetch events from Google calendar', {
+                calendarId: calId,
+                error: (err as Error).message,
+              });
+              return [];
+            })
           );
           promises.push(...googlePromises);
         } else {
@@ -916,18 +1025,24 @@ export class CalendarService {
             promises.push(
               this.fetchGoogleEvents(googleTokens, now, oneWeekFromNow, primaryCalendarId).catch(
                 (err) => {
-                  logger.warn('Failed to fetch primary Google calendar', { error: (err as Error).message });
+                  logger.warn('Failed to fetch primary Google calendar', {
+                    error: (err as Error).message,
+                  });
                   return [];
                 }
               )
             );
-            logger.warn('No visible calendars configured; using primary calendar fallback', { primaryCalendarId });
+            logger.warn('No visible calendars configured; using primary calendar fallback', {
+              primaryCalendarId,
+            });
           } else {
             logger.warn('No visible calendars and no primary calendar ID available');
           }
         }
       } catch (err) {
-        logger.error('Failed to process Google calendar configuration', err as Error, { provider: 'google' });
+        logger.error('Failed to process Google calendar configuration', err as Error, {
+          provider: 'google',
+        });
       }
     }
 
@@ -936,7 +1051,9 @@ export class CalendarService {
       promises.push(
         this.fetchOutlookEvents(settings.calendarConnections.outlook, now, oneWeekFromNow).catch(
           (err) => {
-            logger.warn('Failed to fetch Outlook upcoming events', { error: (err as Error).message });
+            logger.warn('Failed to fetch Outlook upcoming events', {
+              error: (err as Error).message,
+            });
             return [];
           }
         )
@@ -971,11 +1088,14 @@ export class CalendarService {
       // - Exclude read-only roles ('reader', 'freeBusyReader')
       // - Optional: respect user's sidebar selection when env flag is set
       const onlySelected = process.env.GOOGLE_CALENDAR_ONLY_SELECTED === 'true';
-      const filtered = (data.items || []).filter((c: any) => {
-        const role = (c.accessRole as string | undefined) || '';
+      const items: GoogleCalendarListItem[] = data.items || [];
+      const filtered = items.filter((c) => {
+        const role = c.accessRole || '';
         const isPrimary = !!c.primary;
         const writable = role === 'owner' || role === 'writer';
-        const isBirthdays = typeof c.id === 'string' && c.id.includes('addressbook#contacts@group.v.calendar.google.com');
+        const isBirthdays =
+          typeof c.id === 'string' &&
+          c.id.includes('addressbook#contacts@group.v.calendar.google.com');
 
         // Perma-remove Birthdays calendar from listing
         if (isBirthdays) return false;
@@ -989,7 +1109,7 @@ export class CalendarService {
         return false;
       });
 
-      return filtered.map((c: any) => ({ id: c.id, name: c.summary }));
+      return filtered.map((c) => ({ id: c.id, name: c.summary || '' }));
     }
     if (provider === 'outlook' && settings.calendarConnections.outlook) {
       // Optional: implement in future
@@ -1008,7 +1128,9 @@ export class CalendarService {
     // Perma-remove Birthdays calendar from visibility selections
     let filteredIds = ids;
     if (provider === 'google') {
-      filteredIds = ids.filter((id) => !id.includes('addressbook#contacts@group.v.calendar.google.com'));
+      filteredIds = ids.filter(
+        (id) => !id.includes('addressbook#contacts@group.v.calendar.google.com')
+      );
     }
     const next = { ...visible, [provider]: filteredIds } as typeof visible;
     this.settingsRepo.updateSettings({ visibleCalendars: next });
@@ -1026,8 +1148,8 @@ export class CalendarService {
   ): Promise<void> {
     // Get or create the calendar mappings in settings
     const settings = this.settingsRepo.getSettings();
-    const mappings: Record<string, any> = settings.calendarEventMappings || {};
-    
+    const mappings: Record<string, CalendarEventMapping> = settings.calendarEventMappings || {};
+
     mappings[calendarEventId] = {
       calendarEventId,
       meetingId,
@@ -1056,34 +1178,42 @@ export class CalendarService {
   async findCalendarEventForMeeting(meetingId: string): Promise<CalendarEvent | null> {
     const settings = this.settingsRepo.getSettings();
     const mappings = settings.calendarEventMappings || {};
-    
+
     // Find mapping with this meetingId
     for (const [, mapping] of Object.entries(mappings)) {
-      if ((mapping as any).meetingId === meetingId) {
+      if (mapping.meetingId === meetingId) {
         // Fetch the full event
-        const eventId = (mapping as any).calendarEventId;
-        const provider = (mapping as any).provider;
-        
+        const eventId = mapping.calendarEventId;
+        const provider = mapping.provider;
+
         if (provider === 'google' && settings.calendarConnections.google) {
           try {
-            const events = await this.fetchGoogleEvents(settings.calendarConnections.google, new Date(0), new Date());
-            return events.find(e => e.id === eventId) || null;
+            const events = await this.fetchGoogleEvents(
+              settings.calendarConnections.google,
+              new Date(0),
+              new Date()
+            );
+            return events.find((e) => e.id === eventId) || null;
           } catch (err) {
             logger.error('Failed to fetch Google event', { error: (err as Error).message });
           }
         }
-        
+
         if (provider === 'outlook' && settings.calendarConnections.outlook) {
           try {
-            const events = await this.fetchOutlookEvents(settings.calendarConnections.outlook, new Date(0), new Date());
-            return events.find(e => e.id === eventId) || null;
+            const events = await this.fetchOutlookEvents(
+              settings.calendarConnections.outlook,
+              new Date(0),
+              new Date()
+            );
+            return events.find((e) => e.id === eventId) || null;
           } catch (err) {
             logger.error('Failed to fetch Outlook event', { error: (err as Error).message });
           }
         }
       }
     }
-    
+
     return null;
   }
 
@@ -1114,7 +1244,7 @@ export class CalendarService {
 
       const data = await response.json();
       const results = data.results || [];
-      
+
       if (results.length > 0 && results[0].person?.names?.[0]?.displayName) {
         const displayName = results[0].person.names[0].displayName;
         logger.info('Fetched name from People API', { email, name: displayName });
@@ -1123,7 +1253,10 @@ export class CalendarService {
 
       return null;
     } catch (error) {
-      logger.debug('Failed to fetch person from People API', { email, error: (error as Error).message });
+      logger.debug('Failed to fetch person from People API', {
+        email,
+        error: (error as Error).message,
+      });
       return null;
     }
   }
@@ -1141,21 +1274,35 @@ export class CalendarService {
     // Try to fetch from the provider
     if (provider === 'google' && settings.calendarConnections.google) {
       try {
-        const events = await this.fetchGoogleEvents(settings.calendarConnections.google, new Date(0), new Date());
-        const event = events.find(e => e.id === eventId);
+        const events = await this.fetchGoogleEvents(
+          settings.calendarConnections.google,
+          new Date(0),
+          new Date()
+        );
+        const event = events.find((e) => e.id === eventId);
         if (event) return event;
       } catch (err) {
-        logger.debug('Failed to fetch Google event by ID', { eventId, error: (err as Error).message });
+        logger.debug('Failed to fetch Google event by ID', {
+          eventId,
+          error: (err as Error).message,
+        });
       }
     }
 
     if (provider === 'outlook' && settings.calendarConnections.outlook) {
       try {
-        const events = await this.fetchOutlookEvents(settings.calendarConnections.outlook, new Date(0), new Date());
-        const event = events.find(e => e.id === eventId);
+        const events = await this.fetchOutlookEvents(
+          settings.calendarConnections.outlook,
+          new Date(0),
+          new Date()
+        );
+        const event = events.find((e) => e.id === eventId);
         if (event) return event;
       } catch (err) {
-        logger.debug('Failed to fetch Outlook event by ID', { eventId, error: (err as Error).message });
+        logger.debug('Failed to fetch Outlook event by ID', {
+          eventId,
+          error: (err as Error).message,
+        });
       }
     }
 
@@ -1176,11 +1323,20 @@ export class CalendarService {
         if (visible && visible.length > 0) {
           for (const calId of visible) {
             if (calId.includes('addressbook#contacts@group.v.calendar.google.com')) continue;
-            const events = await this.fetchGoogleEvents(settings.calendarConnections.google, start, end, calId);
+            const events = await this.fetchGoogleEvents(
+              settings.calendarConnections.google,
+              start,
+              end,
+              calId
+            );
             results.push(...events);
           }
         } else {
-          const events = await this.fetchGoogleEvents(settings.calendarConnections.google, start, end);
+          const events = await this.fetchGoogleEvents(
+            settings.calendarConnections.google,
+            start,
+            end
+          );
           results.push(...events);
         }
       } catch (err) {
@@ -1190,7 +1346,11 @@ export class CalendarService {
 
     if (settings.calendarConnections.outlook) {
       try {
-        const events = await this.fetchOutlookEvents(settings.calendarConnections.outlook, start, end);
+        const events = await this.fetchOutlookEvents(
+          settings.calendarConnections.outlook,
+          start,
+          end
+        );
         results.push(...events);
       } catch (err) {
         logger.error('Failed to fetch Outlook events for range', { error: (err as Error).message });
@@ -1204,13 +1364,17 @@ export class CalendarService {
    * Link notes to a calendar event after recording completes
    * Attempts write-back to calendar, persists locally as fallback
    */
-  async linkNotesToEvent(calendarEventId: string, notesId: string, provider: 'google' | 'outlook' | 'icloud'): Promise<void> {
+  async linkNotesToEvent(
+    calendarEventId: string,
+    notesId: string,
+    provider: 'google' | 'outlook' | 'icloud'
+  ): Promise<void> {
     logger.info('Linking notes to calendar event', { calendarEventId, notesId, provider });
 
     // Update local mapping first (always succeeds)
     const settings = this.settingsRepo.getSettings();
-    const mappings: Record<string, any> = settings.calendarEventMappings || {};
-    
+    const mappings: Record<string, CalendarEventMapping> = settings.calendarEventMappings || {};
+
     if (mappings[calendarEventId]) {
       mappings[calendarEventId].notesId = notesId;
     } else {
@@ -1243,4 +1407,3 @@ export class CalendarService {
     }
   }
 }
-

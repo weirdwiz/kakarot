@@ -9,7 +9,12 @@ interface CRMPromptModalProps {
   onDismiss: () => void;
 }
 
-export default function CRMPromptModal({ meetingId, provider, onConfirm, onDismiss }: CRMPromptModalProps) {
+export default function CRMPromptModal({
+  meetingId,
+  provider,
+  onConfirm,
+  onDismiss,
+}: CRMPromptModalProps) {
   const [isPushing, setIsPushing] = useState(false);
   const providerName = provider === 'salesforce' ? 'Salesforce' : 'HubSpot';
 
@@ -17,7 +22,6 @@ export default function CRMPromptModal({ meetingId, provider, onConfirm, onDismi
     setIsPushing(true);
     try {
       await window.kakarot.crm.pushNotes(meetingId);
-      console.log('[CRMPromptModal] Notes pushed to CRM:', provider);
       onConfirm();
     } catch (err) {
       console.error('[CRMPromptModal] Failed to push notes to CRM:', err);
@@ -33,9 +37,7 @@ export default function CRMPromptModal({ meetingId, provider, onConfirm, onDismi
       <div className="bg-card rounded-xl shadow-lg max-w-sm w-full border border-edge animate-modal-in">
         <div className="p-6">
           <div className="flex items-start justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">
-              Send to {providerName}?
-            </h3>
+            <h3 className="text-lg font-semibold text-white">Send to {providerName}?</h3>
             <button
               onClick={onDismiss}
               disabled={isPushing}

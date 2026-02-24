@@ -5,13 +5,41 @@ import type { CompanyInfoService } from '../../services/CompanyInfoService';
 
 const logger = createLogger('PeopleRepository');
 
+function extractNameFromEmail(email: string): string {
+  const localPart = email.split('@')[0];
+  const nameParts = localPart
+    .split(/[._-]/)
+    .filter((part) => part.length > 0)
+    .map((part) => part.replace(/\d+$/, ''))
+    .filter((part) => part.length > 0)
+    .filter((part) => !/^\d+$/.test(part));
+
+  return nameParts
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
 // Common email domains to exclude from company extraction
 const COMMON_EMAIL_DOMAINS = new Set([
-  'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com',
-  'icloud.com', 'aol.com', 'protonmail.com', 'mail.com',
-  'live.com', 'msn.com', 'ymail.com', 'googlemail.com',
-  'me.com', 'mac.com', 'inbox.com', 'zoho.com',
-  'fastmail.com', 'tutanota.com', 'hey.com'
+  'gmail.com',
+  'yahoo.com',
+  'hotmail.com',
+  'outlook.com',
+  'icloud.com',
+  'aol.com',
+  'protonmail.com',
+  'mail.com',
+  'live.com',
+  'msn.com',
+  'ymail.com',
+  'googlemail.com',
+  'me.com',
+  'mac.com',
+  'inbox.com',
+  'zoho.com',
+  'fastmail.com',
+  'tutanota.com',
+  'hey.com',
 ]);
 
 export interface Company {
@@ -23,18 +51,13 @@ export interface Company {
 export class PeopleRepository {
   private companyInfoService: CompanyInfoService | null = null;
 
-  /**
-   * Set the CompanyInfoService for automatic organization detection
-   */
   setCompanyInfoService(service: CompanyInfoService): void {
     this.companyInfoService = service;
   }
 
   listAll(): Person[] {
     const db = getDatabase();
-    const rows = db.exec(
-      'SELECT * FROM people ORDER BY last_meeting_at DESC'
-    )[0]?.values || [];
+    const rows = db.exec('SELECT * FROM people ORDER BY last_meeting_at DESC')[0]?.values || [];
 
     return rows.map(this.rowToPerson);
   }
@@ -42,22 +65,20 @@ export class PeopleRepository {
   search(query: string): Person[] {
     const db = getDatabase();
     const searchPattern = `%${query.toLowerCase()}%`;
-    const rows = db.exec(
-      `SELECT * FROM people 
+    const rows =
+      db.exec(
+        `SELECT * FROM people 
        WHERE LOWER(email) LIKE ? OR LOWER(name) LIKE ?
        ORDER BY meeting_count DESC, last_meeting_at DESC`,
-      [searchPattern, searchPattern]
-    )[0]?.values || [];
+        [searchPattern, searchPattern]
+      )[0]?.values || [];
 
     return rows.map(this.rowToPerson);
   }
 
   getByEmail(email: string): Person | null {
     const db = getDatabase();
-    const rows = db.exec(
-      'SELECT * FROM people WHERE email = ?',
-      [email]
-    )[0]?.values || [];
+    const rows = db.exec('SELECT * FROM people WHERE email = ?', [email])[0]?.values || [];
 
     if (rows.length === 0) return null;
     return this.rowToPerson(rows[0]);
@@ -65,40 +86,29 @@ export class PeopleRepository {
 
   updateNotes(email: string, notes: string): void {
     const db = getDatabase();
-    db.run(
-      'UPDATE people SET notes = ? WHERE email = ?',
-      [notes, email]
-    );
+    db.run('UPDATE people SET notes = ? WHERE email = ?', [notes, email]);
     saveDatabase();
     logger.info('Updated person notes', { email });
   }
 
   updateName(email: string, name: string): void {
     const db = getDatabase();
-    db.run(
-      'UPDATE people SET name = ? WHERE email = ?',
-      [name, email]
-    );
+    db.run('UPDATE people SET name = ? WHERE email = ?', [name, email]);
     saveDatabase();
     logger.info('Updated person name', { email, name });
   }
 
   updateOrganization(email: string, organization: string): void {
     const db = getDatabase();
-    db.run(
-      'UPDATE people SET organization = ? WHERE email = ?',
-      [organization, email]
-    );
+    db.run('UPDATE people SET organization = ? WHERE email = ?', [organization, email]);
     saveDatabase();
     logger.info('Updated person organization', { email, organization });
   }
 
   getByMeetingId(meetingId: string): Person[] {
     const db = getDatabase();
-    const meetingRows = db.exec(
-      'SELECT attendee_emails FROM meetings WHERE id = ?',
-      [meetingId]
-    )[0]?.values || [];
+    const meetingRows =
+      db.exec('SELECT attendee_emails FROM meetings WHERE id = ?', [meetingId])[0]?.values || [];
 
     if (meetingRows.length === 0) return [];
 
@@ -106,10 +116,9 @@ export class PeopleRepository {
     if (attendeeEmails.length === 0) return [];
 
     const placeholders = attendeeEmails.map(() => '?').join(',');
-    const rows = db.exec(
-      `SELECT * FROM people WHERE email IN (${placeholders})`,
-      attendeeEmails
-    )[0]?.values || [];
+    const rows =
+      db.exec(`SELECT * FROM people WHERE email IN (${placeholders})`, attendeeEmails)[0]?.values ||
+      [];
 
     return rows.map(this.rowToPerson);
   }
@@ -120,13 +129,14 @@ export class PeopleRepository {
     avgMeetingsPerPerson: number;
   } {
     const db = getDatabase();
-    const statsRows = db.exec(
-      `SELECT 
+    const statsRows =
+      db.exec(
+        `SELECT 
         COUNT(*) as total_people,
         SUM(meeting_count) as total_meetings,
         AVG(meeting_count) as avg_meetings
        FROM people`
-    )[0]?.values || [];
+      )[0]?.values || [];
 
     if (statsRows.length === 0) {
       return { totalPeople: 0, totalMeetings: 0, avgMeetingsPerPerson: 0 };
@@ -140,8 +150,6 @@ export class PeopleRepository {
     };
   }
 
-  // Resolves name from: calendarDisplayName -> People API -> email extraction
-  // Resolves organization from: provided org -> email domain lookup
   async upsertFromCalendarAttendee(
     email: string,
     calendarDisplayName?: string,
@@ -157,24 +165,14 @@ export class PeopleRepository {
 
     if (!name && peopleApiFetcher) {
       try {
-        name = await peopleApiFetcher(email) || undefined;
+        name = (await peopleApiFetcher(email)) || undefined;
       } catch (error) {
         logger.debug('People API lookup failed', { email, error: (error as Error).message });
       }
     }
 
     if (!name) {
-      const localPart = email.split('@')[0];
-      const nameParts = localPart
-        .split(/[._-]/)
-        .filter(part => part.length > 0)
-        .map(part => part.replace(/\d+$/, '')) // Strip trailing numbers
-        .filter(part => part.length > 0) // Remove parts that became empty
-        .filter(part => !/^\d+$/.test(part)); // Remove purely numeric parts
-
-      name = nameParts
-        .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-        .join(' ');
+      name = extractNameFromEmail(email);
       logger.debug('Using email-extracted name', { email, name });
     }
 
@@ -185,10 +183,16 @@ export class PeopleRepository {
         const companyInfo = await this.companyInfoService.fetchCompanyInfo(email);
         if (companyInfo?.name) {
           finalOrganization = companyInfo.name;
-          logger.info('Auto-detected organization from email domain', { email, organization: finalOrganization });
+          logger.info('Auto-detected organization from email domain', {
+            email,
+            organization: finalOrganization,
+          });
         }
       } catch (error) {
-        logger.debug('Organization auto-detection failed', { email, error: (error as Error).message });
+        logger.debug('Organization auto-detection failed', {
+          email,
+          error: (error as Error).message,
+        });
       }
     }
 
@@ -199,14 +203,22 @@ export class PeopleRepository {
         'UPDATE people SET name = COALESCE(name, ?), organization = COALESCE(organization, ?), updated_at = ? WHERE email = ?',
         [name, finalOrganization || null, now, email]
       );
-      logger.info('Updated person from calendar', { email, name, source: calendarDisplayName ? 'calendar' : 'fallback' });
+      logger.info('Updated person from calendar', {
+        email,
+        name,
+        source: calendarDisplayName ? 'calendar' : 'fallback',
+      });
     } else {
       db.run(
         `INSERT INTO people (email, name, last_meeting_at, meeting_count, total_duration, organization, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [email, name, now, 0, 0, finalOrganization || null, now, now]
       );
-      logger.info('Created person from calendar', { email, name, source: calendarDisplayName ? 'calendar' : 'fallback' });
+      logger.info('Created person from calendar', {
+        email,
+        name,
+        source: calendarDisplayName ? 'calendar' : 'fallback',
+      });
     }
 
     saveDatabase();
@@ -216,7 +228,6 @@ export class PeopleRepository {
     const db = getDatabase();
     const rows = db.exec('SELECT email FROM people')[0]?.values || [];
 
-    // Extract domains and count contacts per domain
     const domainCounts = new Map<string, number>();
 
     for (const row of rows) {
@@ -230,11 +241,9 @@ export class PeopleRepository {
       domainCounts.set(domain, (domainCounts.get(domain) || 0) + 1);
     }
 
-    // Convert to Company objects with formatted names
     const companies: Company[] = [];
 
     for (const [domain, count] of domainCounts) {
-      // Extract company name from domain (e.g., "acme.com" -> "Acme")
       const domainParts = domain.split('.');
       const companyPart = domainParts[0];
       const name = companyPart.charAt(0).toUpperCase() + companyPart.slice(1);
@@ -246,7 +255,6 @@ export class PeopleRepository {
       });
     }
 
-    // Sort by contact count descending
     return companies.sort((a, b) => b.contactCount - a.contactCount);
   }
 
@@ -261,21 +269,9 @@ export class PeopleRepository {
 
       if (!currentName) continue;
 
-      // Check if name contains numbers
       if (!/\d/.test(currentName)) continue;
 
-      // Extract clean name from email
-      const localPart = email.split('@')[0];
-      const nameParts = localPart
-        .split(/[._-]/)
-        .filter(part => part.length > 0)
-        .map(part => part.replace(/\d+$/, '')) // Strip trailing numbers
-        .filter(part => part.length > 0) // Remove parts that became empty
-        .filter(part => !/^\d+$/.test(part)); // Remove purely numeric parts
-
-      const cleanName = nameParts
-        .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-        .join(' ');
+      const cleanName = extractNameFromEmail(email);
 
       if (cleanName && cleanName !== currentName) {
         db.run('UPDATE people SET name = ? WHERE email = ?', [cleanName, email]);
@@ -291,10 +287,6 @@ export class PeopleRepository {
     return { updated };
   }
 
-  /**
-   * Populate missing organizations for all contacts by fetching from email domains
-   * Returns the number of organizations updated
-   */
   async populateMissingOrganizations(): Promise<{ updated: number; failed: number }> {
     if (!this.companyInfoService) {
       logger.warn('Cannot populate organizations: CompanyInfoService not available');
@@ -303,9 +295,9 @@ export class PeopleRepository {
 
     const db = getDatabase();
     // Get all people without an organization
-    const rows = db.exec(
-      'SELECT email FROM people WHERE organization IS NULL OR organization = ""'
-    )[0]?.values || [];
+    const rows =
+      db.exec('SELECT email FROM people WHERE organization IS NULL OR organization = ""')[0]
+        ?.values || [];
 
     let updated = 0;
     let failed = 0;
@@ -331,7 +323,7 @@ export class PeopleRepository {
       }
 
       // Small delay to avoid overwhelming the network
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
     if (updated > 0) {

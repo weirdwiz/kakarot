@@ -14,15 +14,29 @@ import type {
   InferredObjective,
   CustomMeetingType,
   CalendarEvent,
+  CRMContactData,
 } from '@shared/types';
 
 const logger = createLogger('PrepHandlers');
 
-// In-memory store for task completion status (would be better in DB for persistence)
 const taskCompletionStatus: Map<string, { completed: boolean; completedAt?: Date }> = new Map();
-
-// In-memory store for action item completion status (new enhanced prep)
 const actionItemStatus: Map<string, { completed: boolean; completedAt?: string }> = new Map();
+
+function requirePrepAndAI(): {
+  prepService: NonNullable<ReturnType<typeof getContainer>['prepService']>;
+  aiProvider: NonNullable<ReturnType<typeof getContainer>['aiProvider']>;
+} {
+  const { prepService, aiProvider } = getContainer();
+  if (!prepService) throw new Error('Prep service not available');
+  if (!aiProvider) throw new Error('AI provider not configured');
+  return { prepService, aiProvider };
+}
+
+function requirePrep(): NonNullable<ReturnType<typeof getContainer>['prepService']> {
+  const { prepService } = getContainer();
+  if (!prepService) throw new Error('Prep service not available');
+  return prepService;
+}
 
 export function registerPrepHandlers(): void {
   // Generate meeting briefing
@@ -30,15 +44,7 @@ export function registerPrepHandlers(): void {
     IPC_CHANNELS.PREP_GENERATE_BRIEFING,
     async (_event, input: GenerateMeetingPrepInput): Promise<MeetingPrepOutput> => {
       try {
-        const { prepService, aiProvider } = getContainer();
-
-        if (!prepService) {
-          throw new Error('Prep service not available');
-        }
-
-        if (!aiProvider) {
-          throw new Error('AI provider not configured');
-        }
+        const { prepService } = requirePrepAndAI();
 
         logger.info('Generating meeting prep briefing', {
           meetingType: input.meeting.meeting_type,
@@ -61,20 +67,15 @@ export function registerPrepHandlers(): void {
     }
   );
 
-  // Get task commitments for a participant
   ipcMain.handle(
     IPC_CHANNELS.PREP_GET_TASK_COMMITMENTS,
     async (_event, participantEmail: string): Promise<TaskCommitment[]> => {
       try {
-        const { prepService } = getContainer();
-        if (!prepService) {
-          throw new Error('Prep service not available');
-        }
-
+        const prepService = requirePrep();
         const commitments = await prepService.getTaskCommitmentsForParticipant(participantEmail);
 
         // Apply cached completion status
-        return commitments.map(c => {
+        return commitments.map((c) => {
           const status = taskCompletionStatus.get(c.id);
           if (status) {
             return { ...c, completed: status.completed, completedAt: status.completedAt };
@@ -88,20 +89,14 @@ export function registerPrepHandlers(): void {
     }
   );
 
-  // Toggle task commitment completion status
   ipcMain.handle(
     IPC_CHANNELS.PREP_TOGGLE_TASK_COMMITMENT,
     async (_event, taskId: string, completed: boolean): Promise<void> => {
-      try {
-        taskCompletionStatus.set(taskId, {
-          completed,
-          completedAt: completed ? new Date() : undefined,
-        });
-        logger.debug('Task commitment toggled', { taskId, completed });
-      } catch (error) {
-        logger.error('Failed to toggle task commitment', { error, taskId });
-        throw error;
-      }
+      taskCompletionStatus.set(taskId, {
+        completed,
+        completedAt: completed ? new Date() : undefined,
+      });
+      logger.debug('Task commitment toggled', { taskId, completed });
     }
   );
 
@@ -124,24 +119,11 @@ export function registerPrepHandlers(): void {
     }
   );
 
-  // ============================================================
-  // NEW ENHANCED PREP HANDLERS
-  // ============================================================
-
-  // Generate enhanced meeting briefing (new format)
   ipcMain.handle(
     IPC_CHANNELS.PREP_GENERATE_ENHANCED_BRIEFING,
     async (_event, input: GenerateMeetingPrepInput): Promise<EnhancedMeetingPrepResult> => {
       try {
-        const { prepService, aiProvider } = getContainer();
-
-        if (!prepService) {
-          throw new Error('Prep service not available');
-        }
-
-        if (!aiProvider) {
-          throw new Error('AI provider not configured');
-        }
+        const { prepService } = requirePrepAndAI();
 
         logger.info('Generating enhanced meeting prep briefing', {
           meetingType: input.meeting.meeting_type,
@@ -163,20 +145,14 @@ export function registerPrepHandlers(): void {
     }
   );
 
-  // Toggle action item completion status (for new enhanced prep)
   ipcMain.handle(
     IPC_CHANNELS.PREP_TOGGLE_ACTION_ITEM,
     async (_event, actionItemId: string, completed: boolean): Promise<void> => {
-      try {
-        actionItemStatus.set(actionItemId, {
-          completed,
-          completedAt: completed ? new Date().toISOString() : undefined,
-        });
-        logger.debug('Action item toggled', { actionItemId, completed });
-      } catch (error) {
-        logger.error('Failed to toggle action item', { error, actionItemId });
-        throw error;
-      }
+      actionItemStatus.set(actionItemId, {
+        completed,
+        completedAt: completed ? new Date().toISOString() : undefined,
+      });
+      logger.debug('Action item toggled', { actionItemId, completed });
     }
   );
 
@@ -214,7 +190,9 @@ export function registerPrepHandlers(): void {
         }
 
         // Try Salesforce
-        const salesforceToken = settings?.crmConnections?.salesforce as SalesforceOAuthToken | undefined;
+        const salesforceToken = settings?.crmConnections?.salesforce as
+          | SalesforceOAuthToken
+          | undefined;
         if (salesforceToken?.accessToken && salesforceService) {
           const contact = await salesforceService.searchContactByEmail(
             email,
@@ -249,11 +227,6 @@ export function registerPrepHandlers(): void {
     }
   );
 
-  // ============================================================
-  // DYNAMIC PREP HANDLERS - Signal-driven, role-agnostic
-  // ============================================================
-
-  // Generate dynamic prep with signal scoring and dynamic brief
   ipcMain.handle(
     IPC_CHANNELS.PREP_GENERATE_DYNAMIC,
     async (
@@ -264,15 +237,7 @@ export function registerPrepHandlers(): void {
       }
     ): Promise<DynamicPrepResult> => {
       try {
-        const { prepService, aiProvider } = getContainer();
-
-        if (!prepService) {
-          throw new Error('Prep service not available');
-        }
-
-        if (!aiProvider) {
-          throw new Error('AI provider not configured');
-        }
+        const { prepService } = requirePrepAndAI();
 
         logger.info('Generating dynamic prep', {
           meetingType: input.meeting.meeting_type,
@@ -281,7 +246,6 @@ export function registerPrepHandlers(): void {
           hasCalendarEvent: !!input.calendarEvent,
         });
 
-        // Get learned feedback weights
         const feedbackWeights = prepService.getFeedbackWeights();
 
         const result = await prepService.generateDynamicPrep({
@@ -303,7 +267,6 @@ export function registerPrepHandlers(): void {
     }
   );
 
-  // Infer meeting objective from context
   ipcMain.handle(
     IPC_CHANNELS.PREP_INFER_OBJECTIVE,
     async (
@@ -314,13 +277,8 @@ export function registerPrepHandlers(): void {
       }
     ): Promise<InferredObjective> => {
       try {
-        const { prepService, meetingRepo, hubSpotService, settingsRepo } = getContainer();
-
-        if (!prepService) {
-          throw new Error('Prep service not available');
-        }
-
-        // Fetch CRM data for attendees
+        const prepService = requirePrep();
+        const { meetingRepo, hubSpotService, settingsRepo } = getContainer();
         const settings = settingsRepo?.getSettings();
         const crmDataPromises = input.attendeeEmails.map(async (email) => {
           try {
@@ -335,13 +293,12 @@ export function registerPrepHandlers(): void {
         });
         const crmData = (await Promise.all(crmDataPromises)).filter(Boolean);
 
-        // Get past meetings
         const allMeetings = meetingRepo?.findAll() || [];
 
         const result = await prepService.inferMeetingObjective(
           input.calendarEvent || null,
           input.attendeeEmails,
-          crmData as any[],
+          crmData as CRMContactData[],
           allMeetings
         );
 
@@ -363,7 +320,6 @@ export function registerPrepHandlers(): void {
     }
   );
 
-  // Record insight feedback for learning
   ipcMain.handle(
     IPC_CHANNELS.PREP_RECORD_FEEDBACK,
     async (
@@ -376,12 +332,7 @@ export function registerPrepHandlers(): void {
       }
     ): Promise<void> => {
       try {
-        const { prepService } = getContainer();
-
-        if (!prepService) {
-          throw new Error('Prep service not available');
-        }
-
+        const prepService = requirePrep();
         await prepService.recordInsightFeedback(
           input.insightId,
           input.insightCategory,
@@ -401,18 +352,11 @@ export function registerPrepHandlers(): void {
     }
   );
 
-  // Get learned feedback weights
   ipcMain.handle(
     IPC_CHANNELS.PREP_GET_FEEDBACK_WEIGHTS,
     async (_event): Promise<Record<string, number>> => {
       try {
-        const { prepService } = getContainer();
-
-        if (!prepService) {
-          return {};
-        }
-
-        return prepService.getFeedbackWeights();
+        return requirePrep().getFeedbackWeights();
       } catch (error) {
         logger.error('Failed to get feedback weights', { error });
         return {};
@@ -420,44 +364,21 @@ export function registerPrepHandlers(): void {
     }
   );
 
-  // Reset feedback weights to defaults
-  ipcMain.handle(
-    IPC_CHANNELS.PREP_RESET_FEEDBACK_WEIGHTS,
-    async (_event): Promise<void> => {
-      try {
-        const { prepService } = getContainer();
-
-        if (!prepService) {
-          throw new Error('Prep service not available');
-        }
-
-        prepService.resetFeedbackWeights();
-        logger.info('Feedback weights reset');
-      } catch (error) {
-        logger.error('Failed to reset feedback weights', { error });
-        throw error;
-      }
+  ipcMain.handle(IPC_CHANNELS.PREP_RESET_FEEDBACK_WEIGHTS, async (_event): Promise<void> => {
+    try {
+      requirePrep().resetFeedbackWeights();
+      logger.info('Feedback weights reset');
+    } catch (error) {
+      logger.error('Failed to reset feedback weights', { error });
+      throw error;
     }
-  );
+  });
 
-  // ============================================================
-  // CONVERSATIONAL PREP HANDLERS - Granola-style natural output
-  // ============================================================
-
-  // Generate conversational prep (single person, markdown output)
   ipcMain.handle(
     IPC_CHANNELS.PREP_GENERATE_CONVERSATIONAL,
     async (_event, input: { personQuery: string; calendarEventId?: string }) => {
       try {
-        const { prepService, aiProvider } = getContainer();
-
-        if (!prepService) {
-          throw new Error('Prep service not available');
-        }
-
-        if (!aiProvider) {
-          throw new Error('AI provider not configured');
-        }
+        const { prepService } = requirePrepAndAI();
 
         logger.info('Generating conversational prep', {
           personQuery: input.personQuery,
@@ -480,43 +401,24 @@ export function registerPrepHandlers(): void {
     }
   );
 
-  // Quick search for person (autocomplete)
-  ipcMain.handle(
-    IPC_CHANNELS.PREP_QUICK_SEARCH_PERSON,
-    async (_event, query: string) => {
-      try {
-        const { prepService } = getContainer();
-
-        if (!prepService) {
-          return [];
-        }
-
-        return await prepService.quickSearchPerson(query);
-      } catch (error) {
-        logger.error('Failed to search people', { error, query });
-        return [];
-      }
+  ipcMain.handle(IPC_CHANNELS.PREP_QUICK_SEARCH_PERSON, async (_event, query: string) => {
+    try {
+      return await requirePrep().quickSearchPerson(query);
+    } catch (error) {
+      logger.error('Failed to search people', { error, query });
+      return [];
     }
-  );
+  });
 
-  // ============================================================
-  // CONVERSATIONAL PREP CHAT (OMNIBAR)
-  // ============================================================
-
-  // Send a chat message for prep (supports follow-up conversations)
   ipcMain.handle(
     IPC_CHANNELS.PREP_CHAT_SEND,
-    async (_event, input: import('@shared/types').PrepChatInput, existingConversation?: import('@shared/types').PrepConversation) => {
+    async (
+      _event,
+      input: import('@shared/types').PrepChatInput,
+      existingConversation?: import('@shared/types').PrepConversation
+    ) => {
       try {
-        const { prepService, aiProvider } = getContainer();
-
-        if (!prepService) {
-          throw new Error('Prep service not available');
-        }
-
-        if (!aiProvider) {
-          throw new Error('AI provider not configured');
-        }
+        const { prepService } = requirePrepAndAI();
 
         logger.info('Processing prep chat message', {
           messageLength: input.message.length,
@@ -540,49 +442,34 @@ export function registerPrepHandlers(): void {
     }
   );
 
-  // Streaming chat message for prep (lower perceived latency)
   ipcMain.handle(
     IPC_CHANNELS.PREP_CHAT_STREAM_START,
-    async (event, input: import('@shared/types').PrepChatInput, existingConversation?: import('@shared/types').PrepConversation) => {
+    async (
+      event,
+      input: import('@shared/types').PrepChatInput,
+      existingConversation?: import('@shared/types').PrepConversation
+    ) => {
       try {
-        const { prepService, aiProvider } = getContainer();
-
-        if (!prepService) {
-          throw new Error('Prep service not available');
-        }
-
-        if (!aiProvider) {
-          throw new Error('AI provider not configured');
-        }
+        const { prepService } = requirePrepAndAI();
 
         logger.info('Processing streaming prep chat message', {
           messageLength: input.message.length,
           hasConversation: !!existingConversation,
         });
 
-        // Start streaming in the background - don't await
         prepService.generatePrepChatResponseStreaming(
           input,
           existingConversation,
-          // onChunk
-          (chunk: string) => {
-            event.sender.send(IPC_CHANNELS.PREP_CHAT_STREAM_CHUNK, chunk);
-          },
-          // onStart
-          (metadata: { conversationId: string; meetingReferences: any[] }) => {
-            event.sender.send(IPC_CHANNELS.PREP_CHAT_STREAM_START, metadata);
-          },
-          // onEnd
-          (response: import('@shared/types').PrepChatResponse) => {
-            event.sender.send(IPC_CHANNELS.PREP_CHAT_STREAM_END, response);
-          },
-          // onError
-          (error: Error) => {
-            event.sender.send(IPC_CHANNELS.PREP_CHAT_STREAM_ERROR, error.message);
-          }
+          (chunk: string) => event.sender.send(IPC_CHANNELS.PREP_CHAT_STREAM_CHUNK, chunk),
+          (metadata: {
+            conversationId: string;
+            meetingReferences: { meetingId: string; title: string; date: string }[];
+          }) => event.sender.send(IPC_CHANNELS.PREP_CHAT_STREAM_START, metadata),
+          (response: import('@shared/types').PrepChatResponse) =>
+            event.sender.send(IPC_CHANNELS.PREP_CHAT_STREAM_END, response),
+          (error: Error) => event.sender.send(IPC_CHANNELS.PREP_CHAT_STREAM_ERROR, error.message)
         );
 
-        // Return immediately - streaming happens via events
         return { streaming: true };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';

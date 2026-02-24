@@ -1,68 +1,19 @@
 import React from 'react';
 import { useAppStore } from '../stores/appStore';
 import AudioLevelMeter from './AudioLevelMeter';
-import { Square, Loader2, Users, X, Clock, ChevronDown, Mic, Pause, Play, Trash2 } from 'lucide-react';
-import type { TranscriptSegment } from '@shared/types';
-
-// Transcript grouping constants (same as LiveTranscript.tsx)
-const MERGE_WINDOW_MS = 45000;
-const CONTINUOUS_SPEECH_MS = 2000;
-
-interface GroupedSegment {
-  id: string;
-  source: 'mic' | 'system';
-  timestamp: number;
-  text: string;
-  segmentCount: number;
-}
-
-function endsWithSentence(text: string): boolean {
-  return /[.!?]$/.test(text.trim());
-}
-
-function groupTranscriptSegments(segments: TranscriptSegment[]): GroupedSegment[] {
-  if (segments.length === 0) return [];
-
-  const groups: GroupedSegment[] = [];
-  let currentGroup: GroupedSegment | null = null;
-
-  for (const segment of segments) {
-    if (!currentGroup) {
-      currentGroup = {
-        id: segment.id,
-        source: segment.source,
-        timestamp: segment.timestamp,
-        text: segment.text,
-        segmentCount: 1,
-      };
-      continue;
-    }
-
-    const timeSinceLast = segment.timestamp - currentGroup.timestamp;
-    const isSameSpeaker = currentGroup.source === segment.source;
-    const withinTimeWindow = timeSinceLast < MERGE_WINDOW_MS;
-    const isContinuousSpeech = timeSinceLast < CONTINUOUS_SPEECH_MS;
-    const previousIncomplete = !endsWithSentence(currentGroup.text);
-    const shouldMerge = isSameSpeaker && (isContinuousSpeech || withinTimeWindow || previousIncomplete);
-
-    if (shouldMerge) {
-      currentGroup.text += ' ' + segment.text;
-      currentGroup.segmentCount++;
-    } else {
-      groups.push(currentGroup);
-      currentGroup = {
-        id: segment.id,
-        source: segment.source,
-        timestamp: segment.timestamp,
-        text: segment.text,
-        segmentCount: 1,
-      };
-    }
-  }
-
-  if (currentGroup) groups.push(currentGroup);
-  return groups;
-}
+import {
+  Square,
+  Loader2,
+  Users,
+  X,
+  Clock,
+  ChevronDown,
+  Mic,
+  Pause,
+  Play,
+  Trash2,
+} from 'lucide-react';
+import { groupTranscriptSegments } from '../lib/transcriptGrouping';
 
 interface ActiveRecordingViewProps {
   titleInput: string;
@@ -89,7 +40,8 @@ export default function ActiveRecordingView({
   onStop,
   onDiscard,
 }: ActiveRecordingViewProps) {
-  const { recordingState, audioLevels, liveTranscript, currentPartials, recordingContext } = useAppStore();
+  const { recordingState, audioLevels, liveTranscript, currentPartials, recordingContext } =
+    useAppStore();
   const isRecording = recordingState === 'recording';
   const isPaused = recordingState === 'paused';
 
@@ -105,11 +57,8 @@ export default function ActiveRecordingView({
   const participantsPopoverRef = React.useRef<HTMLDivElement>(null);
 
   const displayDate = recordingContext?.start || new Date();
-  const displayAttendees: string[] = (
-    recordingContext?.attendees?.map((a) =>
-      typeof a === 'string' ? a : a.email
-    ) || []
-  );
+  const displayAttendees: string[] =
+    recordingContext?.attendees?.map((a) => (typeof a === 'string' ? a : a.email)) || [];
 
   // Auto-scroll transcript
   React.useEffect(() => {
@@ -125,14 +74,18 @@ export default function ActiveRecordingView({
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
-        timePopoverRef.current && !timePopoverRef.current.contains(event.target as Node) &&
-        timeButtonRef.current && !timeButtonRef.current.contains(event.target as Node)
+        timePopoverRef.current &&
+        !timePopoverRef.current.contains(event.target as Node) &&
+        timeButtonRef.current &&
+        !timeButtonRef.current.contains(event.target as Node)
       ) {
         setShowTimePopover(false);
       }
       if (
-        participantsPopoverRef.current && !participantsPopoverRef.current.contains(event.target as Node) &&
-        participantsButtonRef.current && !participantsButtonRef.current.contains(event.target as Node)
+        participantsPopoverRef.current &&
+        !participantsPopoverRef.current.contains(event.target as Node) &&
+        participantsButtonRef.current &&
+        !participantsButtonRef.current.contains(event.target as Node)
       ) {
         setShowParticipantsPopover(false);
       }
@@ -153,7 +106,9 @@ export default function ActiveRecordingView({
                   value={titleInput}
                   onChange={(e) => onTitleChange(e.target.value)}
                   onBlur={onTitleBlur}
-                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                  }}
                   className="text-xl font-medium text-cream bg-transparent border-b border-transparent focus:border-accent/40 focus:outline-none truncate max-w-[420px]"
                   style={{ boxShadow: 'none' }}
                   placeholder="Untitled Meeting"
@@ -175,7 +130,9 @@ export default function ActiveRecordingView({
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-input border border-edge text-xs text-muted hover:bg-edge-light/20 transition-colors"
                   >
                     <Clock className="w-3.5 h-3.5" />
-                    <span>{displayDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span>
+                      {displayDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
                   </button>
                   {showTimePopover && (
                     <div
@@ -184,18 +141,32 @@ export default function ActiveRecordingView({
                     >
                       <div className="p-3 border-b border-edge flex items-center justify-between">
                         <h3 className="text-sm font-medium text-cream">Meeting time</h3>
-                        <button onClick={() => setShowTimePopover(false)} className="p-1 text-muted hover:text-cream transition-colors rounded hover:bg-white/5">
+                        <button
+                          onClick={() => setShowTimePopover(false)}
+                          className="p-1 text-muted hover:text-cream transition-colors rounded hover:bg-white/5"
+                        >
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
                       <div className="p-3 space-y-2">
                         <div>
                           <p className="text-[10px] text-dim uppercase font-medium mb-0.5">Date</p>
-                          <p className="text-xs text-cream">{displayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+                          <p className="text-xs text-cream">
+                            {displayDate.toLocaleDateString('en-US', {
+                              weekday: 'long',
+                              month: 'long',
+                              day: 'numeric',
+                            })}
+                          </p>
                         </div>
                         <div>
                           <p className="text-[10px] text-dim uppercase font-medium mb-0.5">Time</p>
-                          <p className="text-xs text-cream">{displayDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                          <p className="text-xs text-cream">
+                            {displayDate.toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -218,7 +189,10 @@ export default function ActiveRecordingView({
                       >
                         <div className="p-3 border-b border-edge flex items-center justify-between">
                           <h3 className="text-sm font-medium text-cream">Participants</h3>
-                          <button onClick={() => setShowParticipantsPopover(false)} className="p-1 text-muted hover:text-cream transition-colors rounded hover:bg-white/5">
+                          <button
+                            onClick={() => setShowParticipantsPopover(false)}
+                            className="p-1 text-muted hover:text-cream transition-colors rounded hover:bg-white/5"
+                          >
                             <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -246,8 +220,12 @@ export default function ActiveRecordingView({
           <div className="flex-1 min-h-0 rounded-lg border border-edge bg-card p-6 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <div>
-                <h3 className="text-xs uppercase tracking-[0.15em] font-medium text-muted">Your notes</h3>
-                <p className="text-xs text-dim mt-1">Capture action items, decisions, and next steps.</p>
+                <h3 className="text-xs uppercase tracking-[0.15em] font-medium text-muted">
+                  Your notes
+                </h3>
+                <p className="text-xs text-dim mt-1">
+                  Capture action items, decisions, and next steps.
+                </p>
               </div>
               <div className="flex items-center gap-3">
                 <div className="w-28">
@@ -331,7 +309,9 @@ export default function ActiveRecordingView({
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-accent recording-indicator" />
-                <span className="text-xs font-medium text-muted uppercase tracking-wider">Live transcript</span>
+                <span className="text-xs font-medium text-muted uppercase tracking-wider">
+                  Live transcript
+                </span>
               </div>
             </div>
             <button
@@ -362,12 +342,17 @@ export default function ActiveRecordingView({
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <Mic className="w-8 h-8 text-dim mb-3" />
                 <p className="text-sm text-dim">Waiting for speech...</p>
-                <p className="text-xs text-dim mt-1">Start talking and the transcript will appear here</p>
+                <p className="text-xs text-dim mt-1">
+                  Start talking and the transcript will appear here
+                </p>
               </div>
             ) : (
               <>
                 {groupTranscriptSegments(liveTranscript).map((group) => (
-                  <div key={group.id} className={`flex ${group.source === 'mic' ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    key={group.id}
+                    className={`flex ${group.source === 'mic' ? 'justify-end' : 'justify-start'}`}
+                  >
                     <div
                       className={`max-w-[80%] rounded-lg px-4 py-2.5 text-sm ${
                         group.source === 'mic'
@@ -401,7 +386,10 @@ export default function ActiveRecordingView({
             <button
               onClick={() => {
                 setIsAutoScrollEnabled(true);
-                transcriptScrollRef.current?.scrollTo({ top: transcriptScrollRef.current.scrollHeight, behavior: 'smooth' });
+                transcriptScrollRef.current?.scrollTo({
+                  top: transcriptScrollRef.current.scrollHeight,
+                  behavior: 'smooth',
+                });
               }}
               className="absolute bottom-16 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-surface text-xs font-medium shadow-elevated hover:bg-accent-hover transition-colors"
             >

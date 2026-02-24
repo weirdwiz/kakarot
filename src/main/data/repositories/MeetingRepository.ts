@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabase, saveDatabase, resultToObject, resultToObjectByIndex } from '../database';
-import type { Meeting, TranscriptSegment, CalendarAttendee } from '@shared/types';
+import type { Meeting, TranscriptSegment, CalendarAttendee, NoteEntry } from '@shared/types';
 import { createLogger } from '../../core/logger';
 import { PeopleRepository } from './PeopleRepository';
 
@@ -33,18 +33,18 @@ export class MeetingRepository {
     const db = getDatabase();
     const id = uuidv4();
     const now = Date.now();
-    const meetingTitle = title || new Date(now).toLocaleString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const meetingTitle =
+      title ||
+      new Date(now).toLocaleString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
 
     // Convert attendees to email array for backward compatibility
-    const attendeeEmails = attendees?.map((a) =>
-      typeof a === 'string' ? a : a.email
-    ) || [];
+    const attendeeEmails = attendees?.map((a) => (typeof a === 'string' ? a : a.email)) || [];
     const attendeesJson = JSON.stringify(attendeeEmails);
     db.run('INSERT INTO meetings (id, title, created_at, attendee_emails) VALUES (?, ?, ?, ?)', [
       id,
@@ -56,7 +56,11 @@ export class MeetingRepository {
     meetingStartTime = now;
     saveDatabase();
 
-    logger.info('Started new meeting', { id, title: meetingTitle, attendeeCount: attendeeEmails.length });
+    logger.info('Started new meeting', {
+      id,
+      title: meetingTitle,
+      attendeeCount: attendeeEmails.length,
+    });
 
     // Upsert attendees into people table in BACKGROUND (non-blocking)
     // This prevents API calls from delaying recording startup
@@ -161,7 +165,11 @@ export class MeetingRepository {
       saveDatabase();
     }
 
-    logger.info('Ended meeting', { id: endedId, duration, attendeeCount: meeting?.attendeeEmails?.length || 0 });
+    logger.info('Ended meeting', {
+      id: endedId,
+      duration,
+      attendeeCount: meeting?.attendeeEmails?.length || 0,
+    });
     return meeting;
   }
 
@@ -187,21 +195,31 @@ export class MeetingRepository {
     saveDatabase();
   }
 
+  private getSegmentsForMeeting(meetingId: string): Record<string, unknown>[] {
+    const db = getDatabase();
+    const segmentsResult = db.exec(
+      'SELECT * FROM transcript_segments WHERE meeting_id = ? ORDER BY timestamp',
+      [meetingId]
+    );
+    if (segmentsResult.length === 0) return [];
+    return segmentsResult[0].values.map((_, i) => resultToObjectByIndex(segmentsResult[0], i));
+  }
+
+  private rowsToMeetings(result: { columns: string[]; values: unknown[][] }): Meeting[] {
+    return result.values.map((_, i) => {
+      const row = resultToObjectByIndex(result, i);
+      const segments = this.getSegmentsForMeeting(row.id as string);
+      return this.rowToMeeting(row, segments);
+    });
+  }
+
   findById(id: string): Meeting | null {
     const db = getDatabase();
     const meetingResult = db.exec('SELECT * FROM meetings WHERE id = ?', [id]);
     if (meetingResult.length === 0 || meetingResult[0].values.length === 0) return null;
 
     const row = resultToObject(meetingResult[0]);
-    const segmentsResult = db.exec(
-      'SELECT * FROM transcript_segments WHERE meeting_id = ? ORDER BY timestamp',
-      [id]
-    );
-    const segments =
-      segmentsResult.length > 0
-        ? segmentsResult[0].values.map((_, i) => resultToObjectByIndex(segmentsResult[0], i))
-        : [];
-
+    const segments = this.getSegmentsForMeeting(id);
     return this.rowToMeeting(row, segments);
   }
 
@@ -209,19 +227,7 @@ export class MeetingRepository {
     const db = getDatabase();
     const result = db.exec('SELECT * FROM meetings ORDER BY created_at DESC');
     if (result.length === 0) return [];
-
-    return result[0].values.map((_, i) => {
-      const row = resultToObjectByIndex(result[0], i);
-      const segmentsResult = db.exec(
-        'SELECT * FROM transcript_segments WHERE meeting_id = ? ORDER BY timestamp',
-        [row.id as string]
-      );
-      const segments =
-        segmentsResult.length > 0
-          ? segmentsResult[0].values.map((__, j) => resultToObjectByIndex(segmentsResult[0], j))
-          : [];
-      return this.rowToMeeting(row, segments);
-    });
+    return this.rowsToMeetings(result[0]);
   }
 
   search(query: string): Meeting[] {
@@ -236,19 +242,7 @@ export class MeetingRepository {
     );
 
     if (result.length === 0) return [];
-
-    return result[0].values.map((_, i) => {
-      const row = resultToObjectByIndex(result[0], i);
-      const segmentsResult = db.exec(
-        'SELECT * FROM transcript_segments WHERE meeting_id = ? ORDER BY timestamp',
-        [row.id as string]
-      );
-      const segments =
-        segmentsResult.length > 0
-          ? segmentsResult[0].values.map((__, j) => resultToObjectByIndex(segmentsResult[0], j))
-          : [];
-      return this.rowToMeeting(row, segments);
-    });
+    return this.rowsToMeetings(result[0]);
   }
 
   delete(id: string): void {
@@ -259,57 +253,55 @@ export class MeetingRepository {
     logger.info('Deleted meeting', { id });
   }
 
-  updateSummary(id: string, summary: string): void {
+  private updateField(id: string, column: string, value: string | null): void {
     const db = getDatabase();
-    db.run('UPDATE meetings SET summary = ? WHERE id = ?', [summary, id]);
+    db.run(`UPDATE meetings SET ${column} = ? WHERE id = ?`, [value, id]);
     saveDatabase();
+  }
+
+  private updateJsonField(id: string, column: string, value: unknown): void {
+    this.updateField(id, column, JSON.stringify(value));
+  }
+
+  updateSummary(id: string, summary: string): void {
+    this.updateField(id, 'summary', summary);
   }
 
   updateNotes(id: string, notes: unknown, notesPlain: string, notesMarkdown: string): void {
     const db = getDatabase();
-    db.run(
-      'UPDATE meetings SET notes = ?, notes_plain = ?, notes_markdown = ? WHERE id = ?',
-      [JSON.stringify(notes), notesPlain, notesMarkdown, id]
-    );
+    db.run('UPDATE meetings SET notes = ?, notes_plain = ?, notes_markdown = ? WHERE id = ?', [
+      JSON.stringify(notes),
+      notesPlain,
+      notesMarkdown,
+      id,
+    ]);
     saveDatabase();
   }
 
   updateOverview(id: string, overview: string): void {
-    const db = getDatabase();
-    db.run('UPDATE meetings SET overview = ? WHERE id = ?', [overview, id]);
-    saveDatabase();
+    this.updateField(id, 'overview', overview);
   }
 
   updateTitle(id: string, title: string): void {
-    const db = getDatabase();
-    db.run('UPDATE meetings SET title = ? WHERE id = ?', [title, id]);
-    saveDatabase();
+    this.updateField(id, 'title', title);
     logger.info('Updated meeting title', { id, title });
   }
 
   updateAttendees(id: string, attendeeEmails: string[]): void {
-    const db = getDatabase();
-    db.run('UPDATE meetings SET attendee_emails = ? WHERE id = ?', [JSON.stringify(attendeeEmails), id]);
-    saveDatabase();
+    this.updateJsonField(id, 'attendee_emails', attendeeEmails);
     logger.info('Updated meeting attendees', { id, attendeeCount: attendeeEmails.length });
   }
 
   updateChapters(id: string, chapters: Meeting['chapters']): void {
-    const db = getDatabase();
-    db.run('UPDATE meetings SET chapters = ? WHERE id = ?', [JSON.stringify(chapters), id]);
-    saveDatabase();
+    this.updateJsonField(id, 'chapters', chapters);
   }
 
   updatePeople(id: string, people: Meeting['people']): void {
-    const db = getDatabase();
-    db.run('UPDATE meetings SET people = ? WHERE id = ?', [JSON.stringify(people), id]);
-    saveDatabase();
+    this.updateJsonField(id, 'people', people);
   }
 
-  updateNoteEntries(id: string, noteEntries: any[]): void {
-    const db = getDatabase();
-    db.run('UPDATE meetings SET note_entries = ? WHERE id = ?', [JSON.stringify(noteEntries), id]);
-    saveDatabase();
+  updateNoteEntries(id: string, noteEntries: NoteEntry[]): void {
+    this.updateJsonField(id, 'note_entries', noteEntries);
   }
 
   private rowToMeeting(row: Record<string, unknown>, segments: Record<string, unknown>[]): Meeting {

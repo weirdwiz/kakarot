@@ -1,5 +1,17 @@
 import React, { useEffect, useState, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
-import { Search, Mail, Building2, Calendar, Clock, FileText, Edit2, X, Check, RefreshCw, MessageSquare } from 'lucide-react';
+import {
+  Search,
+  Mail,
+  Building2,
+  Calendar,
+  Clock,
+  FileText,
+  Edit2,
+  X,
+  Check,
+  RefreshCw,
+  MessageSquare,
+} from 'lucide-react';
 import type { Person, Meeting, GeneratedStructuredNotes } from '@shared/types';
 import { formatDuration, getAvatarColor, getInitials, formatLastMeeting } from '../lib/formatters';
 import { PersonListSkeleton } from './Skeleton';
@@ -24,7 +36,9 @@ const useElementSize = (): [React.RefObject<HTMLDivElement>, { width: number; he
       const entry = entries[0];
       if (!entry) return;
       const { width, height } = entry.contentRect;
-      setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+      setSize((prev) =>
+        prev.width === width && prev.height === height ? prev : { width, height }
+      );
     });
 
     observer.observe(element);
@@ -48,7 +62,6 @@ type PeopleRowData = {
   onSelect: (email: string) => void;
 };
 
-
 const PeopleRow = React.memo(({ index, style, data }: ListChildComponentProps<PeopleRowData>) => {
   const person = data.rows[index];
   const isSelected = data.selectedEmail === person.email;
@@ -61,16 +74,16 @@ const PeopleRow = React.memo(({ index, style, data }: ListChildComponentProps<Pe
       }`}
     >
       <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-full ${person.avatarColor} flex items-center justify-center text-white font-medium text-sm flex-shrink-0`}>
+        <div
+          className={`w-10 h-10 rounded-full ${person.avatarColor} flex items-center justify-center text-white font-medium text-sm flex-shrink-0`}
+        >
           {person.initials}
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-medium text-slate-100 truncate">
             {person.name || person.email}
           </h3>
-          {person.name && (
-            <p className="text-xs text-slate-500 truncate">{person.email}</p>
-          )}
+          {person.name && <p className="text-xs text-slate-500 truncate">{person.email}</p>}
           {person.organization && (
             <p className="text-xs text-slate-400 truncate mt-0.5">{person.organization}</p>
           )}
@@ -90,14 +103,15 @@ const PeopleRow = React.memo(({ index, style, data }: ListChildComponentProps<Pe
   );
 });
 
-
 export default function PeopleView() {
-  const { setSelectedMeeting, navigate, selectedPersonEmail, setSelectedPersonEmail } = useAppStore(useShallow((state) => ({
-    setSelectedMeeting: state.setSelectedMeeting,
-    navigate: state.navigate,
-    selectedPersonEmail: state.selectedPersonEmail,
-    setSelectedPersonEmail: state.setSelectedPersonEmail,
-  })));
+  const { setSelectedMeeting, navigate, selectedPersonEmail, setSelectedPersonEmail } = useAppStore(
+    useShallow((state) => ({
+      setSelectedMeeting: state.setSelectedMeeting,
+      navigate: state.navigate,
+      selectedPersonEmail: state.selectedPersonEmail,
+      setSelectedPersonEmail: state.setSelectedPersonEmail,
+    }))
+  );
   const [people, setPeople] = useState<Person[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
@@ -125,12 +139,10 @@ export default function PeopleView() {
     setIsSyncing(true);
     try {
       // First cleanup names with numbers
-      const cleanupResult = await window.kakarot.people.cleanupNames();
-      console.log('Cleaned up names:', cleanupResult);
-      
+      await window.kakarot.people.cleanupNames();
+
       // Then sync from calendar
-      const result = await window.kakarot.people.syncFromCalendar();
-      console.log('Synced contacts from calendar:', result);
+      await window.kakarot.people.syncFromCalendar();
       await loadPeople(); // Refresh the list after sync
     } catch (error) {
       console.error('Failed to sync contacts from calendar:', error);
@@ -149,8 +161,8 @@ export default function PeopleView() {
     try {
       const allMeetings = await window.kakarot.meetings.list();
       // Filter meetings where the contact's email is in attendeeEmails
-      const filtered = allMeetings.filter(meeting => 
-        meeting.attendeeEmails.includes(email) && meeting.endedAt !== null
+      const filtered = allMeetings.filter(
+        (meeting) => meeting.attendeeEmails.includes(email) && meeting.endedAt !== null
       );
       // Sort by most recent first
       filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -187,7 +199,7 @@ export default function PeopleView() {
         setSearchQuery(email);
       } catch (error) {
         console.error('Failed to open contact:', error);
-      toast.error('Failed to load contact');
+        toast.error('Failed to load contact');
       } finally {
         setSelectedPersonEmail(null);
       }
@@ -203,18 +215,24 @@ export default function PeopleView() {
     }
   };
 
-  const handleSelectPerson = useCallback((person: Person) => {
-    setSelectedPerson(person);
-    setEditingField(null);
-    loadContactMeetings(person.email);
-  }, [loadContactMeetings]);
+  const handleSelectPerson = useCallback(
+    (person: Person) => {
+      setSelectedPerson(person);
+      setEditingField(null);
+      loadContactMeetings(person.email);
+    },
+    [loadContactMeetings]
+  );
 
-  const handleSelectPersonEmail = useCallback((email: string) => {
-    const person = people.find((p) => p.email === email);
-    if (person) {
-      handleSelectPerson(person);
-    }
-  }, [people, handleSelectPerson]);
+  const handleSelectPersonEmail = useCallback(
+    (email: string) => {
+      const person = people.find((p) => p.email === email);
+      if (person) {
+        handleSelectPerson(person);
+      }
+    },
+    [people, handleSelectPerson]
+  );
 
   const handleMeetingClick = (meeting: Meeting) => {
     // Switch to history view and select the meeting
@@ -236,7 +254,10 @@ export default function PeopleView() {
     );
   };
 
-  const startEditing = (field: 'name' | 'organization' | 'notes', currentValue: string | undefined) => {
+  const startEditing = (
+    field: 'name' | 'organization' | 'notes',
+    currentValue: string | undefined
+  ) => {
     setEditingField(field);
     setEditValue(currentValue || '');
   };
@@ -252,7 +273,10 @@ export default function PeopleView() {
           updatedPerson = await window.kakarot.people.updateName(selectedPerson.email, editValue);
           break;
         case 'organization':
-          updatedPerson = await window.kakarot.people.updateOrganization(selectedPerson.email, editValue);
+          updatedPerson = await window.kakarot.people.updateOrganization(
+            selectedPerson.email,
+            editValue
+          );
           break;
         case 'notes':
           updatedPerson = await window.kakarot.people.updateNotes(selectedPerson.email, editValue);
@@ -261,7 +285,7 @@ export default function PeopleView() {
 
       if (updatedPerson) {
         setSelectedPerson(updatedPerson);
-        setPeople(people.map(p => p.email === updatedPerson!.email ? updatedPerson! : p));
+        setPeople(people.map((p) => (p.email === updatedPerson?.email ? updatedPerson : p)));
       }
 
       setEditingField(null);
@@ -277,340 +301,361 @@ export default function PeopleView() {
     setEditValue('');
   };
 
-  const peopleRows = useMemo(() => people.map((person) => ({
-    email: person.email,
-    name: person.name || null,
-    organization: person.organization || null,
-    meetingCount: person.meetingCount,
-    durationLabel: formatDuration(person.totalDuration),
-    avatarColor: getAvatarColor(person.email),
-    initials: getInitials(person.email, person.name),
-  })), [people]);
+  const peopleRows = useMemo(
+    () =>
+      people.map((person) => ({
+        email: person.email,
+        name: person.name || null,
+        organization: person.organization || null,
+        meetingCount: person.meetingCount,
+        durationLabel: formatDuration(person.totalDuration),
+        avatarColor: getAvatarColor(person.email),
+        initials: getInitials(person.email, person.name),
+      })),
+    [people]
+  );
 
-  const peopleItemData = useMemo(() => ({
-    rows: peopleRows,
-    selectedEmail: selectedPerson?.email ?? null,
-    onSelect: handleSelectPersonEmail,
-  }), [peopleRows, selectedPerson?.email, handleSelectPersonEmail]);
-
+  const peopleItemData = useMemo(
+    () => ({
+      rows: peopleRows,
+      selectedEmail: selectedPerson?.email ?? null,
+      onSelect: handleSelectPersonEmail,
+    }),
+    [peopleRows, selectedPerson?.email, handleSelectPersonEmail]
+  );
 
   return (
-    <React.Fragment>
+    <>
       <div className="h-full flex bg-surface text-slate-100 rounded-2xl border border-edge shadow-[0_8px_30px_rgba(0,0,0,0.35)] overflow-hidden">
         {/* People list sidebar */}
         <div className="w-64 lg:w-80 border-r border-edge flex flex-col bg-card flex-shrink-0 overflow-hidden">
           {/* Search */}
           <div className="p-4 border-b border-edge flex-shrink-0">
-          <div className="mb-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Contacts</h2>
-              <button
-                onClick={syncFromCalendar}
-                disabled={isSyncing}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-slate-400 hover:text-slate-200 hover:bg-edge rounded-lg transition-colors disabled:opacity-50"
-                title="Sync contacts from calendar events"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                {isSyncing ? 'Syncing...' : 'Sync'}
-              </button>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              {people.length} {people.length === 1 ? 'contact' : 'contacts'}
-            </p>
-          </div>
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search by name or email..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              className="w-full bg-input border border-edge text-slate-100 rounded-lg px-4 py-2.5 pl-10 text-sm focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/20 placeholder:text-slate-500"
-            />
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
-          </div>
-        </div>
-
-        {/* People list */}
-        <div className="flex-1 overflow-hidden" ref={listRef}>
-          {isLoading ? (
-            <PersonListSkeleton count={6} />
-          ) : people.length === 0 ? (
-            <div className="p-6 text-center">
-              <div className="text-slate-600 mb-2">
-                <Mail className="w-12 h-12 mx-auto mb-3" />
+            <div className="mb-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-white">Contacts</h2>
+                <button
+                  onClick={syncFromCalendar}
+                  disabled={isSyncing}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-slate-400 hover:text-slate-200 hover:bg-edge rounded-lg transition-colors disabled:opacity-50"
+                  title="Sync contacts from calendar events"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                  {isSyncing ? 'Syncing...' : 'Sync'}
+                </button>
               </div>
-              <p className="text-slate-400 font-medium">No contacts yet</p>
-              <p className="text-sm text-slate-500 mt-1">
-                Contacts are automatically created from meeting attendees
+              <p className="text-xs text-slate-500 mt-1">
+                {people.length} {people.length === 1 ? 'contact' : 'contacts'}
               </p>
             </div>
-          ) : (
-            <List
-              height={listSize.height || 1}
-              width={listSize.width || 1}
-              itemCount={peopleRows.length}
-              itemSize={CONTACT_ROW_HEIGHT}
-              itemData={peopleItemData}
-              itemKey={(index: number, data: { rows: Array<{ email: string }> }) => data.rows[index].email}
-              overscanCount={6}
-            >
-              {PeopleRow}
-            </List>
-          )}
-        </div>
-      </div>
-
-      {/* Contact detail panel */}
-      <div className="flex-1 flex flex-col bg-surface overflow-hidden">
-        {selectedPerson ? (
-          <>
-            {/* Header */}
-            <div className="p-6 border-b border-edge bg-card flex-shrink-0">
-              <div className="flex items-start gap-4">
-                <div className={`w-16 h-16 rounded-full ${getAvatarColor(selectedPerson.email)} flex items-center justify-center text-white font-medium text-xl flex-shrink-0`}>
-                  {getInitials(selectedPerson.email, selectedPerson.name || undefined)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  {editingField === 'name' ? (
-                    <div className="flex items-center gap-2 mb-2">
-                      <input
-                        type="text"
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') saveEdit();
-                          if (e.key === 'Escape') cancelEdit();
-                        }}
-                        className="flex-1 px-3 py-1.5 text-xl font-semibold text-white bg-card border border-edge rounded-lg focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/20"
-                        autoFocus
-                        placeholder="Enter name"
-                      />
-                      <button
-                        onClick={saveEdit}
-                        className="p-1.5 text-cream hover:bg-card rounded-lg transition-colors"
-                      >
-                        <Check className="w-5 h-5" />
-                      </button>
-                      <button
-                        onClick={cancelEdit}
-                        className="p-1.5 text-slate-400 hover:bg-card rounded-lg transition-colors"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 mb-2">
-                      <h1 className="text-2xl font-semibold text-white">
-                        {selectedPerson.name || 'Unnamed Contact'}
-                      </h1>
-                      <button
-                        onClick={() => startEditing('name', selectedPerson.name)}
-                        className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-card rounded-lg transition-colors"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2 text-slate-400 mb-1">
-                    <Mail className="w-4 h-4" />
-                    <span className="text-sm">{selectedPerson.email}</span>
-                  </div>
-
-                  {editingField === 'organization' ? (
-                    <div className="flex items-center gap-2 mt-2">
-                      <Building2 className="w-4 h-4 text-slate-500" />
-                      <input
-                        type="text"
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') saveEdit();
-                          if (e.key === 'Escape') cancelEdit();
-                        }}
-                        className="flex-1 px-3 py-1 text-sm text-slate-200 bg-card border border-edge rounded-lg focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/20"
-                        autoFocus
-                        placeholder="Enter organization"
-                      />
-                      <button onClick={saveEdit} className="p-1 text-cream hover:bg-card rounded">
-                        <Check className="w-4 h-4" />
-                      </button>
-                      <button onClick={cancelEdit} className="p-1 text-slate-400 hover:bg-card rounded">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 mt-1">
-                      <Building2 className="w-4 h-4 text-slate-500" />
-                      <span className="text-sm text-slate-400">
-                        {selectedPerson.organization || 'No organization'}
-                      </span>
-                      <button
-                        onClick={() => startEditing('organization', selectedPerson.organization)}
-                        className="p-1 text-slate-500 hover:text-slate-300 hover:bg-card rounded transition-colors"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-4 mt-6">
-                <div className="bg-card rounded-lg p-3 border border-edge">
-                  <div className="flex items-center gap-2 text-slate-400 mb-1">
-                    <Calendar className="w-4 h-4" />
-                    <span className="text-xs font-medium">Meetings</span>
-                  </div>
-                  <div className="text-2xl font-semibold text-white">{selectedPerson.meetingCount}</div>
-                </div>
-                <div className="bg-card rounded-lg p-3 border border-edge">
-                  <div className="flex items-center gap-2 text-slate-400 mb-1">
-                    <Clock className="w-4 h-4" />
-                    <span className="text-xs font-medium">Total Time</span>
-                  </div>
-                  <div className="text-2xl font-semibold text-white">
-                    {formatDuration(selectedPerson.totalDuration)}
-                  </div>
-                </div>
-                <div className="bg-card rounded-lg p-3 border border-edge">
-                  <div className="flex items-center gap-2 text-slate-400 mb-1">
-                    <Calendar className="w-4 h-4" />
-                    <span className="text-xs font-medium">Last Met</span>
-                  </div>
-                  <div className="text-sm font-semibold text-white">
-                    {formatLastMeeting(selectedPerson.lastMeetingAt)}
-                  </div>
-                </div>
-              </div>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search by name or email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                className="w-full bg-input border border-edge text-slate-100 rounded-lg px-4 py-2.5 pl-10 text-sm focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/20 placeholder:text-slate-500"
+              />
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
             </div>
+          </div>
 
-            {/* Notes section */}
-            <div className="flex-1 overflow-y-auto p-6 bg-surface">
-              <div className="max-w-3xl space-y-6">
-                {/* Notes */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-5 h-5 text-slate-400" />
-                      <h2 className="text-lg font-semibold text-white">Notes</h2>
+          {/* People list */}
+          <div className="flex-1 overflow-hidden" ref={listRef}>
+            {isLoading ? (
+              <PersonListSkeleton count={6} />
+            ) : people.length === 0 ? (
+              <div className="p-6 text-center">
+                <div className="text-slate-600 mb-2">
+                  <Mail className="w-12 h-12 mx-auto mb-3" />
+                </div>
+                <p className="text-slate-400 font-medium">No contacts yet</p>
+                <p className="text-sm text-slate-500 mt-1">
+                  Contacts are automatically created from meeting attendees
+                </p>
+              </div>
+            ) : (
+              <List
+                height={listSize.height || 1}
+                width={listSize.width || 1}
+                itemCount={peopleRows.length}
+                itemSize={CONTACT_ROW_HEIGHT}
+                itemData={peopleItemData}
+                itemKey={(index: number, data: { rows: Array<{ email: string }> }) =>
+                  data.rows[index].email
+                }
+                overscanCount={6}
+              >
+                {PeopleRow}
+              </List>
+            )}
+          </div>
+        </div>
+
+        {/* Contact detail panel */}
+        <div className="flex-1 flex flex-col bg-surface overflow-hidden">
+          {selectedPerson ? (
+            <>
+              {/* Header */}
+              <div className="p-6 border-b border-edge bg-card flex-shrink-0">
+                <div className="flex items-start gap-4">
+                  <div
+                    className={`w-16 h-16 rounded-full ${getAvatarColor(selectedPerson.email)} flex items-center justify-center text-white font-medium text-xl flex-shrink-0`}
+                  >
+                    {getInitials(selectedPerson.email, selectedPerson.name || undefined)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {editingField === 'name' ? (
+                      <div className="flex items-center gap-2 mb-2">
+                        <input
+                          type="text"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveEdit();
+                            if (e.key === 'Escape') cancelEdit();
+                          }}
+                          className="flex-1 px-3 py-1.5 text-xl font-semibold text-white bg-card border border-edge rounded-lg focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/20"
+                          autoFocus
+                          placeholder="Enter name"
+                        />
+                        <button
+                          onClick={saveEdit}
+                          className="p-1.5 text-cream hover:bg-card rounded-lg transition-colors"
+                        >
+                          <Check className="w-5 h-5" />
+                        </button>
+                        <button
+                          onClick={cancelEdit}
+                          className="p-1.5 text-slate-400 hover:bg-card rounded-lg transition-colors"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 mb-2">
+                        <h1 className="text-2xl font-semibold text-white">
+                          {selectedPerson.name || 'Unnamed Contact'}
+                        </h1>
+                        <button
+                          onClick={() => startEditing('name', selectedPerson.name)}
+                          className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-card rounded-lg transition-colors"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 text-slate-400 mb-1">
+                      <Mail className="w-4 h-4" />
+                      <span className="text-sm">{selectedPerson.email}</span>
                     </div>
-                    {editingField !== 'notes' && (
-                      <button
-                        onClick={() => startEditing('notes', selectedPerson.notes)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-400 hover:bg-card rounded-lg transition-colors"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                        Edit
-                      </button>
+
+                    {editingField === 'organization' ? (
+                      <div className="flex items-center gap-2 mt-2">
+                        <Building2 className="w-4 h-4 text-slate-500" />
+                        <input
+                          type="text"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveEdit();
+                            if (e.key === 'Escape') cancelEdit();
+                          }}
+                          className="flex-1 px-3 py-1 text-sm text-slate-200 bg-card border border-edge rounded-lg focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/20"
+                          autoFocus
+                          placeholder="Enter organization"
+                        />
+                        <button onClick={saveEdit} className="p-1 text-cream hover:bg-card rounded">
+                          <Check className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={cancelEdit}
+                          className="p-1 text-slate-400 hover:bg-card rounded"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 mt-1">
+                        <Building2 className="w-4 h-4 text-slate-500" />
+                        <span className="text-sm text-slate-400">
+                          {selectedPerson.organization || 'No organization'}
+                        </span>
+                        <button
+                          onClick={() => startEditing('organization', selectedPerson.organization)}
+                          className="p-1 text-slate-500 hover:text-slate-300 hover:bg-card rounded transition-colors"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div className="grid grid-cols-3 gap-4 mt-6">
+                  <div className="bg-card rounded-lg p-3 border border-edge">
+                    <div className="flex items-center gap-2 text-slate-400 mb-1">
+                      <Calendar className="w-4 h-4" />
+                      <span className="text-xs font-medium">Meetings</span>
+                    </div>
+                    <div className="text-2xl font-semibold text-white">
+                      {selectedPerson.meetingCount}
+                    </div>
+                  </div>
+                  <div className="bg-card rounded-lg p-3 border border-edge">
+                    <div className="flex items-center gap-2 text-slate-400 mb-1">
+                      <Clock className="w-4 h-4" />
+                      <span className="text-xs font-medium">Total Time</span>
+                    </div>
+                    <div className="text-2xl font-semibold text-white">
+                      {formatDuration(selectedPerson.totalDuration)}
+                    </div>
+                  </div>
+                  <div className="bg-card rounded-lg p-3 border border-edge">
+                    <div className="flex items-center gap-2 text-slate-400 mb-1">
+                      <Calendar className="w-4 h-4" />
+                      <span className="text-xs font-medium">Last Met</span>
+                    </div>
+                    <div className="text-sm font-semibold text-white">
+                      {formatLastMeeting(selectedPerson.lastMeetingAt)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes section */}
+              <div className="flex-1 overflow-y-auto p-6 bg-surface">
+                <div className="max-w-3xl space-y-6">
+                  {/* Notes */}
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-slate-400" />
+                        <h2 className="text-lg font-semibold text-white">Notes</h2>
+                      </div>
+                      {editingField !== 'notes' && (
+                        <button
+                          onClick={() => startEditing('notes', selectedPerson.notes)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-400 hover:bg-card rounded-lg transition-colors"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                          Edit
+                        </button>
+                      )}
+                    </div>
+
+                    {editingField === 'notes' ? (
+                      <div className="space-y-3">
+                        <textarea
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          className="w-full h-64 px-4 py-3 text-sm text-slate-200 bg-card border border-edge rounded-lg focus:outline-none focus:ring-2 focus:ring-accent/50 resize-none font-mono placeholder:text-slate-500"
+                          placeholder="Add notes about this contact..."
+                          autoFocus
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={cancelEdit}
+                            className="px-4 py-2 text-sm text-slate-400 hover:bg-card rounded-lg transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={saveEdit}
+                            className="px-4 py-2 text-sm text-white bg-accent hover:bg-accent-hover rounded-lg transition-colors"
+                          >
+                            Save Notes
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-card rounded-lg p-4 border border-edge">
+                        {selectedPerson.notes ? (
+                          <p className="text-sm text-slate-300 whitespace-pre-wrap">
+                            {selectedPerson.notes}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-slate-500 italic">
+                            No notes yet. Click Edit to add notes about this contact.
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
 
-                  {editingField === 'notes' ? (
-                    <div className="space-y-3">
-                      <textarea
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        className="w-full h-64 px-4 py-3 text-sm text-slate-200 bg-card border border-edge rounded-lg focus:outline-none focus:ring-2 focus:ring-accent/50 resize-none font-mono placeholder:text-slate-500"
-                        placeholder="Add notes about this contact..."
-                        autoFocus
-                      />
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={cancelEdit}
-                          className="px-4 py-2 text-sm text-slate-400 hover:bg-card rounded-lg transition-colors"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={saveEdit}
-                          className="px-4 py-2 text-sm text-white bg-accent hover:bg-accent-hover rounded-lg transition-colors"
-                        >
-                          Save Notes
-                        </button>
+                  {/* Meeting History */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <MessageSquare className="w-5 h-5 text-slate-400" />
+                      <h2 className="text-lg font-semibold text-white">Meeting History</h2>
+                      <span className="text-sm text-slate-500">({contactMeetings.length})</span>
+                    </div>
+
+                    {isLoadingMeetings ? (
+                      <div className="bg-card rounded-lg p-8 border border-edge flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="bg-card rounded-lg p-4 border border-edge">
-                      {selectedPerson.notes ? (
-                        <p className="text-sm text-slate-300 whitespace-pre-wrap">{selectedPerson.notes}</p>
-                      ) : (
-                        <p className="text-sm text-slate-500 italic">No notes yet. Click Edit to add notes about this contact.</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Meeting History */}
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <MessageSquare className="w-5 h-5 text-slate-400" />
-                    <h2 className="text-lg font-semibold text-white">Meeting History</h2>
-                    <span className="text-sm text-slate-500">({contactMeetings.length})</span>
-                  </div>
-
-                  {isLoadingMeetings ? (
-                    <div className="bg-card rounded-lg p-8 border border-edge flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
-                    </div>
-                  ) : contactMeetings.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-3">
-                      {contactMeetings.map((meeting) => (
-                        <button
-                          key={meeting.id}
-                          onClick={() => handleMeetingClick(meeting)}
-                          className="bg-card rounded-lg p-4 border border-edge hover:border-accent/50 hover:bg-card transition-all text-left"
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                              <h3 className="text-base font-medium text-white mb-1 hover:text-accent transition-colors line-clamp-1">
-                                {meeting.title}
-                              </h3>
-                              <div className="flex items-center gap-3 text-sm text-slate-400">
-                                <div className="flex items-center gap-1.5">
-                                  <Calendar className="w-3.5 h-3.5" />
-                                  <span>{new Date(meeting.createdAt).toLocaleDateString()}</span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <Clock className="w-3.5 h-3.5" />
-                                  <span>{formatDuration(meeting.duration)}</span>
+                    ) : contactMeetings.length > 0 ? (
+                      <div className="grid grid-cols-1 gap-3">
+                        {contactMeetings.map((meeting) => (
+                          <button
+                            key={meeting.id}
+                            onClick={() => handleMeetingClick(meeting)}
+                            className="bg-card rounded-lg p-4 border border-edge hover:border-accent/50 hover:bg-card transition-all text-left"
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <h3 className="text-base font-medium text-white mb-1 hover:text-accent transition-colors line-clamp-1">
+                                  {meeting.title}
+                                </h3>
+                                <div className="flex items-center gap-3 text-sm text-slate-400">
+                                  <div className="flex items-center gap-1.5">
+                                    <Calendar className="w-3.5 h-3.5" />
+                                    <span>{new Date(meeting.createdAt).toLocaleDateString()}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    <span>{formatDuration(meeting.duration)}</span>
+                                  </div>
                                 </div>
                               </div>
+                              {hasNotes(meeting) && (
+                                <button
+                                  onClick={(e) => handleViewNotes(e, meeting)}
+                                  className="flex-shrink-0 px-3 py-1.5 text-sm font-medium text-accent border border-accent/50 hover:border-accent hover:bg-accent/10 rounded-lg transition-all"
+                                >
+                                  View Notes
+                                </button>
+                              )}
                             </div>
-                            {hasNotes(meeting) && (
-                              <button
-                                onClick={(e) => handleViewNotes(e, meeting)}
-                                className="flex-shrink-0 px-3 py-1.5 text-sm font-medium text-accent border border-accent/50 hover:border-accent hover:bg-accent/10 rounded-lg transition-all"
-                              >
-                                View Notes
-                              </button>
-                            )}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="bg-card rounded-lg p-8 border border-edge text-center">
-                      <MessageSquare className="w-12 h-12 mx-auto mb-3 text-slate-600" />
-                      <p className="text-sm text-slate-500">No meetings recorded with this contact yet.</p>
-                    </div>
-                  )}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="bg-card rounded-lg p-8 border border-edge text-center">
+                        <MessageSquare className="w-12 h-12 mx-auto mb-3 text-slate-600" />
+                        <p className="text-sm text-slate-500">
+                          No meetings recorded with this contact yet.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-slate-500">
+              <div className="text-center">
+                <Mail className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                <p className="text-lg font-medium text-slate-400">Select a contact</p>
+                <p className="text-sm text-slate-500 mt-1">Choose a contact to view details</p>
+              </div>
             </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-slate-500">
-            <div className="text-center">
-              <Mail className="w-16 h-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium text-slate-400">Select a contact</p>
-              <p className="text-sm text-slate-500 mt-1">Choose a contact to view details</p>
-            </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
       </div>
 
       {/* Modal Backdrop - Click to close */}
@@ -632,7 +677,9 @@ export default function PeopleView() {
             <div className="p-6 border-b border-edge bg-card flex-shrink-0">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 space-y-3 min-w-0">
-                  <h1 className="text-2xl font-semibold text-white truncate">{selectedMeetingForModal.title}</h1>
+                  <h1 className="text-2xl font-semibold text-white truncate">
+                    {selectedMeetingForModal.title}
+                  </h1>
                   <div className="flex gap-3 items-stretch flex-wrap">
                     <div className="flex flex-none items-center gap-2 rounded-lg border border-edge bg-card px-3 py-2 whitespace-nowrap">
                       <Calendar className="w-4 h-4 text-slate-400" />
@@ -640,14 +687,16 @@ export default function PeopleView() {
                         {new Date(selectedMeetingForModal.createdAt).toLocaleDateString()}
                       </div>
                     </div>
-                    {(selectedMeetingForModal.attendeeEmails && selectedMeetingForModal.attendeeEmails.length > 0) && (
-                      <div className="flex flex-none items-center gap-2 rounded-lg border border-edge bg-card px-3 py-2 whitespace-nowrap">
-                        <MessageSquare className="w-4 h-4 text-slate-400" />
-                        <div className="text-sm text-slate-200 whitespace-nowrap">
-                          {selectedMeetingForModal.attendeeEmails.length} attendee{selectedMeetingForModal.attendeeEmails.length !== 1 ? 's' : ''}
+                    {selectedMeetingForModal.attendeeEmails &&
+                      selectedMeetingForModal.attendeeEmails.length > 0 && (
+                        <div className="flex flex-none items-center gap-2 rounded-lg border border-edge bg-card px-3 py-2 whitespace-nowrap">
+                          <MessageSquare className="w-4 h-4 text-slate-400" />
+                          <div className="text-sm text-slate-200 whitespace-nowrap">
+                            {selectedMeetingForModal.attendeeEmails.length} attendee
+                            {selectedMeetingForModal.attendeeEmails.length !== 1 ? 's' : ''}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
                     <div className="flex flex-none items-center gap-2 rounded-lg border border-edge bg-card px-3 py-2 whitespace-nowrap">
                       <Clock className="w-4 h-4 text-slate-400" />
                       <div className="text-sm text-slate-200 whitespace-nowrap">
@@ -656,7 +705,8 @@ export default function PeopleView() {
                     </div>
                   </div>
                   <p className="text-sm text-slate-400">
-                    {formatDuration(selectedMeetingForModal.duration)} · {selectedMeetingForModal.transcript.length} segments
+                    {formatDuration(selectedMeetingForModal.duration)} ·{' '}
+                    {selectedMeetingForModal.transcript.length} segments
                   </p>
                 </div>
                 <button
@@ -670,7 +720,7 @@ export default function PeopleView() {
                 </button>
               </div>
             </div>
-            
+
             {/* Content - Notes and Transcript */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-surface">
               {/* Overview */}
@@ -682,8 +732,9 @@ export default function PeopleView() {
               )}
 
               {/* Generated Notes - prefer structured view when available */}
-              {selectedMeetingForModal.notes && typeof selectedMeetingForModal.notes === 'object' &&
-               (selectedMeetingForModal.notes as GeneratedStructuredNotes).topics?.length > 0 ? (
+              {selectedMeetingForModal.notes &&
+              typeof selectedMeetingForModal.notes === 'object' &&
+              (selectedMeetingForModal.notes as GeneratedStructuredNotes).topics?.length > 0 ? (
                 <div className="bg-card rounded-xl p-4 border border-edge relative overflow-visible">
                   <h2 className="text-sm font-medium text-slate-200 mb-3">Notes</h2>
                   <StructuredNotesView
@@ -737,7 +788,9 @@ export default function PeopleView() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-slate-500 text-center py-4">No transcript available</p>
+                    <p className="text-sm text-slate-500 text-center py-4">
+                      No transcript available
+                    </p>
                   )}
                 </div>
               </div>
@@ -745,6 +798,6 @@ export default function PeopleView() {
           </div>
         </div>
       )}
-    </React.Fragment>
+    </>
   );
 }

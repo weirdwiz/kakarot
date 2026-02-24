@@ -89,10 +89,15 @@ export class SemanticSearchService {
       }
 
       // Calculate similarity scores
-      const scoredChunks: ScoredChunk[] = chunksWithEmbeddings.map((chunk) => ({
-        ...chunk,
-        similarityScore: this.cosineSimilarity(noteEmbedding, chunk.embedding!),
-      }));
+      const scoredChunks: ScoredChunk[] = chunksWithEmbeddings
+        .filter(
+          (chunk): chunk is TranscriptChunk & { embedding: number[] } =>
+            chunk.embedding !== null && chunk.embedding !== undefined && chunk.embedding.length > 0
+        )
+        .map((chunk) => ({
+          ...chunk,
+          similarityScore: this.cosineSimilarity(noteEmbedding, chunk.embedding),
+        }));
 
       // Sort by similarity score (descending) and take top K
       scoredChunks.sort((a, b) => b.similarityScore - a.similarityScore);
@@ -122,8 +127,7 @@ export class SemanticSearchService {
         totalChunks: chunks.length,
         relevantChunks: relevantChunks.length,
         avgScore: (
-          relevantChunks.reduce((sum, c) => sum + c.similarityScore, 0) /
-          relevantChunks.length
+          relevantChunks.reduce((sum, c) => sum + c.similarityScore, 0) / relevantChunks.length
         ).toFixed(3),
         topScore: relevantChunks[0]?.similarityScore.toFixed(3),
       });

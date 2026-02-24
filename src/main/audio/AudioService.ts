@@ -1,8 +1,8 @@
-import { NativeAudioCapture, isNativeAudioAvailable } from "./nativeAudioCapture";
-import { AECProcessor, type AECConfig, type AECMetrics } from "./native/AECProcessor";
-import { createLogger } from "@main/core/logger";
+import { NativeAudioCapture, isNativeAudioAvailable } from './nativeAudioCapture';
+import { AECProcessor, type AECConfig, type AECMetrics } from './native/AECProcessor';
+import { createLogger } from '@main/core/logger';
 
-const logger = createLogger("AudioService");
+const logger = createLogger('AudioService');
 
 export interface AudioServiceConfig {
   sampleRate: number;
@@ -70,13 +70,13 @@ export class AudioService {
    */
   async start(): Promise<boolean> {
     if (this.isRunning) {
-      logger.warn("Audio service already running");
+      logger.warn('Audio service already running');
       return true;
     }
 
     // Check if native capture is available
     if (!isNativeAudioAvailable()) {
-      logger.warn("Native audio capture not available, using fallback");
+      logger.warn('Native audio capture not available, using fallback');
       return this.startFallback();
     }
 
@@ -84,33 +84,33 @@ export class AudioService {
     this.nativeCapture = new NativeAudioCapture(this.config.sampleRate);
 
     // Set up event handlers
-    this.nativeCapture.on("microphoneAudio", (samples: Float32Array, timestamp: number) => {
+    this.nativeCapture.on('microphoneAudio', (samples: Float32Array, timestamp: number) => {
       if (this.onMicrophoneAudio) {
         this.onMicrophoneAudio(samples, timestamp);
       }
     });
 
-    this.nativeCapture.on("systemAudio", (samples: Float32Array, timestamp: number) => {
+    this.nativeCapture.on('systemAudio', (samples: Float32Array, timestamp: number) => {
       if (this.onSystemAudio) {
         this.onSystemAudio(samples, timestamp);
       }
     });
 
-    this.nativeCapture.on("processedAudio", (samples: Float32Array, timestamp: number) => {
+    this.nativeCapture.on('processedAudio', (samples: Float32Array, timestamp: number) => {
       if (this.onProcessedAudio) {
         this.onProcessedAudio(samples, timestamp);
       }
     });
 
-    this.nativeCapture.on("headphoneStatusChanged", (isHeadphones: boolean) => {
+    this.nativeCapture.on('headphoneStatusChanged', (isHeadphones: boolean) => {
       logger.info(`Headphone status changed: ${isHeadphones}`);
       if (this.config.disableAecOnHeadphones && this.nativeCapture) {
         this.nativeCapture.setEchoCancellationEnabled(!isHeadphones);
       }
     });
 
-    this.nativeCapture.on("error", (error: Error) => {
-      logger.error("Native audio capture error", { error: error.message });
+    this.nativeCapture.on('error', (error: Error) => {
+      logger.error('Native audio capture error', { error: error.message });
     });
 
     // Start capture
@@ -118,7 +118,7 @@ export class AudioService {
 
     if (success) {
       this.isRunning = true;
-      logger.info("Audio service started with native capture");
+      logger.info('Audio service started with native capture');
 
       // Set initial echo cancellation state in native capture
       if (this.config.enableEchoCancellation) {
@@ -133,7 +133,7 @@ export class AudioService {
       // Initialize WebRTC AEC processor for render/capture path
       this.initializeAECProcessor();
     } else {
-      logger.error("Failed to start native audio capture");
+      logger.error('Failed to start native audio capture');
       this.nativeCapture = null;
     }
 
@@ -144,7 +144,7 @@ export class AudioService {
    * Fallback to web-based audio capture (no AEC)
    */
   private async startFallback(): Promise<boolean> {
-    logger.warn("Fallback audio capture not implemented - use renderer-side capture");
+    logger.warn('Fallback audio capture not implemented - use renderer-side capture');
     this.isRunning = true;
     return true;
   }
@@ -154,7 +154,7 @@ export class AudioService {
    */
   private initializeAECProcessor(): void {
     if (!this.config.enableEchoCancellation) {
-      logger.info("Echo cancellation disabled, skipping AEC processor");
+      logger.info('Echo cancellation disabled, skipping AEC processor');
       return;
     }
 
@@ -169,14 +169,14 @@ export class AudioService {
       };
 
       this.aecProcessor = new AECProcessor(aecConfig);
-      logger.info("WebRTC AEC processor initialized");
+      logger.info('WebRTC AEC processor initialized');
 
       // Optional: Log AEC metrics every 5 seconds
       this.aecMetricsInterval = setInterval(() => {
         if (this.aecProcessor && this.aecProcessor.isReady()) {
           const metrics = this.aecProcessor.getMetrics();
           if (metrics.erle !== undefined) {
-            logger.debug("AEC metrics", {
+            logger.debug('AEC metrics', {
               erle: metrics.erle,
               rerl: metrics.rerl,
               residualEchoLevel: metrics.residualEchoLevel,
@@ -187,10 +187,10 @@ export class AudioService {
         }
       }, 5000);
     } catch (error) {
-      logger.error("Failed to initialize AEC processor", {
+      logger.error('Failed to initialize AEC processor', {
         error: error instanceof Error ? error.message : String(error),
       });
-      logger.warn("Continuing without echo cancellation");
+      logger.warn('Continuing without echo cancellation');
       this.aecProcessor = null;
     }
   }
@@ -220,7 +220,7 @@ export class AudioService {
     }
 
     this.isRunning = false;
-    logger.info("Audio service stopped");
+    logger.info('Audio service stopped');
   }
 
   /**
@@ -270,17 +270,4 @@ export class AudioService {
     }
     return {};
   }
-}
-
-// Singleton instance
-let audioServiceInstance: AudioService | null = null;
-
-/**
- * Get the audio service singleton
- */
-export function getAudioService(): AudioService {
-  if (!audioServiceInstance) {
-    audioServiceInstance = new AudioService();
-  }
-  return audioServiceInstance;
 }

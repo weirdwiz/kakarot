@@ -63,7 +63,19 @@ const drawWave = () => {
   requestAnimationFrame(drawWave);
 };
 
-const kakarot = (window as any).kakarot;
+const kakarot = (
+  window as unknown as {
+    kakarot?: {
+      indicator?: {
+        onAudioAmplitude?: (cb: (level: number) => void) => void;
+        dragMove?: (x: number, y: number) => void;
+        dragEnd?: () => void;
+        dragStart?: (x: number, y: number) => void;
+        clicked?: () => void;
+      };
+    };
+  }
+).kakarot;
 if (kakarot?.indicator?.onAudioAmplitude) {
   kakarot.indicator.onAudioAmplitude((level: number) => {
     audioLevel = Math.max(0, Math.min(1, level));

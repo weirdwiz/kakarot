@@ -51,7 +51,6 @@ export class SalesforceService {
   private codeVerifier: string | null = null;
 
   constructor(
-    // ✅ FIXED: Hardcoded Consumer Key to resolve "invalid_client_id"
     clientId: string = '3MVG9rZjd7MXFdLgBktz_5oACAAZtV8Ivsn5B57QngtICKtZ_xNj8DD16Al4qkJrg8K3gEOF.qRMnuPE0waK9',
     redirectUri: string = 'http://localhost:3000/oauth/salesforce'
   ) {
@@ -60,26 +59,22 @@ export class SalesforceService {
   }
 
   /**
-   * 1. Generate code verifier and challenge for PKCE (Security)
+   * Generate code verifier and challenge for PKCE
    */
   private generatePKCE(): { codeVerifier: string; codeChallenge: string } {
     const codeVerifier = crypto.randomBytes(32).toString('base64url');
-    const codeChallenge = crypto
-      .createHash('sha256')
-      .update(codeVerifier)
-      .digest('base64url');
+    const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
 
     return { codeVerifier, codeChallenge };
   }
 
   /**
-   * 2. Get the Authorization URL
-   * Opens in the user's browser
+   * Get the Authorization URL (opens in user's browser)
    */
   public getAuthorizationUrl(state?: string): string {
     const scopes = ['api', 'refresh_token', 'id', 'profile', 'email'];
     const { codeVerifier, codeChallenge } = this.generatePKCE();
-    
+
     // Store verifier locally to send to backend later
     this.codeVerifier = codeVerifier;
 
@@ -94,14 +89,13 @@ export class SalesforceService {
     });
 
     const url = `https://login.salesforce.com/services/oauth2/authorize?${params.toString()}`;
-    
+
     logger.info('Generated Salesforce authorization URL', { redirectUri: this.redirectUri });
     return url;
   }
 
   /**
-   * 3. Exchange Code for Token (via Treeto Backend)
-   * Keeps Client Secret secure on the server
+   * Exchange authorization code for token via backend
    */
   public async exchangeCodeForToken(code: string): Promise<SalesforceOAuthToken> {
     try {
@@ -143,7 +137,6 @@ export class SalesforceService {
 
       this.codeVerifier = null; // Cleanup
       return token;
-
     } catch (error) {
       this.codeVerifier = null;
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -153,7 +146,7 @@ export class SalesforceService {
   }
 
   /**
-   * 4. Refresh Token (via Treeto Backend)
+   * Refresh an expired access token via backend
    */
   public async refreshAccessToken(
     refreshToken: string,
@@ -161,7 +154,7 @@ export class SalesforceService {
   ): Promise<SalesforceOAuthToken> {
     try {
       const backendEndpoint = `${BACKEND_BASE_URL}/api/auth/salesforce`;
-      
+
       const response = await fetch(backendEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -174,7 +167,7 @@ export class SalesforceService {
       if (!response.ok) throw new Error(await response.text());
 
       const data = await response.json();
-      
+
       return {
         accessToken: data.access_token,
         refreshToken: data.refresh_token || refreshToken,
@@ -189,8 +182,7 @@ export class SalesforceService {
   }
 
   /**
-   * 5. Search for Contact/Lead by Email
-   * ✅ FIXED: Explicit casting to 'string' to solve TypeScript errors
+   * Search for Contact/Lead by Email
    */
   public async searchContactByEmail(
     email: string,
@@ -201,7 +193,8 @@ export class SalesforceService {
       const conn = new jsforce.Connection({ accessToken, instanceUrl });
 
       // Search Contacts
-      const contacts = await conn.sobject('Contact')
+      const contacts = await conn
+        .sobject('Contact')
         .find({ Email: email }, { Id: 1, Email: 1, FirstName: 1, LastName: 1, Name: 1 })
         .limit(1)
         .execute();
@@ -219,7 +212,8 @@ export class SalesforceService {
       }
 
       // Search Leads
-      const leads = await conn.sobject('Lead')
+      const leads = await conn
+        .sobject('Lead')
         .find({ Email: email }, { Id: 1, Email: 1, FirstName: 1, LastName: 1, Name: 1 })
         .limit(1)
         .execute();
@@ -244,8 +238,7 @@ export class SalesforceService {
   }
 
   /**
-   * 6. DEEP SCRAPE: Get Company & Deal Context
-   * Retrieves Account info and open Opportunities for the AI.
+   * Get company and deal context for a contact
    */
   public async getContactContext(
     contactId: string,
@@ -257,7 +250,9 @@ export class SalesforceService {
       const context: SalesforceContext = { opportunities: [] };
 
       // Query 1: Get Account Details via the Contact
-      const contactQuery = await conn.query<{ Account: { Name: string; Industry: string; Website: string } }>(
+      const contactQuery = await conn.query<{
+        Account: { Name: string; Industry: string; Website: string };
+      }>(
         `SELECT Account.Name, Account.Industry, Account.Website FROM Contact WHERE Id = '${contactId}' LIMIT 1`
       );
 
@@ -267,7 +262,9 @@ export class SalesforceService {
       }
 
       // Query 2: Get Open Deals (Opportunities)
-      const oppQuery = await conn.query<{ Opportunity: { Name: string; StageName: string; Amount: number; CloseDate: string } }>(
+      const oppQuery = await conn.query<{
+        Opportunity: { Name: string; StageName: string; Amount: number; CloseDate: string };
+      }>(
         `SELECT Opportunity.Name, Opportunity.StageName, Opportunity.Amount, Opportunity.CloseDate 
          FROM OpportunityContactRole 
          WHERE ContactId = '${contactId}' 
@@ -276,12 +273,11 @@ export class SalesforceService {
       );
 
       if (oppQuery.records.length > 0) {
-        context.opportunities = oppQuery.records.map(r => r.Opportunity);
+        context.opportunities = oppQuery.records.map((r) => r.Opportunity);
         logger.info('Found Salesforce Opportunities', { count: context.opportunities.length });
       }
 
       return context;
-
     } catch (error) {
       logger.warn('Failed to fetch deep context', { error });
       return { opportunities: [] };
@@ -301,7 +297,9 @@ export class SalesforceService {
       try {
         const contact = await this.searchContactByEmail(email, accessToken, instanceUrl);
         if (contact) results.push(contact);
-      } catch { /* ignore individual failures */ }
+      } catch {
+        /* ignore individual failures */
+      }
     }
     return results;
   }
@@ -337,10 +335,6 @@ export class SalesforceService {
   ): Promise<void> {
     const conn = new jsforce.Connection({ accessToken, instanceUrl });
     await conn.sobject('Task').update({ Id: taskId, WhoId: contactId });
-  }
-
-  public getConnection(accessToken: string, instanceUrl: string): jsforce.Connection {
-    return new jsforce.Connection({ accessToken, instanceUrl });
   }
 
   /**
@@ -511,82 +505,7 @@ export class SalesforceService {
   }
 
   /**
-   * Get recent activities (Tasks, Events) for a contact
-   */
-  public async getActivitiesForContact(
-    contactId: string,
-    accessToken: string,
-    instanceUrl: string,
-    limit: number = 20
-  ): Promise<Array<{ id: string; type: string; subject: string; date: string; description?: string }>> {
-    try {
-      const conn = new jsforce.Connection({ accessToken, instanceUrl });
-      const activities: Array<{ id: string; type: string; subject: string; date: string; description?: string }> = [];
-
-      // Query Tasks
-      const taskQuery = await conn.query<{
-        Id: string;
-        Subject: string;
-        Description: string;
-        ActivityDate: string;
-        Type: string;
-      }>(
-        `SELECT Id, Subject, Description, ActivityDate, Type
-         FROM Task
-         WHERE WhoId = '${contactId}'
-         ORDER BY ActivityDate DESC
-         LIMIT ${limit}`
-      );
-
-      for (const task of taskQuery.records) {
-        activities.push({
-          id: task.Id as string,
-          type: (task.Type as string) || 'Task',
-          subject: (task.Subject as string) || 'No Subject',
-          date: task.ActivityDate as string,
-          description: task.Description ? (task.Description as string).substring(0, 200) : undefined,
-        });
-      }
-
-      // Query Events
-      const eventQuery = await conn.query<{
-        Id: string;
-        Subject: string;
-        Description: string;
-        StartDateTime: string;
-        Type: string;
-      }>(
-        `SELECT Id, Subject, Description, StartDateTime, Type
-         FROM Event
-         WHERE WhoId = '${contactId}'
-         ORDER BY StartDateTime DESC
-         LIMIT ${limit}`
-      );
-
-      for (const event of eventQuery.records) {
-        activities.push({
-          id: event.Id as string,
-          type: (event.Type as string) || 'Event',
-          subject: (event.Subject as string) || 'No Subject',
-          date: event.StartDateTime as string,
-          description: event.Description ? (event.Description as string).substring(0, 200) : undefined,
-        });
-      }
-
-      // Sort by date descending
-      activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-      logger.info('Fetched Salesforce activities', { contactId, count: activities.length });
-      return activities.slice(0, limit);
-    } catch (error) {
-      logger.error('Failed to fetch Salesforce activities', { contactId, error });
-      return [];
-    }
-  }
-
-  /**
    * Get comprehensive contact data including deals, emails, and notes
-   * This is the main method for prep data collection
    */
   public async getContactData(
     email: string,
@@ -609,7 +528,7 @@ export class SalesforceService {
       ]);
 
       // Transform opportunities to CRMSnapshot format
-      const deals: CRMSnapshot[] = sfContext.opportunities.map(opp => ({
+      const deals: CRMSnapshot[] = sfContext.opportunities.map((opp) => ({
         dealId: undefined, // Salesforce doesn't return ID in current query
         dealName: opp.Name,
         dealValue: opp.Amount,
@@ -624,7 +543,8 @@ export class SalesforceService {
 
       try {
         const conn = new jsforce.Connection({ accessToken, instanceUrl });
-        const contactDetails = await conn.sobject('Contact')
+        const contactDetails = await conn
+          .sobject('Contact')
           .find({ Id: contact.id }, { Title: 1 })
           .limit(1)
           .execute();
@@ -646,13 +566,12 @@ export class SalesforceService {
 
       // Find last activity date
       const allDates = [
-        ...emails.map(e => new Date(e.date).getTime()),
-        ...notes.map(n => new Date(n.date).getTime()),
-      ].filter(d => !isNaN(d));
+        ...emails.map((e) => new Date(e.date).getTime()),
+        ...notes.map((n) => new Date(n.date).getTime()),
+      ].filter((d) => !isNaN(d));
 
-      const lastActivityDate = allDates.length > 0
-        ? new Date(Math.max(...allDates)).toISOString()
-        : undefined;
+      const lastActivityDate =
+        allDates.length > 0 ? new Date(Math.max(...allDates)).toISOString() : undefined;
 
       const contactData: CRMContactData = {
         contactId: contact.id,

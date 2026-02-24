@@ -1,9 +1,23 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { AppSettings, CustomMeetingType, StandardMeetingTypeOverride } from '@shared/types';
 import {
-  Plus, X, Settings, Sparkles, Users, Rocket, Code, FileText, Target, Calendar,
-  Edit, RotateCcw, Building2, Globe, ChevronDown, ChevronUp
+  Plus,
+  X,
+  Settings,
+  Sparkles,
+  Users,
+  Rocket,
+  Code,
+  FileText,
+  Target,
+  Calendar,
+  Edit,
+  RotateCcw,
+  Building2,
+  Globe,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { toast } from '../stores/toastStore';
 
@@ -16,7 +30,7 @@ const DEFAULT_STANDARD_TYPES = [
     icon: Users,
     prompt: 'Prepare for a focused one-on-one meeting with clear objectives and talking points.',
     defaultRoles: ['Manager', 'Direct Report'],
-    defaultObjectives: ['Discuss progress', 'Address concerns', 'Set goals']
+    defaultObjectives: ['Discuss progress', 'Address concerns', 'Set goals'],
   },
   {
     id: 'kick-off',
@@ -25,7 +39,7 @@ const DEFAULT_STANDARD_TYPES = [
     icon: Rocket,
     prompt: 'Set the stage for a new project with goals, timelines, and team alignment.',
     defaultRoles: ['Project Lead', 'Team Members', 'Stakeholders'],
-    defaultObjectives: ['Define project scope', 'Assign responsibilities', 'Set timeline']
+    defaultObjectives: ['Define project scope', 'Assign responsibilities', 'Set timeline'],
   },
   {
     id: 'technical-sync',
@@ -34,7 +48,11 @@ const DEFAULT_STANDARD_TYPES = [
     icon: Code,
     prompt: 'Facilitate technical discussions with clear context and decision points.',
     defaultRoles: ['Tech Lead', 'Engineers', 'Architect'],
-    defaultObjectives: ['Review architecture', 'Discuss implementation', 'Make technical decisions']
+    defaultObjectives: [
+      'Review architecture',
+      'Discuss implementation',
+      'Make technical decisions',
+    ],
   },
   {
     id: 'status-update',
@@ -43,7 +61,7 @@ const DEFAULT_STANDARD_TYPES = [
     icon: FileText,
     prompt: 'Share project progress, blockers, and next steps effectively.',
     defaultRoles: ['Project Manager', 'Team Leads', 'Stakeholders'],
-    defaultObjectives: ['Share progress', 'Identify blockers', 'Align on next steps']
+    defaultObjectives: ['Share progress', 'Identify blockers', 'Align on next steps'],
   },
   {
     id: 'planning',
@@ -52,7 +70,7 @@ const DEFAULT_STANDARD_TYPES = [
     icon: Target,
     prompt: 'Organize strategic planning with clear priorities and action items.',
     defaultRoles: ['Product Manager', 'Engineering Lead', 'Design Lead'],
-    defaultObjectives: ['Prioritize backlog', 'Plan sprint', 'Estimate effort']
+    defaultObjectives: ['Prioritize backlog', 'Plan sprint', 'Estimate effort'],
   },
   {
     id: 'retrospective',
@@ -61,8 +79,8 @@ const DEFAULT_STANDARD_TYPES = [
     icon: Calendar,
     prompt: 'Facilitate constructive reflection on team processes and outcomes.',
     defaultRoles: ['Scrum Master', 'Team Members'],
-    defaultObjectives: ['Celebrate wins', 'Identify improvements', 'Create action items']
-  }
+    defaultObjectives: ['Celebrate wins', 'Identify improvements', 'Create action items'],
+  },
 ];
 
 type TabType = 'standard' | 'custom';
@@ -85,7 +103,7 @@ const emptyFormData: MeetingTypeFormData = {
   attendeeRoles: [],
   isExternal: false,
   objectives: [],
-  customPrompt: ''
+  customPrompt: '',
 };
 
 export default function InteractView() {
@@ -109,17 +127,23 @@ export default function InteractView() {
   }, [settings]);
 
   // Custom meeting objectives (v2 structured)
-  const customMeetingTypes = localSettings?.customMeetingTypesV2 || [];
-  const standardOverrides = localSettings?.standardMeetingTypeOverrides || [];
+  const customMeetingTypes = useMemo(
+    () => localSettings?.customMeetingTypesV2 || [],
+    [localSettings?.customMeetingTypesV2]
+  );
+  const standardOverrides = useMemo(
+    () => localSettings?.standardMeetingTypeOverrides || [],
+    [localSettings?.standardMeetingTypeOverrides]
+  );
 
   // Get override for standard type
   const getStandardOverride = (id: string) => {
-    return standardOverrides.find(o => o.id === id);
+    return standardOverrides.find((o) => o.id === id);
   };
 
   // Check if standard type has been modified
   const isStandardModified = (id: string) => {
-    return standardOverrides.some(o => o.id === id);
+    return standardOverrides.some((o) => o.id === id);
   };
 
   // Save custom meeting objective
@@ -139,12 +163,14 @@ export default function InteractView() {
         isExternal: formData.isExternal,
         objectives: formData.objectives,
         customPrompt: formData.customPrompt.trim() || undefined,
-        updatedAt: now
+        updatedAt: now,
       };
 
       nextSettings = {
         ...localSettings,
-        customMeetingTypesV2: customMeetingTypes.map(t => t.id === editingType.id ? updated : t)
+        customMeetingTypesV2: customMeetingTypes.map((t) =>
+          t.id === editingType.id ? updated : t
+        ),
       };
     } else {
       // Create new
@@ -157,12 +183,12 @@ export default function InteractView() {
         objectives: formData.objectives,
         customPrompt: formData.customPrompt.trim() || undefined,
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
       };
 
       nextSettings = {
         ...localSettings,
-        customMeetingTypesV2: [...customMeetingTypes, newType]
+        customMeetingTypesV2: [...customMeetingTypes, newType],
       };
     }
 
@@ -189,17 +215,18 @@ export default function InteractView() {
       attendeeRoles: formData.attendeeRoles.length > 0 ? formData.attendeeRoles : undefined,
       objectives: formData.objectives.length > 0 ? formData.objectives : undefined,
       customPrompt: formData.customPrompt.trim() || undefined,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
     };
 
-    const existingIndex = standardOverrides.findIndex(o => o.id === editingStandardId);
-    const newOverrides = existingIndex >= 0
-      ? standardOverrides.map(o => o.id === editingStandardId ? override : o)
-      : [...standardOverrides, override];
+    const existingIndex = standardOverrides.findIndex((o) => o.id === editingStandardId);
+    const newOverrides =
+      existingIndex >= 0
+        ? standardOverrides.map((o) => (o.id === editingStandardId ? override : o))
+        : [...standardOverrides, override];
 
     const nextSettings = {
       ...localSettings,
-      standardMeetingTypeOverrides: newOverrides
+      standardMeetingTypeOverrides: newOverrides,
     };
 
     setLocalSettings(nextSettings);
@@ -216,50 +243,56 @@ export default function InteractView() {
   }, [localSettings, editingStandardId, formData, standardOverrides, setSettings]);
 
   // Reset standard type to default
-  const resetStandardToDefault = useCallback(async (id: string) => {
-    if (!localSettings) return;
+  const resetStandardToDefault = useCallback(
+    async (id: string) => {
+      if (!localSettings) return;
 
-    const nextSettings = {
-      ...localSettings,
-      standardMeetingTypeOverrides: standardOverrides.filter(o => o.id !== id)
-    };
+      const nextSettings = {
+        ...localSettings,
+        standardMeetingTypeOverrides: standardOverrides.filter((o) => o.id !== id),
+      };
 
-    setLocalSettings(nextSettings);
+      setLocalSettings(nextSettings);
 
-    try {
-      await window.kakarot.settings.update(nextSettings);
-      setSettings(nextSettings);
-      toast.success('Reset to default');
-    } catch (error) {
-      console.error('Failed to save settings:', error);
-      toast.error('Failed to reset');
-    }
-  }, [localSettings, standardOverrides, setSettings]);
+      try {
+        await window.kakarot.settings.update(nextSettings);
+        setSettings(nextSettings);
+        toast.success('Reset to default');
+      } catch (error) {
+        console.error('Failed to save settings:', error);
+        toast.error('Failed to reset');
+      }
+    },
+    [localSettings, standardOverrides, setSettings]
+  );
 
   // Delete custom type
-  const deleteCustomType = useCallback(async (id: string) => {
-    if (!localSettings) return;
+  const deleteCustomType = useCallback(
+    async (id: string) => {
+      if (!localSettings) return;
 
-    const nextSettings = {
-      ...localSettings,
-      customMeetingTypesV2: customMeetingTypes.filter(t => t.id !== id)
-    };
+      const nextSettings = {
+        ...localSettings,
+        customMeetingTypesV2: customMeetingTypes.filter((t) => t.id !== id),
+      };
 
-    setLocalSettings(nextSettings);
+      setLocalSettings(nextSettings);
 
-    try {
-      await window.kakarot.settings.update(nextSettings);
-      setSettings(nextSettings);
-      toast.success('Meeting objective deleted');
-    } catch (error) {
-      console.error('Failed to save settings:', error);
-      toast.error('Failed to delete');
-    }
-  }, [localSettings, customMeetingTypes, setSettings]);
+      try {
+        await window.kakarot.settings.update(nextSettings);
+        setSettings(nextSettings);
+        toast.success('Meeting objective deleted');
+      } catch (error) {
+        console.error('Failed to save settings:', error);
+        toast.error('Failed to delete');
+      }
+    },
+    [localSettings, customMeetingTypes, setSettings]
+  );
 
   // Open modal for editing standard type
   const openStandardEdit = (id: string) => {
-    const defaultType = DEFAULT_STANDARD_TYPES.find(t => t.id === id);
+    const defaultType = DEFAULT_STANDARD_TYPES.find((t) => t.id === id);
     const override = getStandardOverride(id);
 
     if (defaultType) {
@@ -269,7 +302,7 @@ export default function InteractView() {
         attendeeRoles: override?.attendeeRoles || defaultType.defaultRoles,
         isExternal: false,
         objectives: override?.objectives || defaultType.defaultObjectives,
-        customPrompt: override?.customPrompt || defaultType.prompt
+        customPrompt: override?.customPrompt || defaultType.prompt,
       });
       setEditingStandardId(id);
       setShowCreateModal(true);
@@ -284,7 +317,7 @@ export default function InteractView() {
       attendeeRoles: type.attendeeRoles,
       isExternal: type.isExternal,
       objectives: type.objectives,
-      customPrompt: type.customPrompt || ''
+      customPrompt: type.customPrompt || '',
     });
     setEditingType(type);
     setShowCreateModal(true);
@@ -298,7 +331,6 @@ export default function InteractView() {
     setShowCreateModal(true);
   };
 
-  // Close modal
   const closeModal = () => {
     setShowCreateModal(false);
     setEditingType(null);
@@ -308,26 +340,30 @@ export default function InteractView() {
     setNewObjective('');
   };
 
-  // Add role
   const addRole = () => {
     if (newRole.trim() && !formData.attendeeRoles.includes(newRole.trim())) {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        attendeeRoles: [...prev.attendeeRoles, newRole.trim()]
+        attendeeRoles: [...prev.attendeeRoles, newRole.trim()],
       }));
       setNewRole('');
     }
   };
 
-  // Add objective
   const addObjective = () => {
     if (newObjective.trim() && !formData.objectives.includes(newObjective.trim())) {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        objectives: [...prev.objectives, newObjective.trim()]
+        objectives: [...prev.objectives, newObjective.trim()],
       }));
       setNewObjective('');
     }
+  };
+
+  const getModalTitle = (): string => {
+    if (editingStandardId) return 'Edit Standard Objective';
+    if (editingType) return 'Edit Meeting Objective';
+    return 'Create Meeting Objective';
   };
 
   if (!localSettings) {
@@ -350,10 +386,11 @@ export default function InteractView() {
           </div>
           <div>
             <h1 className="text-xl font-semibold text-white">Meeting Objectives</h1>
-            <p className="text-sm text-slate-400">Customize meeting objectives for better AI preparation</p>
+            <p className="text-sm text-slate-400">
+              Customize meeting objectives for better AI preparation
+            </p>
           </div>
         </div>
-
       </div>
 
       {/* Tab Navigation */}
@@ -426,7 +463,9 @@ export default function InteractView() {
                     <h3 className="text-white font-semibold mb-1 flex items-center gap-2">
                       {type.title}
                       {isModified && (
-                        <span className="text-xs px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded">Modified</span>
+                        <span className="text-xs px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded">
+                          Modified
+                        </span>
                       )}
                     </h3>
 
@@ -441,7 +480,11 @@ export default function InteractView() {
                         className="w-full flex items-center justify-between px-3 py-2 bg-[#0D0D0D] rounded-lg text-sm text-slate-400 hover:text-white transition-colors"
                       >
                         <span>View details</span>
-                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
                       </button>
 
                       {isExpanded && (
@@ -450,7 +493,10 @@ export default function InteractView() {
                             <p className="text-xs text-slate-500 mb-1">Roles</p>
                             <div className="flex flex-wrap gap-1">
                               {(override?.attendeeRoles || type.defaultRoles).map((role, i) => (
-                                <span key={i} className="px-2 py-0.5 bg-accent/20 text-accent rounded text-xs">
+                                <span
+                                  key={i}
+                                  className="px-2 py-0.5 bg-accent/20 text-accent rounded text-xs"
+                                >
                                   {role}
                                 </span>
                               ))}
@@ -460,7 +506,10 @@ export default function InteractView() {
                             <p className="text-xs text-slate-500 mb-1">Objectives</p>
                             <ul className="space-y-1">
                               {(override?.objectives || type.defaultObjectives).map((obj, i) => (
-                                <li key={i} className="text-slate-300 text-xs flex items-center gap-1">
+                                <li
+                                  key={i}
+                                  className="text-slate-300 text-xs flex items-center gap-1"
+                                >
                                   <Target className="w-3 h-3 text-cream" />
                                   {obj}
                                 </li>
@@ -494,7 +543,9 @@ export default function InteractView() {
                   <FileText className="w-12 h-12 text-slate-600" />
                 </div>
                 <p className="text-slate-400 mb-2">No custom meeting objectives yet</p>
-                <p className="text-slate-500 text-sm mb-6">Create meeting objectives tailored to your workflow</p>
+                <p className="text-slate-500 text-sm mb-6">
+                  Create meeting objectives tailored to your workflow
+                </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -531,11 +582,13 @@ export default function InteractView() {
                     {/* Badges - pushed to bottom */}
                     <div className="mt-4">
                       <div className="flex flex-wrap gap-2 mb-3">
-                        <span className={`text-xs px-2 py-1 rounded-full ${
-                          type.isExternal
-                            ? 'bg-blue-500/20 text-blue-300'
-                            : 'bg-cream/20 text-cream'
-                        }`}>
+                        <span
+                          className={`text-xs px-2 py-1 rounded-full ${
+                            type.isExternal
+                              ? 'bg-blue-500/20 text-blue-300'
+                              : 'bg-cream/20 text-cream'
+                          }`}
+                        >
                           {type.isExternal ? (
                             <span className="inline-flex items-center gap-1">
                               <Globe className="w-3 h-3" /> External
@@ -579,13 +632,7 @@ export default function InteractView() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-edge border border-white/10 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-white">
-                {editingStandardId
-                  ? 'Edit Standard Objective'
-                  : editingType
-                  ? 'Edit Meeting Objective'
-                  : 'Create Meeting Objective'}
-              </h3>
+              <h3 className="text-lg font-semibold text-white">{getModalTitle()}</h3>
               <button onClick={closeModal} className="p-2 hover:bg-white/5 rounded-lg">
                 <X className="w-5 h-5 text-slate-400" />
               </button>
@@ -599,7 +646,7 @@ export default function InteractView() {
                   <input
                     type="text"
                     value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                     placeholder="e.g., Customer Discovery Call"
                     className="w-full px-4 py-2 bg-[#0D0D0D] border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-accent-hover focus:outline-none"
                   />
@@ -611,7 +658,9 @@ export default function InteractView() {
                 <label className="block text-sm text-slate-400 mb-1">Description</label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, description: e.target.value }))
+                  }
                   placeholder="What is this meeting objective for?"
                   rows={2}
                   className="w-full px-4 py-2 bg-[#0D0D0D] border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-accent-hover focus:outline-none resize-none"
@@ -625,7 +674,7 @@ export default function InteractView() {
                   <div className="flex gap-3">
                     <button
                       type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, isExternal: false }))}
+                      onClick={() => setFormData((prev) => ({ ...prev, isExternal: false }))}
                       className={`flex-1 px-4 py-3 rounded-lg border flex items-center justify-center gap-2 transition-colors ${
                         !formData.isExternal
                           ? 'border-accent-hover bg-accent-hover/20 text-white'
@@ -637,7 +686,7 @@ export default function InteractView() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, isExternal: true }))}
+                      onClick={() => setFormData((prev) => ({ ...prev, isExternal: true }))}
                       className={`flex-1 px-4 py-3 rounded-lg border flex items-center justify-center gap-2 transition-colors ${
                         formData.isExternal
                           ? 'border-accent-hover bg-accent-hover/20 text-white'
@@ -656,12 +705,19 @@ export default function InteractView() {
                 <label className="block text-sm text-slate-400 mb-2">Typical Attendee Roles</label>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {formData.attendeeRoles.map((role, idx) => (
-                    <span key={idx} className="px-3 py-1 bg-accent/20 text-accent rounded-full text-sm flex items-center gap-1">
+                    <span
+                      key={idx}
+                      className="px-3 py-1 bg-accent/20 text-accent rounded-full text-sm flex items-center gap-1"
+                    >
                       {role}
-                      <button onClick={() => setFormData(prev => ({
-                        ...prev,
-                        attendeeRoles: prev.attendeeRoles.filter((_, i) => i !== idx)
-                      }))}>
+                      <button
+                        onClick={() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            attendeeRoles: prev.attendeeRoles.filter((_, i) => i !== idx),
+                          }))
+                        }
+                      >
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -694,10 +750,14 @@ export default function InteractView() {
                     <div key={idx} className="flex items-center gap-2">
                       <Target className="w-4 h-4 text-cream flex-shrink-0" />
                       <span className="flex-1 text-sm text-white">{obj}</span>
-                      <button onClick={() => setFormData(prev => ({
-                        ...prev,
-                        objectives: prev.objectives.filter((_, i) => i !== idx)
-                      }))}>
+                      <button
+                        onClick={() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            objectives: prev.objectives.filter((_, i) => i !== idx),
+                          }))
+                        }
+                      >
                         <X className="w-4 h-4 text-slate-400 hover:text-red-400" />
                       </button>
                     </div>
@@ -727,7 +787,9 @@ export default function InteractView() {
                 <label className="block text-sm text-slate-400 mb-1">AI Preparation Prompt</label>
                 <textarea
                   value={formData.customPrompt}
-                  onChange={(e) => setFormData(prev => ({ ...prev, customPrompt: e.target.value }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, customPrompt: e.target.value }))
+                  }
                   placeholder="Instructions for AI when preparing for this meeting objective..."
                   rows={3}
                   className="w-full px-4 py-2 bg-[#0D0D0D] border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-accent-hover focus:outline-none resize-none"

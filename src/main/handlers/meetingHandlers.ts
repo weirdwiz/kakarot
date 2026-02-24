@@ -8,6 +8,42 @@ import { createLogger } from '../core/logger';
 
 const logger = createLogger('MeetingHandlers');
 
+interface TranscriptSegmentLike {
+  id?: string;
+  text: string;
+  timestamp: number;
+  source: string;
+}
+
+function formatTranscriptForAI(
+  segments: TranscriptSegmentLike[],
+  opts?: { highlightId?: string }
+): string {
+  return segments
+    .map((s) => {
+      const speaker = s.source === 'mic' ? 'You' : 'Other';
+      const minutes = Math.floor(s.timestamp / 60000);
+      const seconds = Math.floor((s.timestamp % 60000) / 1000);
+      const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+      const marker = opts?.highlightId && s.id === opts.highlightId ? ' [TARGET SEGMENT]' : '';
+      return `[${timeStr}] ${speaker}: ${s.text}${marker}`;
+    })
+    .join('\n');
+}
+
+function stripMarkdownCodeBlock(response: string): string {
+  let cleaned = response.trim();
+  if (cleaned.startsWith('```json')) {
+    cleaned = cleaned.slice(7);
+  } else if (cleaned.startsWith('```')) {
+    cleaned = cleaned.slice(3);
+  }
+  if (cleaned.endsWith('```')) {
+    cleaned = cleaned.slice(0, -3);
+  }
+  return cleaned.trim();
+}
+
 export function registerMeetingHandlers(): void {
   const { meetingRepo, calloutService } = getContainer();
   const exportService = new ExportService();
@@ -51,73 +87,86 @@ export function registerMeetingHandlers(): void {
     return meetingRepo.findById(id);
   });
 
-  ipcMain.handle(IPC_CHANNELS.MEETINGS_UPDATE_ATTENDEES, async (_, id: string, attendeeEmails: string[]) => {
-    logger.info('Updating meeting attendees', { id, attendeeEmails });
-    const meeting = meetingRepo.findById(id);
-    if (!meeting) {
-      throw new Error('Meeting not found');
-    }
-    meetingRepo.updateAttendees(id, attendeeEmails);
-    const updated = meetingRepo.findById(id);
+  ipcMain.handle(
+    IPC_CHANNELS.MEETINGS_UPDATE_ATTENDEES,
+    async (_, id: string, attendeeEmails: string[]) => {
+      logger.info('Updating meeting attendees', { id, attendeeEmails });
+      const meeting = meetingRepo.findById(id);
+      if (!meeting) {
+        throw new Error('Meeting not found');
+      }
+      meetingRepo.updateAttendees(id, attendeeEmails);
+      const updated = meetingRepo.findById(id);
 
-    if (updated) {
-      const { settingsRepo } = getContainer();
-      const settings = settingsRepo.getSettings();
-      const hasNotes = Boolean(
-        updated.notesMarkdown || updated.notesPlain || updated.overview || updated.summary
-      );
+      if (updated) {
+        const { settingsRepo } = getContainer();
+        const settings = settingsRepo.getSettings();
+        const hasNotes = Boolean(
+          updated.notesMarkdown || updated.notesPlain || updated.overview || updated.summary
+        );
 
-      if (hasNotes && settings.crmNotesBehavior === 'always') {
-        try {
-          let activeCRM: 'salesforce' | 'hubspot' | null = null;
-          if (settings.crmConnections?.salesforce) {
-            activeCRM = 'salesforce';
-          } else if (settings.crmConnections?.hubspot) {
-            activeCRM = 'hubspot';
-          }
+        if (hasNotes && settings.crmNotesBehavior === 'always') {
+          try {
+            let activeCRM: 'salesforce' | 'hubspot' | null = null;
+            if (settings.crmConnections?.salesforce) {
+              activeCRM = 'salesforce';
+            } else if (settings.crmConnections?.hubspot) {
+              activeCRM = 'hubspot';
+            }
 
-          if (activeCRM && settings.crmConnections) {
-            const crmToken = settings.crmConnections[activeCRM as keyof typeof settings.crmConnections];
-            if (crmToken) {
-              const candidateEmails = (updated.attendeeEmails && updated.attendeeEmails.length > 0)
-                ? updated.attendeeEmails
-                : updated.participants;
-              const emails = (candidateEmails || [])
-                .map((email) => email.trim().toLowerCase())
-                .filter((email) => email.includes('@'));
+            if (activeCRM && settings.crmConnections) {
+              const crmToken =
+                settings.crmConnections[activeCRM as keyof typeof settings.crmConnections];
+              if (crmToken) {
+                const candidateEmails =
+                  updated.attendeeEmails && updated.attendeeEmails.length > 0
+                    ? updated.attendeeEmails
+                    : updated.participants;
+                const emails = (candidateEmails || [])
+                  .map((email) => email.trim().toLowerCase())
+                  .filter((email) => email.includes('@'));
 
-              if (emails.length > 0) {
-                const emailMatcher = new CRMEmailMatcher();
-                const noteSyncService = new CRMNoteSyncService();
-                const matches = await emailMatcher.matchEmailsToCRM(
-                  emails,
-                  activeCRM as 'salesforce' | 'hubspot',
-                  crmToken
-                );
+                if (emails.length > 0) {
+                  const emailMatcher = new CRMEmailMatcher();
+                  const noteSyncService = new CRMNoteSyncService();
+                  const matches = await emailMatcher.matchEmailsToCRM(
+                    emails,
+                    activeCRM as 'salesforce' | 'hubspot',
+                    crmToken
+                  );
 
-                if (matches.length > 0) {
-                  await noteSyncService.pushNotes(updated, matches, activeCRM as 'salesforce' | 'hubspot', crmToken);
-                  logger.info('Notes pushed to CRM after attendee update', {
-                    meetingId: updated.id,
-                    matchCount: matches.length,
-                  });
-                } else {
-                  logger.warn('No matching contacts found for attendee update CRM push', {
-                    meetingId: updated.id,
-                  });
+                  if (matches.length > 0) {
+                    await noteSyncService.pushNotes(
+                      updated,
+                      matches,
+                      activeCRM as 'salesforce' | 'hubspot',
+                      crmToken
+                    );
+                    logger.info('Notes pushed to CRM after attendee update', {
+                      meetingId: updated.id,
+                      matchCount: matches.length,
+                    });
+                  } else {
+                    logger.warn('No matching contacts found for attendee update CRM push', {
+                      meetingId: updated.id,
+                    });
+                  }
                 }
               }
             }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            logger.warn('Failed to push notes to CRM after attendee update', {
+              id,
+              error: message,
+            });
           }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Unknown error';
-          logger.warn('Failed to push notes to CRM after attendee update', { id, error: message });
         }
       }
-    }
 
-    return updated;
-  });
+      return updated;
+    }
+  );
 
   ipcMain.handle(IPC_CHANNELS.MEETING_SUMMARIZE, async (_, id: string) => {
     const meeting = meetingRepo.findById(id);
@@ -128,34 +177,31 @@ export function registerMeetingHandlers(): void {
     return summary;
   });
 
-  ipcMain.handle(
-    IPC_CHANNELS.MEETING_EXPORT,
-    async (_, id: string, format: 'markdown' | 'pdf') => {
-      const meeting = meetingRepo.findById(id);
-      if (!meeting) throw new Error('Meeting not found');
+  ipcMain.handle(IPC_CHANNELS.MEETING_EXPORT, async (_, id: string, format: 'markdown' | 'pdf') => {
+    const meeting = meetingRepo.findById(id);
+    if (!meeting) throw new Error('Meeting not found');
 
-      return exportService.exportMeeting(meeting, format);
+    return exportService.exportMeeting(meeting, format);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.MEETING_ASK_NOTES, async (_, meetingId: string, query: string) => {
+    const { aiProvider } = getContainer();
+    if (!aiProvider) {
+      throw new Error('AI provider not configured');
     }
-  );
 
-  ipcMain.handle(
-    IPC_CHANNELS.MEETING_ASK_NOTES,
-    async (_, meetingId: string, query: string) => {
-      const { aiProvider } = getContainer();
-      if (!aiProvider) {
-        throw new Error('AI provider not configured');
-      }
+    const meeting = meetingRepo.findById(meetingId);
+    if (!meeting) {
+      throw new Error('Meeting not found');
+    }
 
-      const meeting = meetingRepo.findById(meetingId);
-      if (!meeting) {
-        throw new Error('Meeting not found');
-      }
+    // Build context for the AI
+    const transcript = meeting.transcript
+      .map((s) => `${s.source === 'mic' ? 'You' : 'Other'}: ${s.text}`)
+      .join('\n');
+    const notes = meeting.notesMarkdown || meeting.overview || '';
 
-      // Build context for the AI
-      const transcript = meeting.transcript.map((s) => `${s.source === 'mic' ? 'You' : 'Other'}: ${s.text}`).join('\n');
-      const notes = meeting.notesMarkdown || meeting.overview || '';
-
-      const prompt = `You are a helpful meeting assistant. The user is asking about their meeting notes.
+    const prompt = `You are a helpful meeting assistant. The user is asking about their meeting notes.
 
 Meeting Title: ${meeting.title}
 Date: ${new Date(meeting.createdAt).toLocaleString()}
@@ -170,10 +216,9 @@ User Question: ${query}
 
 Provide a concise, helpful answer based on the meeting notes and transcript.`;
 
-      const response = await aiProvider.complete(prompt, 'gpt-4o');
-      return response;
-    }
-  );
+    const response = await aiProvider.complete(prompt, 'gpt-4o');
+    return response;
+  });
 
   // Transcript Deep Dive - analyze a specific segment with surrounding context
   ipcMain.handle(
@@ -197,27 +242,15 @@ Provide a concise, helpful answer based on the meeting notes and transcript.`;
 
       const targetSegment = meeting.transcript[segmentIndex];
 
-      // Get surrounding context (2 minutes before and after, roughly)
-      const contextWindowMs = 120000; // 2 minutes
+      const contextWindowMs = 120000;
       const startTime = Math.max(0, targetSegment.timestamp - contextWindowMs);
       const endTime = targetSegment.timestamp + contextWindowMs;
 
-      // Extract segments within the context window
       const contextSegments = meeting.transcript.filter(
         (s) => s.timestamp >= startTime && s.timestamp <= endTime
       );
 
-      // Format the transcript chunk for the AI
-      const transcriptChunk = contextSegments
-        .map((s) => {
-          const speaker = s.source === 'mic' ? 'You' : 'Other';
-          const minutes = Math.floor(s.timestamp / 60000);
-          const seconds = Math.floor((s.timestamp % 60000) / 1000);
-          const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-          const marker = s.id === segmentId ? ' [TARGET SEGMENT]' : '';
-          return `[${timeStr}] ${speaker}: ${s.text}${marker}`;
-        })
-        .join('\n');
+      const transcriptChunk = formatTranscriptForAI(contextSegments, { highlightId: segmentId });
 
       const prompt = `You are analyzing a specific moment in a meeting transcript. The user wants to understand the context, exact quote, and implications of a particular segment.
 
@@ -266,33 +299,20 @@ Return ONLY the JSON object, no additional text or markdown.`;
     }
   );
 
-  // Notes Deep Dive - analyze a note/bullet point by finding relevant transcript context
   ipcMain.handle(
     IPC_CHANNELS.NOTES_DEEP_DIVE,
     async (_, meetingId: string, noteContent: string) => {
       const { aiProvider, meetingRepo } = getContainer();
-
-      console.log('=== DEEP DIVE START ===');
-      console.log('Meeting ID:', meetingId);
-      console.log('Note Content:', noteContent);
-
       if (!aiProvider) {
-        console.log('ERROR: AI provider not configured');
         throw new Error('AI provider not configured');
       }
 
       const meeting = meetingRepo.findById(meetingId);
       if (!meeting) {
-        console.log('ERROR: Meeting not found');
         throw new Error('Meeting not found');
       }
 
-      console.log('Meeting found:', meeting.title);
-      console.log('Transcript segments:', meeting.transcript?.length || 0);
-
-      // Handle empty transcript
       if (!meeting.transcript || meeting.transcript.length === 0) {
-        console.log('ERROR: No transcript available');
         return {
           context: 'No transcript available for this meeting.',
           verbatimQuote: noteContent,
@@ -301,18 +321,7 @@ Return ONLY the JSON object, no additional text or markdown.`;
         };
       }
 
-      // Format the full transcript for context
-      const fullTranscript = meeting.transcript
-        .map((s) => {
-          const speaker = s.source === 'mic' ? 'You' : 'Other';
-          const minutes = Math.floor(s.timestamp / 60000);
-          const seconds = Math.floor((s.timestamp % 60000) / 1000);
-          const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-          return `[${timeStr}] ${speaker}: ${s.text}`;
-        })
-        .join('\n');
-
-      console.log('DEEP DIVE INPUT (transcript length):', fullTranscript.length, 'chars');
+      const fullTranscript = formatTranscriptForAI(meeting.transcript);
 
       const prompt = `You are analyzing a specific note/bullet point from AI-generated meeting notes. The user wants to understand where this note came from in the original transcript and its full context.
 
@@ -339,32 +348,7 @@ Return ONLY the JSON object, no additional text or markdown.`;
 
       try {
         const response = await aiProvider.complete(prompt, 'gpt-4o');
-
-        console.log('DEEP DIVE RAW AI RESPONSE:', response);
-
-        // Strip markdown code blocks if present (```json ... ``` or ``` ... ```)
-        let cleanedResponse = response.trim();
-
-        // Remove ```json or ``` at the start
-        if (cleanedResponse.startsWith('```json')) {
-          cleanedResponse = cleanedResponse.slice(7);
-        } else if (cleanedResponse.startsWith('```')) {
-          cleanedResponse = cleanedResponse.slice(3);
-        }
-
-        // Remove ``` at the end
-        if (cleanedResponse.endsWith('```')) {
-          cleanedResponse = cleanedResponse.slice(0, -3);
-        }
-
-        cleanedResponse = cleanedResponse.trim();
-
-        console.log('DEEP DIVE CLEANED RESPONSE:', cleanedResponse);
-
-        // Parse the JSON response
-        const parsed = JSON.parse(cleanedResponse);
-
-        console.log('DEEP DIVE PARSED:', parsed);
+        const parsed = JSON.parse(stripMarkdownCodeBlock(response));
 
         return {
           context: parsed.context || '',
@@ -373,11 +357,10 @@ Return ONLY the JSON object, no additional text or markdown.`;
           noteContent: noteContent,
         };
       } catch (parseError) {
-        console.log('DEEP DIVE PARSE ERROR:', parseError);
         logger.error('Failed to parse notes deep dive response', {
-          errorMessage: parseError instanceof Error ? parseError.message : 'Unknown error',
+          error: parseError instanceof Error ? parseError.message : 'Unknown error',
           meetingId,
-          noteContent
+          noteContent,
         });
         return {
           context: 'Unable to generate context analysis.',
@@ -453,8 +436,12 @@ Return ONLY the JSON object, no additional text or markdown.`;
 
       // Update meeting with new note entries
       meetingRepo.updateNoteEntries(meetingId, noteEntries);
-      
-      logger.info('Saved manual notes for meeting', { meetingId, entryId: newEntry.id, contentLength: content.length });
+
+      logger.info('Saved manual notes for meeting', {
+        meetingId,
+        entryId: newEntry.id,
+        contentLength: content.length,
+      });
     }
   );
 

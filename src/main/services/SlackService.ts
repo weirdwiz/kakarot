@@ -38,7 +38,7 @@ export class SlackService {
       client_id: this.clientId,
       scope: scopes.join(' '), // Slack uses space separation
       redirect_uri: this.redirectUri,
-      response_type: 'code'
+      response_type: 'code',
     });
 
     return `https://slack.com/oauth/v2/authorize?${params.toString()}`;
@@ -58,7 +58,7 @@ export class SlackService {
       if (!response.ok) throw new Error('Backend exchange failed');
 
       const data = await response.json();
-      
+
       // Slack V2 response structure
       return {
         accessToken: data.authed_user.access_token, // User token
@@ -78,17 +78,20 @@ export class SlackService {
   public async getChannels(accessToken: string): Promise<SlackChannel[]> {
     try {
       // Fetch public channels
-      const response = await fetch('https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=100', {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      
+      const response = await fetch(
+        'https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=100',
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+
       const data = await response.json();
       if (!data.ok) throw new Error(data.error);
 
-      return data.channels.map((c: any) => ({
+      return data.channels.map((c: { id: string; name: string; is_private: boolean }) => ({
         id: c.id,
         name: c.name,
-        isPrivate: c.is_private
+        isPrivate: c.is_private,
       }));
     } catch (error) {
       logger.error('Failed to fetch Slack channels', { error });
@@ -104,27 +107,27 @@ export class SlackService {
       const response = await fetch('https://slack.com/api/chat.postMessage', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           channel: channelId,
           text: noteText, // Fallback text
           blocks: [
             {
-              type: "section",
+              type: 'section',
               text: {
-                type: "mrkdwn",
-                text: `*New Note from Treeto* 🌳\n\n${noteText}`
-              }
-            }
-          ]
-        })
+                type: 'mrkdwn',
+                text: `*New Note from Treeto* 🌳\n\n${noteText}`,
+              },
+            },
+          ],
+        }),
       });
 
       const data = await response.json();
       if (!data.ok) throw new Error(data.error);
-      
+
       logger.info('Note sent to Slack successfully');
     } catch (error) {
       logger.error('Failed to send Slack note', { error });

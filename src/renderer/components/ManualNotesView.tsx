@@ -13,7 +13,12 @@ interface ManualNotesViewProps {
   onStartRecording?: () => void;
 }
 
-export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, onStartRecording }: ManualNotesViewProps) {
+export default function ManualNotesView({
+  meetingId,
+  onSelectTab,
+  onSaveNotes,
+  onStartRecording,
+}: ManualNotesViewProps) {
   const { recordingContext, calendarPreview, setInitialPrepQuery } = useAppStore();
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -25,20 +30,20 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
   const initialLoadRef = useRef(false);
 
   const meeting = recordingContext || calendarPreview;
-  
+
   // Load existing notes on mount
   useEffect(() => {
     const loadNotes = async () => {
       if (!meetingId || initialLoadRef.current) return;
-      
+
       try {
         const meetingData = await window.kakarot.meetings.get(meetingId);
         if (meetingData?.noteEntries) {
           // Find the most recent manual note
           const manualNotes = meetingData.noteEntries
-            .filter(entry => entry.type === 'manual')
+            .filter((entry) => entry.type === 'manual')
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          
+
           if (manualNotes.length > 0) {
             setNotes(manualNotes[0].content);
             setLastSaved(new Date(manualNotes[0].createdAt));
@@ -49,16 +54,18 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
         console.error('Failed to load existing notes:', error);
       }
     };
-    
+
     loadNotes();
   }, [meetingId]);
-  
+
   const meetingTitle = meeting?.title || 'Untitled Meeting';
-  const meetingTime = meeting ? new Date(meeting.start).toLocaleString([], { 
-    weekday: 'long',
-    hour: '2-digit',
-    minute: '2-digit'
-  }) : '';
+  const meetingTime = meeting
+    ? new Date(meeting.start).toLocaleString([], {
+        weekday: 'long',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
 
   const getMeetingPlatform = () => {
     if (!meeting?.location) return null;
@@ -66,9 +73,17 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
 
     if (location.includes('zoom.us') || location.includes('zoom.com') || location.includes('zoom'))
       return { name: 'Zoom', type: 'zoom', url: meeting.location };
-    if (location.includes('meet.google') || location.includes('google.com/meet') || location.includes('meet'))
+    if (
+      location.includes('meet.google') ||
+      location.includes('google.com/meet') ||
+      location.includes('meet')
+    )
       return { name: 'Google Meet', type: 'google-meet', url: meeting.location };
-    if (location.includes('teams.microsoft') || location.includes('teams.live.com') || location.includes('teams'))
+    if (
+      location.includes('teams.microsoft') ||
+      location.includes('teams.live.com') ||
+      location.includes('teams')
+    )
       return { name: 'Microsoft Teams', type: 'teams', url: meeting.location };
     if (location.includes('webex') || location.includes('cisco'))
       return { name: 'Cisco Webex', type: 'webex', url: meeting.location };
@@ -132,26 +147,23 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
   const renderPlatformLogo = (type: string) => {
     switch (type) {
       case 'google-meet':
-        return (
-          <img
-            src={googleMeetPng}
-            alt="Google Meet"
-            className="w-7 h-7 object-contain"
-          />
-        );
+        return <img src={googleMeetPng} alt="Google Meet" className="w-7 h-7 object-contain" />;
       case 'teams':
         return (
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M19.5 3H4.5C3.67157 3 3 3.67157 3 4.5V19.5C3 20.3284 3.67157 21 4.5 21H19.5C20.3284 21 21 20.3284 21 19.5V4.5C21 3.67157 20.3284 3 19.5 3Z" fill="#5059C9"/>
-            <circle cx="12" cy="12" r="4" fill="white"/>
-            <path d="M10 10H14V14H10V10Z" fill="#5059C9"/>
+            <path
+              d="M19.5 3H4.5C3.67157 3 3 3.67157 3 4.5V19.5C3 20.3284 3.67157 21 4.5 21H19.5C20.3284 21 21 20.3284 21 19.5V4.5C21 3.67157 20.3284 3 19.5 3Z"
+              fill="#5059C9"
+            />
+            <circle cx="12" cy="12" r="4" fill="white" />
+            <path d="M10 10H14V14H10V10Z" fill="#5059C9" />
           </svg>
         );
       case 'zoom':
         return (
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <rect x="3" y="5" width="18" height="14" rx="2" fill="#2D8CFF"/>
-            <path d="M8 10L14 13L8 16V10Z" fill="white"/>
+            <rect x="3" y="5" width="18" height="14" rx="2" fill="#2D8CFF" />
+            <path d="M8 10L14 13L8 16V10Z" fill="white" />
           </svg>
         );
       default:
@@ -164,25 +176,28 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
     switch (type) {
       case 'google':
         return (
-          <img
-            src={googleCalendarPng}
-            alt="Google Calendar"
-            className="w-7 h-7 object-contain"
-          />
+          <img src={googleCalendarPng} alt="Google Calendar" className="w-7 h-7 object-contain" />
         );
       case 'outlook':
         return (
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <rect x="3" y="3" width="18" height="18" rx="2" fill="#0078D4"/>
-            <path d="M12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8Z" fill="white"/>
+            <rect x="3" y="3" width="18" height="18" rx="2" fill="#0078D4" />
+            <path
+              d="M12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8Z"
+              fill="white"
+            />
           </svg>
         );
       case 'icloud':
         return (
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <rect x="3" y="3" width="18" height="18" rx="2" fill="#E63946"/>
-            <text x="12" y="10" textAnchor="middle" fill="white" fontSize="7" fontWeight="600">WED</text>
-            <text x="12" y="17" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">28</text>
+            <rect x="3" y="3" width="18" height="18" rx="2" fill="#E63946" />
+            <text x="12" y="10" textAnchor="middle" fill="white" fontSize="7" fontWeight="600">
+              WED
+            </text>
+            <text x="12" y="17" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">
+              28
+            </text>
           </svg>
         );
       default:
@@ -191,20 +206,23 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
   };
 
   // Autosave function
-  const saveNotes = useCallback(async (content: string) => {
-    if (!content.trim() || !meetingId) return;
+  const saveNotes = useCallback(
+    async (content: string) => {
+      if (!content.trim() || !meetingId) return;
 
-    setIsSaving(true);
-    try {
-      await window.kakarot.meetings.saveManualNotes(meetingId, content);
-      setLastSaved(new Date());
-      onSaveNotes?.();
-    } catch (error) {
-      console.error('Failed to autosave notes:', error);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [meetingId, onSaveNotes]);
+      setIsSaving(true);
+      try {
+        await window.kakarot.meetings.saveManualNotes(meetingId, content);
+        setLastSaved(new Date());
+        onSaveNotes?.();
+      } catch (error) {
+        console.error('Failed to autosave notes:', error);
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [meetingId, onSaveNotes]
+  );
 
   // Debounced autosave on notes change
   useEffect(() => {
@@ -236,13 +254,15 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
       if (
-        timePopoverRef.current && !timePopoverRef.current.contains(target) &&
-        timeButtonRef.current && !timeButtonRef.current.contains(target)
+        timePopoverRef.current &&
+        !timePopoverRef.current.contains(target) &&
+        timeButtonRef.current &&
+        !timeButtonRef.current.contains(target)
       ) {
         setShowTimePopover(false);
       }
     };
-    
+
     if (showTimePopover) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -250,10 +270,22 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
     return undefined;
   }, [showTimePopover]);
 
-  const duration = meeting ? Math.round((meeting.end.getTime() - meeting.start.getTime()) / (1000 * 60)) : 0;
-  const formattedDate = meeting ? new Date(meeting.start).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : '';
-  const formattedTime = meeting ? new Date(meeting.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-  const endTime = meeting ? new Date(meeting.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+  const duration = meeting
+    ? Math.round((meeting.end.getTime() - meeting.start.getTime()) / (1000 * 60))
+    : 0;
+  const formattedDate = meeting
+    ? new Date(meeting.start).toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+      })
+    : '';
+  const formattedTime = meeting
+    ? new Date(meeting.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '';
+  const endTime = meeting
+    ? new Date(meeting.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '';
 
   return (
     <div className="flex-1 h-full bg-gradient-to-br from-surface via-[#0D0D0F] to-[#0C0C14] text-slate-ink dark:text-cream flex flex-col overflow-hidden">
@@ -263,14 +295,12 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
           <div className="flex-shrink-0 overflow-visible relative z-10">
             <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4 sm:p-5 overflow-visible">
               {/* Meeting Title */}
-              <h1 className="text-2xl font-semibold text-white mb-3">
-                {meetingTitle}
-              </h1>
+              <h1 className="text-2xl font-semibold text-white mb-3">{meetingTitle}</h1>
 
               {/* Meeting Metadata */}
               <div className="flex items-center gap-3 text-sm flex-wrap relative">
                 <div className="relative">
-                  <button 
+                  <button
                     ref={timeButtonRef}
                     onClick={() => setShowTimePopover(!showTimePopover)}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 border border-white/10 hover:bg-white/15 transition text-slate-200"
@@ -304,10 +334,14 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
                         </div>
                         <div>
                           <p className="text-xs text-slate-400 uppercase font-medium mb-1">Time</p>
-                          <p className="text-sm text-white font-medium">{formattedTime} – {endTime}</p>
+                          <p className="text-sm text-white font-medium">
+                            {formattedTime} – {endTime}
+                          </p>
                         </div>
                         <div>
-                          <p className="text-xs text-slate-400 uppercase font-medium mb-1">Duration</p>
+                          <p className="text-xs text-slate-400 uppercase font-medium mb-1">
+                            Duration
+                          </p>
                           <p className="text-sm text-white font-medium">{duration} minutes</p>
                         </div>
 
@@ -328,10 +362,17 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
 
                         {/* Calendar Provider */}
                         <div className="pt-2 border-t border-slate-800">
-                          <button 
+                          <button
                             onClick={handleOpenCalendar}
                             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-input hover:bg-edge text-white text-xs font-medium rounded-lg transition"
-                            style={calendarProvider.type !== 'default' ? { backgroundColor: `${calendarProvider.color}20`, borderColor: calendarProvider.color } : undefined}
+                            style={
+                              calendarProvider.type !== 'default'
+                                ? {
+                                    backgroundColor: `${calendarProvider.color}20`,
+                                    borderColor: calendarProvider.color,
+                                  }
+                                : undefined
+                            }
                           >
                             <div className="w-7 h-7 flex items-center justify-center">
                               {calendarProvider.type === 'default' ? (
@@ -347,15 +388,13 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
                     </div>
                   )}
                 </div>
-                
-                <AttendeesList 
+
+                <AttendeesList
                   attendeeEmails={
                     meeting?.attendees
-                      ? meeting.attendees.map((a) =>
-                          typeof a === 'string' ? a : a.email
-                        )
+                      ? meeting.attendees.map((a) => (typeof a === 'string' ? a : a.email))
                       : []
-                  } 
+                  }
                 />
               </div>
             </div>
@@ -377,16 +416,15 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
               <div className="flex-shrink-0 pt-4 mt-4 border-t border-white/10 flex items-center justify-between">
                 <div className="flex items-center gap-3 text-xs text-slate-400">
                   <span>{notes.length} characters</span>
-                  {isSaving && (
-                    <span className="text-amber-400">Saving...</span>
-                  )}
+                  {isSaving && <span className="text-amber-400">Saving...</span>}
                   {!isSaving && lastSaved && (
                     <span className="text-emerald-400">
-                      Saved {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      Saved{' '}
+                      {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   )}
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   {onStartRecording && (
                     <button
@@ -398,25 +436,25 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
                   )}
                   <button
                     onClick={() => {
-                      // Build attendee names for the prep query
-                      const attendeeNames = (meeting?.attendees as (string | CalendarAttendee)[] | undefined)
+                      const nameFromEmail = (email: string) => {
+                        const localPart = email.split('@')[0];
+                        return localPart
+                          .split(/[._-]/)
+                          .filter((part: string) => part.length > 0)
+                          .map(
+                            (part: string) =>
+                              part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+                          )
+                          .join(' ');
+                      };
+
+                      const attendeeNames = (
+                        meeting?.attendees as (string | CalendarAttendee)[] | undefined
+                      )
                         ?.map((a) => {
-                          if (typeof a === 'string') {
-                            // If it's just an email, extract name from email
-                            const localPart = a.split('@')[0];
-                            return localPart.split(/[._-]/)
-                              .filter((part: string) => part.length > 0)
-                              .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-                              .join(' ');
-                          }
-                          // If it's an object with name, prefer that
+                          if (typeof a === 'string') return nameFromEmail(a);
                           if (a.name) return a.name;
-                          // Fallback to extracting from email
-                          const localPart = a.email.split('@')[0];
-                          return localPart.split(/[._-]/)
-                            .filter((part: string) => part.length > 0)
-                            .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-                            .join(' ');
+                          return nameFromEmail(a.email);
                         })
                         .filter(Boolean)
                         .join(', ');

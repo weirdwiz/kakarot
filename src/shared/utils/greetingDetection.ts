@@ -4,16 +4,7 @@
  */
 
 // Greeting words
-const GREETING_WORDS = [
-  'hi',
-  'hey',
-  'hello',
-  'yo',
-  'sup',
-  'hiya',
-  'howdy',
-  'greetings',
-];
+const GREETING_WORDS = ['hi', 'hey', 'hello', 'yo', 'sup', 'hiya', 'howdy', 'greetings'];
 
 // Casual address terms
 const CASUAL_TERMS = [
@@ -43,12 +34,12 @@ const TIME_GREETINGS = [
 
 // Question form greetings
 const QUESTION_GREETINGS = [
-  "how are you",
+  'how are you',
   "how's it going",
-  "how is it going",
+  'how is it going',
   "what's up",
-  "whats up",
-  "how are things",
+  'whats up',
+  'how are things',
   "how's everything",
 ];
 
@@ -69,12 +60,12 @@ export function isPureGreeting(message: string): boolean {
   const cleanMessage = trimmedMessage.replace(/[!.?,;]+$/g, '').trim();
 
   // Check for time-based greetings
-  if (TIME_GREETINGS.some(g => cleanMessage === g)) {
+  if (TIME_GREETINGS.some((g) => cleanMessage === g)) {
     return true;
   }
 
   // Check for question form greetings
-  if (QUESTION_GREETINGS.some(g => cleanMessage === g)) {
+  if (QUESTION_GREETINGS.some((g) => cleanMessage === g)) {
     return true;
   }
 
@@ -88,15 +79,6 @@ export function isPureGreeting(message: string): boolean {
   if (words.length === 2) {
     const [first, second] = words;
     if (GREETING_WORDS.includes(first) && CASUAL_TERMS.includes(second)) {
-      return true;
-    }
-  }
-
-  // Check for greeting word + casual term with punctuation (e.g., "hey there!")
-  if (words.length >= 2) {
-    const first = words[0];
-    const secondClean = words[1].replace(/[!.?,;]+$/g, '');
-    if (GREETING_WORDS.includes(first) && CASUAL_TERMS.includes(secondClean) && words.length === 2) {
       return true;
     }
   }
@@ -144,7 +126,10 @@ export function stripGreeting(message: string): string {
     if (lowerMessage.startsWith(greeting)) {
       const rest = trimmedMessage.substring(greeting.length).trim();
       // Remove leading punctuation and conjunctions
-      return rest.replace(/^[,!.;]+\s*/, '').replace(/^(and|but|so|then)\s+/i, '').trim();
+      return rest
+        .replace(/^[,!.;]+\s*/, '')
+        .replace(/^(and|but|so|then)\s+/i, '')
+        .trim();
     }
   }
 
@@ -165,7 +150,10 @@ export function stripGreeting(message: string): string {
       }
 
       // Remove leading punctuation and conjunctions
-      rest = rest.replace(/^[,!.;]+\s*/, '').replace(/^(and|but|so|then)\s+/i, '').trim();
+      rest = rest
+        .replace(/^[,!.;]+\s*/, '')
+        .replace(/^(and|but|so|then)\s+/i, '')
+        .trim();
       return rest;
     }
   }
@@ -173,10 +161,7 @@ export function stripGreeting(message: string): string {
   return trimmedMessage;
 }
 
-/**
- * Legacy function for backwards compatibility
- * Now checks if message is ONLY a greeting
- */
+/** Alias for isPureGreeting, kept for backward compatibility. */
 export function isGreeting(message: string): boolean {
   return isPureGreeting(message);
 }
@@ -189,7 +174,7 @@ export function isGreeting(message: string): boolean {
 export function getGreetingResponse(_userMessage?: string): string {
   const responses = [
     "Hi! I'm here to help you prepare for meetings and find information from your past conversations. You can ask me about upcoming meetings, search for past discussions, or request meeting notes.",
-    "Hello! I can help you with meeting prep, search your meeting history, or answer questions about past conversations. What would you like to know?",
+    'Hello! I can help you with meeting prep, search your meeting history, or answer questions about past conversations. What would you like to know?',
     "Hey there! I'm your meeting assistant. I can help you prepare for upcoming meetings, find information from past discussions, or answer questions about your meeting history.",
   ];
 

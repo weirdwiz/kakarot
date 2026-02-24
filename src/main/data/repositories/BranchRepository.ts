@@ -7,19 +7,14 @@ const logger = createLogger('BranchRepository');
 export class BranchRepository {
   listAll(): Branch[] {
     const db = getDatabase();
-    const rows = db.exec(
-      'SELECT * FROM branches ORDER BY created_at ASC'
-    )[0]?.values || [];
+    const rows = db.exec('SELECT * FROM branches ORDER BY created_at ASC')[0]?.values || [];
 
     return rows.map(this.rowToBranch);
   }
 
   getById(id: string): Branch | null {
     const db = getDatabase();
-    const rows = db.exec(
-      'SELECT * FROM branches WHERE id = ?',
-      [id]
-    )[0]?.values || [];
+    const rows = db.exec('SELECT * FROM branches WHERE id = ?', [id])[0]?.values || [];
 
     if (rows.length === 0) return null;
     return this.rowToBranch(rows[0]);
@@ -40,7 +35,7 @@ export class BranchRepository {
         branch.prompt,
         branch.thumbnailUrl || null,
         now,
-        now
+        now,
       ]
     );
 
@@ -50,11 +45,14 @@ export class BranchRepository {
     return {
       ...branch,
       createdAt: new Date(now),
-      updatedAt: new Date(now)
+      updatedAt: new Date(now),
     };
   }
 
-  update(id: string, updates: Partial<Omit<Branch, 'id' | 'createdAt' | 'updatedAt'>>): Branch | null {
+  update(
+    id: string,
+    updates: Partial<Omit<Branch, 'id' | 'createdAt' | 'updatedAt'>>
+  ): Branch | null {
     const existing = this.getById(id);
     if (!existing) return null;
 
@@ -62,7 +60,7 @@ export class BranchRepository {
     const now = Date.now();
 
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: (string | number | null)[] = [];
 
     if (updates.name !== undefined) {
       fields.push('name = ?');
@@ -89,10 +87,7 @@ export class BranchRepository {
     values.push(now);
     values.push(id);
 
-    db.run(
-      `UPDATE branches SET ${fields.join(', ')} WHERE id = ?`,
-      values
-    );
+    db.run(`UPDATE branches SET ${fields.join(', ')} WHERE id = ?`, values);
 
     saveDatabase();
     logger.info('Updated branch', { id, updates });
@@ -113,7 +108,7 @@ export class BranchRepository {
     return true;
   }
 
-  private rowToBranch(row: any[]): Branch {
+  private rowToBranch(row: (string | number | Uint8Array | null)[]): Branch {
     return {
       id: row[0] as string,
       name: row[1] as string,
@@ -122,7 +117,7 @@ export class BranchRepository {
       prompt: row[4] as string,
       thumbnailUrl: row[5] as string | undefined,
       createdAt: new Date(row[6] as number),
-      updatedAt: new Date(row[7] as number)
+      updatedAt: new Date(row[7] as number),
     };
   }
 }

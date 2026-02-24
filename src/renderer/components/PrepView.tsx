@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { useChatScroll } from '../hooks/useChatScroll';
 import { useThinkingTimer } from '../hooks/useThinkingTimer';
+import { getAvatarColor, getInitials as getSharedInitials } from '../lib/formatters';
 import ThoughtTrace from './ThoughtTrace';
 import {
   Users,
@@ -75,7 +76,7 @@ const DEFAULT_STANDARD_TYPES = [
     icon: Rocket,
     prompt: 'Set the stage for a new project with goals, timelines, and team alignment.',
     defaultRoles: ['Project Lead', 'Team Members', 'Stakeholders'],
-    defaultObjectives: ['Define project scope', 'Assign responsibilities', 'Set timeline']
+    defaultObjectives: ['Define project scope', 'Assign responsibilities', 'Set timeline'],
   },
   {
     id: 'product-update-sync',
@@ -84,7 +85,7 @@ const DEFAULT_STANDARD_TYPES = [
     icon: FileText,
     prompt: 'Share project progress, blockers, and next steps effectively.',
     defaultRoles: ['Project Manager', 'Team Leads', 'Stakeholders'],
-    defaultObjectives: ['Share progress', 'Identify blockers', 'Align on next steps']
+    defaultObjectives: ['Share progress', 'Identify blockers', 'Align on next steps'],
   },
   {
     id: 'client',
@@ -93,8 +94,8 @@ const DEFAULT_STANDARD_TYPES = [
     icon: Briefcase,
     prompt: 'Prepare for client interactions with context and talking points.',
     defaultRoles: ['Account Manager', 'Project Lead', 'Client'],
-    defaultObjectives: ['Review deliverables', 'Address concerns', 'Plan next steps']
-  }
+    defaultObjectives: ['Review deliverables', 'Address concerns', 'Plan next steps'],
+  },
 ];
 
 // Form data for creating custom objectives
@@ -113,19 +114,74 @@ const emptyFormData: MeetingObjectiveFormData = {
   attendeeRoles: [],
   isExternal: false,
   objectives: [],
-  customPrompt: ''
+  customPrompt: '',
 };
 
 // Generate unique ID
 const generateId = () => `custom-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
+// Branch thumbnail images keyed by branch ID
+const BRANCH_IMAGES: Record<string, { src: string; alt: string }> = {
+  'leadership-coaching': { src: leadershipCoachingImage, alt: 'Leadership Coaching' },
+  'last-weeks-report': { src: weeklyReportImage, alt: "Last Week's Report" },
+  'monthly-recap': { src: monthlyReportImage, alt: 'Monthly Recap' },
+  'sort-my-calendar': { src: sortCalendarImage, alt: 'Sort my Calendar' },
+};
+
+// Renders a line of markdown with inline bold support
+function renderMarkdownLine(line: string, idx: number): React.ReactNode {
+  if (line.startsWith('## ')) {
+    return (
+      <h2 key={idx} className="text-base font-semibold text-accent mt-4 mb-2 first:mt-0">
+        {line.replace('## ', '')}
+      </h2>
+    );
+  }
+  if (line.startsWith('**') && line.endsWith('**')) {
+    return (
+      <p key={idx} className="font-semibold text-white mt-3 mb-1">
+        {line.replace(/\*\*/g, '')}
+      </p>
+    );
+  }
+  if (line.startsWith('- ')) {
+    const content = line.replace('- ', '');
+    const parts = content.split(/(\*\*[^*]+\*\*)/g);
+    return (
+      <div key={idx} className="flex items-start gap-2 my-1 text-slate-300">
+        <span className="text-accent mt-0.5">•</span>
+        <span>{renderInlineBold(parts)}</span>
+      </div>
+    );
+  }
+  if (!line.trim()) {
+    return <div key={idx} className="h-2" />;
+  }
+  const parts = line.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <p key={idx} className="text-slate-300 my-1">
+      {renderInlineBold(parts)}
+    </p>
+  );
+}
+
+function renderInlineBold(parts: string[]): React.ReactNode {
+  return parts.map((part, i) =>
+    part.startsWith('**') && part.endsWith('**') ? (
+      <strong key={i} className="text-white font-medium">
+        {part.replace(/\*\*/g, '')}
+      </strong>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  );
+}
+
+export default function PrepView(_props: PrepViewProps) {
   const { settings, setSettings, initialPrepQuery, setInitialPrepQuery } = useAppStore();
   const [people, setPeople] = useState<Person[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPeople, setSelectedPeople] = useState<Person[]>([]);
-  const [, setIsLoadingPeople] = useState(true);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [showBranchModal, setShowBranchModal] = useState(false);
@@ -139,15 +195,12 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
   const [fetchingCompanyInfo, setFetchingCompanyInfo] = useState<string | null>(null);
   const [companyInfoCache, setCompanyInfoCache] = useState<Record<string, CompanyInfo | null>>({});
 
-  // Quick prep mode state (Granola-style)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [prepMode, _setPrepMode] = useState<'quick' | 'advanced'>('quick');
+  // Prep mode state - 'advanced' mode available but not currently exposed in UI
+  const [prepMode] = useState<'quick' | 'advanced'>('quick');
   const [quickPrepQuery, setQuickPrepQuery] = useState('');
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_quickSearchResults, setQuickSearchResults] = useState<Person[]>([]);
-  const [conversationalResult, setConversationalResult] = useState<ConversationalPrepResult | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_showQuickSearchDropdown, setShowQuickSearchDropdown] = useState(false);
+  const [conversationalResult, setConversationalResult] = useState<ConversationalPrepResult | null>(
+    null
+  );
 
   // Omnibar chat state
   const [chatConversation, setChatConversation] = useState<PrepConversation | null>(null);
@@ -155,17 +208,15 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
   const [showPreviousChats, setShowPreviousChats] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
-  const [streamingText, setStreamingText] = useState(''); // For streaming response content
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_streamingThinking, setStreamingThinking] = useState(''); // For streaming thinking/reasoning
-  const [isStreamingThinking, setIsStreamingThinking] = useState(false); // Track if currently in thinking phase
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const [streamingText, setStreamingText] = useState('');
+  const [isStreamingThinking, setIsStreamingThinking] = useState(false);
   const chatInputRef = React.useRef<HTMLTextAreaElement>(null);
   const streamCleanupRef = React.useRef<(() => void) | null>(null);
 
   // Custom hooks for chat features
-  const { scrollContainerRef, scrollAnchorRef, autoScrollToBottom } = useChatScroll({ enabled: true });
+  const { scrollContainerRef, scrollAnchorRef, autoScrollToBottom } = useChatScroll({
+    enabled: true,
+  });
   const thinkingTimer = useThinkingTimer();
 
   // Modal state for creating/editing objectives
@@ -177,17 +228,24 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
   const [editingStandardId, setEditingStandardId] = useState<string | null>(null);
 
   // Get custom meeting objectives from settings
-  const customObjectives = settings?.customMeetingTypesV2 || [];
-  const objectiveUsage = settings?.meetingObjectiveUsage || [];
-  const standardOverrides = settings?.standardMeetingTypeOverrides || [];
+  const customObjectives = useMemo(
+    () => settings?.customMeetingTypesV2 || [],
+    [settings?.customMeetingTypesV2]
+  );
+  const objectiveUsage = useMemo(
+    () => settings?.meetingObjectiveUsage || [],
+    [settings?.meetingObjectiveUsage]
+  );
+  const standardOverrides = useMemo(
+    () => settings?.standardMeetingTypeOverrides || [],
+    [settings?.standardMeetingTypeOverrides]
+  );
 
   // Consume initial prep query from app store (set by ManualNotesView Prep button)
   const saveConversationToHistory = useCallback((conv: PrepConversation) => {
     setChatHistory((prev) => {
       const idx = prev.findIndex((c) => c.id === conv.id);
-      const updated = idx >= 0
-        ? prev.map((c, i) => (i === idx ? conv : c))
-        : [conv, ...prev];
+      const updated = idx >= 0 ? prev.map((c, i) => (i === idx ? conv : c)) : [conv, ...prev];
       const trimmed = updated.slice(0, 50);
       try {
         localStorage.setItem('treeto-prep-chat-history', JSON.stringify(trimmed));
@@ -207,9 +265,7 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
       setIsChatLoading(true);
       setGeneratingError(null);
       setStreamingText('');
-      setStreamingThinking('');
       setIsStreamingThinking(true);
-      setStreamingMessageId(null);
 
       thinkingTimer.reset();
       thinkingTimer.start();
@@ -221,8 +277,6 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
 
       try {
         const tempUserMsgId = `msg-${Date.now()}-user`;
-        const tempAssistantMsgId = `msg-${Date.now()}-assistant`;
-        setStreamingMessageId(tempAssistantMsgId);
 
         const userMsg: PrepChatMessage = {
           id: tempUserMsgId,
@@ -257,7 +311,7 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
             onChunk: (chunk: string) => {
               if (isStreamingThinking) {
                 const thinkingDuration = thinkingTimer.stop();
-                console.log(`Thinking phase complete: ${thinkingDuration}ms`);
+                void thinkingDuration; // phase complete
                 setIsStreamingThinking(false);
               }
 
@@ -265,7 +319,10 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
 
               autoScrollToBottom();
             },
-            onStart: (_metadata: { conversationId: string; meetingReferences: { meetingId: string; title: string; date: string }[] }) => {
+            onStart: (_metadata: {
+              conversationId: string;
+              meetingReferences: { meetingId: string; title: string; date: string }[];
+            }) => {
               // Metadata received - could use for showing meeting references
             },
             onEnd: (response: PrepChatResponse) => {
@@ -275,7 +332,8 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
               }
 
               if (response.conversation && finalDuration > 0) {
-                const lastMessage = response.conversation.messages[response.conversation.messages.length - 1];
+                const lastMessage =
+                  response.conversation.messages[response.conversation.messages.length - 1];
                 if (lastMessage && lastMessage.role === 'assistant') {
                   lastMessage.thinkingDuration = finalDuration;
                   lastMessage.thinking = `Processing your question and analyzing context (${Math.round(finalDuration / 1000)}s)`;
@@ -285,9 +343,7 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
               setChatConversation(response.conversation || null);
               if (response.conversation) saveConversationToHistory(response.conversation);
               setStreamingText('');
-              setStreamingThinking('');
               setIsStreamingThinking(false);
-              setStreamingMessageId(null);
               setIsChatLoading(false);
               chatInputRef.current?.focus();
             },
@@ -295,9 +351,7 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
               thinkingTimer.stop();
               setGeneratingError(error);
               setStreamingText('');
-              setStreamingThinking('');
               setIsStreamingThinking(false);
-              setStreamingMessageId(null);
               setIsChatLoading(false);
               chatInputRef.current?.focus();
             },
@@ -309,13 +363,13 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
         setGeneratingError(error instanceof Error ? error.message : 'Failed to send message');
         setIsChatLoading(false);
         setIsStreamingThinking(false);
-        setStreamingMessageId(null);
       }
     },
     [
       autoScrollToBottom,
       chatConversation,
       isChatLoading,
+      isStreamingThinking,
       saveConversationToHistory,
       thinkingTimer,
     ]
@@ -363,14 +417,20 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
   }, []);
 
   // Get override for standard type
-  const getStandardOverride = (id: string) => {
-    return standardOverrides.find(o => o.id === id);
-  };
+  const getStandardOverride = useCallback(
+    (id: string) => {
+      return standardOverrides.find((o) => o.id === id);
+    },
+    [standardOverrides]
+  );
 
   // Check if standard type has been modified
-  const isStandardModified = (id: string) => {
-    return standardOverrides.some(o => o.id === id);
-  };
+  const isStandardModified = useCallback(
+    (id: string) => {
+      return standardOverrides.some((o) => o.id === id);
+    },
+    [standardOverrides]
+  );
 
   // Combine and sort meeting objectives by last used
   const sortedObjectives = useMemo(() => {
@@ -378,34 +438,34 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
     const allObjectives: Array<{
       id: string;
       label: string;
-      icon: React.ComponentType<any>;
+      icon: React.ComponentType<{ className?: string }>;
       isCustom: boolean;
       isModified: boolean;
       lastUsedAt: number;
     }> = [];
 
     // Add standard objectives
-    DEFAULT_STANDARD_TYPES.forEach(obj => {
-      const usage = objectiveUsage.find(u => u.id === obj.id);
+    DEFAULT_STANDARD_TYPES.forEach((obj) => {
+      const usage = objectiveUsage.find((u) => u.id === obj.id);
       allObjectives.push({
         id: obj.id,
         label: obj.title,
         icon: obj.icon,
         isCustom: false,
         isModified: isStandardModified(obj.id),
-        lastUsedAt: usage?.lastUsedAt || 0
+        lastUsedAt: usage?.lastUsedAt || 0,
       });
     });
 
     // Add custom objectives
-    customObjectives.forEach(obj => {
+    customObjectives.forEach((obj) => {
       allObjectives.push({
         id: obj.id,
         label: obj.name,
         icon: Sparkles,
         isCustom: true,
         isModified: false,
-        lastUsedAt: obj.lastUsedAt || 0
+        lastUsedAt: obj.lastUsedAt || 0,
       });
     });
 
@@ -416,49 +476,55 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
       }
       return b.lastUsedAt - a.lastUsedAt;
     });
-  }, [customObjectives, objectiveUsage, standardOverrides]);
+  }, [customObjectives, objectiveUsage, isStandardModified]);
 
   // Get the selected objective's label for display
   const selectedObjectiveLabel = useMemo(() => {
     if (!selectedObjectiveId) return '';
-    const obj = sortedObjectives.find(o => o.id === selectedObjectiveId);
+    const obj = sortedObjectives.find((o) => o.id === selectedObjectiveId);
     return obj?.label || selectedObjectiveId;
   }, [selectedObjectiveId, sortedObjectives]);
 
   // Handle action item completion toggle (new enhanced prep)
-  const handleToggleActionItem = useCallback(async (actionItemId: string) => {
-    const newCompleted = !completedActionItems.has(actionItemId);
-    setCompletedActionItems(prev => {
-      const next = new Set(prev);
-      if (newCompleted) {
-        next.add(actionItemId);
-      } else {
-        next.delete(actionItemId);
+  const handleToggleActionItem = useCallback(
+    async (actionItemId: string) => {
+      const newCompleted = !completedActionItems.has(actionItemId);
+      setCompletedActionItems((prev) => {
+        const next = new Set(prev);
+        if (newCompleted) {
+          next.add(actionItemId);
+        } else {
+          next.delete(actionItemId);
+        }
+        return next;
+      });
+      // Persist to backend
+      try {
+        await window.kakarot.prep.toggleActionItem(actionItemId, newCompleted);
+      } catch (error) {
+        console.error('Failed to toggle action item:', error);
       }
-      return next;
-    });
-    // Persist to backend
-    try {
-      await window.kakarot.prep.toggleActionItem(actionItemId, newCompleted);
-    } catch (error) {
-      console.error('Failed to toggle action item:', error);
-    }
-  }, [completedActionItems]);
+    },
+    [completedActionItems]
+  );
 
   // Fetch company info for a participant
-  const handleFetchCompanyInfo = useCallback(async (email: string) => {
-    if (!email || fetchingCompanyInfo === email) return;
-    setFetchingCompanyInfo(email);
-    try {
-      const info = await window.kakarot.prep.fetchCompanyInfo(email);
-      setCompanyInfoCache(prev => ({ ...prev, [email]: info }));
-    } catch (error) {
-      console.error('Failed to fetch company info:', error);
-      setCompanyInfoCache(prev => ({ ...prev, [email]: null }));
-    } finally {
-      setFetchingCompanyInfo(null);
-    }
-  }, [fetchingCompanyInfo]);
+  const handleFetchCompanyInfo = useCallback(
+    async (email: string) => {
+      if (!email || fetchingCompanyInfo === email) return;
+      setFetchingCompanyInfo(email);
+      try {
+        const info = await window.kakarot.prep.fetchCompanyInfo(email);
+        setCompanyInfoCache((prev) => ({ ...prev, [email]: info }));
+      } catch (error) {
+        console.error('Failed to fetch company info:', error);
+        setCompanyInfoCache((prev) => ({ ...prev, [email]: null }));
+      } finally {
+        setFetchingCompanyInfo(null);
+      }
+    },
+    [fetchingCompanyInfo]
+  );
 
   // Show LinkedIn coming soon toast
   const handleLinkedInClick = useCallback(() => {
@@ -466,32 +532,39 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
   }, []);
 
   // Update meeting objective usage when generating briefing
-  const updateObjectiveUsage = useCallback(async (objectiveId: string) => {
-    const now = Date.now();
-    const updatedUsage = [...objectiveUsage];
-    const existingIndex = updatedUsage.findIndex(u => u.id === objectiveId);
+  const updateObjectiveUsage = useCallback(
+    async (objectiveId: string) => {
+      const now = Date.now();
+      const updatedUsage = [...objectiveUsage];
+      const existingIndex = updatedUsage.findIndex((u) => u.id === objectiveId);
 
-    if (existingIndex >= 0) {
-      updatedUsage[existingIndex] = { ...updatedUsage[existingIndex], lastUsedAt: now };
-    } else {
-      updatedUsage.push({ id: objectiveId, lastUsedAt: now });
-    }
+      if (existingIndex >= 0) {
+        updatedUsage[existingIndex] = { ...updatedUsage[existingIndex], lastUsedAt: now };
+      } else {
+        updatedUsage.push({ id: objectiveId, lastUsedAt: now });
+      }
 
-    // Also update lastUsedAt for custom objectives
-    const customIndex = customObjectives.findIndex(c => c.id === objectiveId);
-    if (customIndex >= 0) {
-      const updatedCustom = [...customObjectives];
-      updatedCustom[customIndex] = { ...updatedCustom[customIndex], lastUsedAt: now };
-      await window.kakarot.settings.update({
-        meetingObjectiveUsage: updatedUsage,
-        customMeetingTypesV2: updatedCustom
-      });
-      setSettings({ ...settings!, meetingObjectiveUsage: updatedUsage, customMeetingTypesV2: updatedCustom });
-    } else {
-      await window.kakarot.settings.update({ meetingObjectiveUsage: updatedUsage });
-      setSettings({ ...settings!, meetingObjectiveUsage: updatedUsage });
-    }
-  }, [objectiveUsage, customObjectives, settings, setSettings]);
+      // Also update lastUsedAt for custom objectives
+      const customIndex = customObjectives.findIndex((c) => c.id === objectiveId);
+      if (customIndex >= 0) {
+        const updatedCustom = [...customObjectives];
+        updatedCustom[customIndex] = { ...updatedCustom[customIndex], lastUsedAt: now };
+        await window.kakarot.settings.update({
+          meetingObjectiveUsage: updatedUsage,
+          customMeetingTypesV2: updatedCustom,
+        });
+        setSettings({
+          ...settings,
+          meetingObjectiveUsage: updatedUsage,
+          customMeetingTypesV2: updatedCustom,
+        });
+      } else {
+        await window.kakarot.settings.update({ meetingObjectiveUsage: updatedUsage });
+        setSettings({ ...settings, meetingObjectiveUsage: updatedUsage });
+      }
+    },
+    [objectiveUsage, customObjectives, settings, setSettings]
+  );
 
   // Modal handlers
   const openCreateModal = useCallback(() => {
@@ -511,24 +584,27 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
   }, []);
 
   // Open modal for editing standard type
-  const openStandardEdit = useCallback((id: string) => {
-    const defaultType = DEFAULT_STANDARD_TYPES.find(t => t.id === id);
-    const override = getStandardOverride(id);
+  const openStandardEdit = useCallback(
+    (id: string) => {
+      const defaultType = DEFAULT_STANDARD_TYPES.find((t) => t.id === id);
+      const override = getStandardOverride(id);
 
-    if (defaultType) {
-      setFormData({
-        name: defaultType.title,
-        description: override?.description || defaultType.description,
-        attendeeRoles: override?.attendeeRoles || defaultType.defaultRoles,
-        isExternal: false,
-        objectives: override?.objectives || defaultType.defaultObjectives,
-        customPrompt: override?.customPrompt || defaultType.prompt
-      });
-      setEditingStandardId(id);
-      setEditingType(null);
-      setShowCreateModal(true);
-    }
-  }, [standardOverrides]);
+      if (defaultType) {
+        setFormData({
+          name: defaultType.title,
+          description: override?.description || defaultType.description,
+          attendeeRoles: override?.attendeeRoles || defaultType.defaultRoles,
+          isExternal: false,
+          objectives: override?.objectives || defaultType.defaultObjectives,
+          customPrompt: override?.customPrompt || defaultType.prompt,
+        });
+        setEditingStandardId(id);
+        setEditingType(null);
+        setShowCreateModal(true);
+      }
+    },
+    [getStandardOverride]
+  );
 
   // Open modal for editing custom type
   const openCustomEdit = useCallback((type: CustomMeetingType) => {
@@ -538,7 +614,7 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
       attendeeRoles: type.attendeeRoles,
       isExternal: type.isExternal,
       objectives: type.objectives,
-      customPrompt: type.customPrompt || ''
+      customPrompt: type.customPrompt || '',
     });
     setEditingType(type);
     setEditingStandardId(null);
@@ -547,9 +623,9 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
 
   const addRole = useCallback(() => {
     if (newRole.trim() && !formData.attendeeRoles.includes(newRole.trim())) {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        attendeeRoles: [...prev.attendeeRoles, newRole.trim()]
+        attendeeRoles: [...prev.attendeeRoles, newRole.trim()],
       }));
       setNewRole('');
     }
@@ -557,9 +633,9 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
 
   const addObjectiveItem = useCallback(() => {
     if (newObjective.trim() && !formData.objectives.includes(newObjective.trim())) {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        objectives: [...prev.objectives, newObjective.trim()]
+        objectives: [...prev.objectives, newObjective.trim()],
       }));
       setNewObjective('');
     }
@@ -582,12 +658,12 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
         isExternal: formData.isExternal,
         objectives: formData.objectives,
         customPrompt: formData.customPrompt.trim() || undefined,
-        updatedAt: now
+        updatedAt: now,
       };
 
       nextSettings = {
-        ...settings!,
-        customMeetingTypesV2: customObjectives.map(t => t.id === editingType.id ? updated : t)
+        ...settings,
+        customMeetingTypesV2: customObjectives.map((t) => (t.id === editingType.id ? updated : t)),
       };
     } else {
       // Create new
@@ -600,12 +676,12 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
         objectives: formData.objectives,
         customPrompt: formData.customPrompt.trim() || undefined,
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
       };
 
       nextSettings = {
-        ...settings!,
-        customMeetingTypesV2: [...customObjectives, newType]
+        ...settings,
+        customMeetingTypesV2: [...customObjectives, newType],
       };
     }
 
@@ -631,17 +707,18 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
       attendeeRoles: formData.attendeeRoles.length > 0 ? formData.attendeeRoles : undefined,
       objectives: formData.objectives.length > 0 ? formData.objectives : undefined,
       customPrompt: formData.customPrompt.trim() || undefined,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
     };
 
-    const existingIndex = standardOverrides.findIndex(o => o.id === editingStandardId);
-    const newOverrides = existingIndex >= 0
-      ? standardOverrides.map(o => o.id === editingStandardId ? override : o)
-      : [...standardOverrides, override];
+    const existingIndex = standardOverrides.findIndex((o) => o.id === editingStandardId);
+    const newOverrides =
+      existingIndex >= 0
+        ? standardOverrides.map((o) => (o.id === editingStandardId ? override : o))
+        : [...standardOverrides, override];
 
     const nextSettings = {
-      ...settings!,
-      standardMeetingTypeOverrides: newOverrides
+      ...settings,
+      standardMeetingTypeOverrides: newOverrides,
     };
 
     closeModal();
@@ -657,54 +734,63 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
   }, [editingStandardId, formData, standardOverrides, settings, setSettings, closeModal]);
 
   // Reset standard type to default
-  const resetStandardToDefault = useCallback(async (id: string) => {
-    const nextSettings = {
-      ...settings!,
-      standardMeetingTypeOverrides: standardOverrides.filter(o => o.id !== id)
-    };
+  const resetStandardToDefault = useCallback(
+    async (id: string) => {
+      const nextSettings = {
+        ...settings,
+        standardMeetingTypeOverrides: standardOverrides.filter((o) => o.id !== id),
+      };
 
-    try {
-      await window.kakarot.settings.update(nextSettings);
-      setSettings(nextSettings);
-      toast.success('Reset to default');
-    } catch (error) {
-      console.error('Failed to save settings:', error);
-      toast.error('Failed to reset');
-    }
-  }, [standardOverrides, settings, setSettings]);
+      try {
+        await window.kakarot.settings.update(nextSettings);
+        setSettings(nextSettings);
+        toast.success('Reset to default');
+      } catch (error) {
+        console.error('Failed to save settings:', error);
+        toast.error('Failed to reset');
+      }
+    },
+    [standardOverrides, settings, setSettings]
+  );
 
   // Delete custom type
-  const deleteCustomType = useCallback(async (id: string) => {
-    const nextSettings = {
-      ...settings!,
-      customMeetingTypesV2: customObjectives.filter(t => t.id !== id)
-    };
+  const deleteCustomType = useCallback(
+    async (id: string) => {
+      const nextSettings = {
+        ...settings,
+        customMeetingTypesV2: customObjectives.filter((t) => t.id !== id),
+      };
 
-    closeModal();
+      closeModal();
 
-    try {
-      await window.kakarot.settings.update(nextSettings);
-      setSettings(nextSettings);
-      toast.success('Meeting objective deleted');
-    } catch (error) {
-      console.error('Failed to save settings:', error);
-      toast.error('Failed to delete');
-    }
-  }, [customObjectives, settings, setSettings, closeModal]);
+      try {
+        await window.kakarot.settings.update(nextSettings);
+        setSettings(nextSettings);
+        toast.success('Meeting objective deleted');
+      } catch (error) {
+        console.error('Failed to save settings:', error);
+        toast.error('Failed to delete');
+      }
+    },
+    [customObjectives, settings, setSettings, closeModal]
+  );
 
   // Handle edit button click
-  const handleEditObjective = useCallback((objectiveId: string, isCustom: boolean, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent selecting the objective
+  const handleEditObjective = useCallback(
+    (objectiveId: string, isCustom: boolean, e: React.MouseEvent) => {
+      e.stopPropagation(); // Prevent selecting the objective
 
-    if (isCustom) {
-      const customType = customObjectives.find(c => c.id === objectiveId);
-      if (customType) {
-        openCustomEdit(customType);
+      if (isCustom) {
+        const customType = customObjectives.find((c) => c.id === objectiveId);
+        if (customType) {
+          openCustomEdit(customType);
+        }
+      } else {
+        openStandardEdit(objectiveId);
       }
-    } else {
-      openStandardEdit(objectiveId);
-    }
-  }, [customObjectives, openCustomEdit, openStandardEdit]);
+    },
+    [customObjectives, openCustomEdit, openStandardEdit]
+  );
 
   useEffect(() => {
     loadPeople();
@@ -712,12 +798,11 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
   }, []);
 
   const loadPeople = async () => {
-    setIsLoadingPeople(true);
     try {
       const peopleList = await window.kakarot.people.list();
       setPeople(peopleList);
-    } finally {
-      setIsLoadingPeople(false);
+    } catch (error) {
+      console.error('Failed to load people:', error);
     }
   };
 
@@ -730,22 +815,15 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
     }
   };
 
-  // Quick search effect with debounce
+  // Quick search effect with debounce (pre-fetches results for autocomplete)
   useEffect(() => {
-    if (quickPrepQuery.length < 2) {
-      setQuickSearchResults([]);
-      setShowQuickSearchDropdown(false);
-      return;
-    }
+    if (quickPrepQuery.length < 2) return;
 
     const timer = setTimeout(async () => {
       try {
-        const results = await window.kakarot.prep.quickSearchPerson(quickPrepQuery);
-        setQuickSearchResults(results);
-        setShowQuickSearchDropdown(results.length > 0);
+        await window.kakarot.prep.quickSearchPerson(quickPrepQuery);
       } catch (error) {
         console.error('Quick search failed:', error);
-        setQuickSearchResults([]);
       }
     }, 300);
 
@@ -760,143 +838,25 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
   }, []);
 
   // Handle branch execution - "Grow this Branch"
-  const handleGrowBranch = useCallback(async (branch: Branch) => {
-    // Close the modal
-    setShowBranchModal(false);
-    setSelectedBranch(null);
-
-    // Send the branch prompt directly
-    const userMessage = branch.prompt.trim();
-    if (!userMessage || isChatLoading) return;
-
-    setChatInput('');
-    setIsChatLoading(true);
-    setGeneratingError(null);
-    setStreamingText('');
-    setStreamingThinking('');
-    setIsStreamingThinking(true);
-    setStreamingMessageId(null);
-
-    thinkingTimer.reset();
-    thinkingTimer.start();
-
-    if (streamCleanupRef.current) {
-      streamCleanupRef.current();
-      streamCleanupRef.current = null;
-    }
-
-    try {
-      const tempUserMsgId = `msg-${Date.now()}-user`;
-      const tempAssistantMsgId = `msg-${Date.now()}-assistant`;
-      setStreamingMessageId(tempAssistantMsgId);
-
-      // Display a clean message in the UI (not the full prompt)
-      const displayMessage = `🌱 ${branch.name}`;
-
-      const userMsg: PrepChatMessage = {
-        id: tempUserMsgId,
-        role: 'user',
-        content: displayMessage, // Show clean message in UI
-        timestamp: new Date().toISOString(),
-      };
-
-      const tempConversation: PrepConversation = chatConversation
-        ? {
-            ...chatConversation,
-            messages: [...chatConversation.messages, userMsg],
-            updatedAt: new Date().toISOString(),
-          }
-        : {
-            id: `conv-${Date.now()}`,
-            messages: [userMsg],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
-
-      setChatConversation(tempConversation);
-
-      setTimeout(() => {
-        autoScrollToBottom();
-      }, 50);
-
-      const cleanup = window.kakarot.prep.chatStreamStart(
-        { message: userMessage },
-        chatConversation || undefined,
-        {
-          onChunk: (chunk: string) => {
-            if (isStreamingThinking) {
-              const thinkingDuration = thinkingTimer.stop();
-              console.log(`Thinking phase complete: ${thinkingDuration}ms`);
-              setIsStreamingThinking(false);
-            }
-            setStreamingText(prev => prev + chunk);
-            autoScrollToBottom();
-          },
-          onStart: (_metadata: { conversationId: string; meetingReferences: { meetingId: string; title: string; date: string }[] }) => {
-            // Metadata received
-          },
-          onEnd: (response: PrepChatResponse) => {
-            const finalDuration = thinkingTimer.elapsedMs;
-            if (thinkingTimer.isRunning) {
-              thinkingTimer.stop();
-            }
-
-            if (response.conversation && finalDuration > 0) {
-              const lastMessage = response.conversation.messages[response.conversation.messages.length - 1];
-              if (lastMessage && lastMessage.role === 'assistant') {
-                lastMessage.thinkingDuration = finalDuration;
-                lastMessage.thinking = `Processing your question and analyzing context (${Math.round(finalDuration / 1000)}s)`;
-              }
-            }
-
-            // Replace the full branch prompt with the clean display message
-            if (response.conversation && response.conversation.messages.length >= 2) {
-              const userMessageIndex = response.conversation.messages.length - 2;
-              const userMessage = response.conversation.messages[userMessageIndex];
-              if (userMessage && userMessage.role === 'user') {
-                userMessage.content = displayMessage;
-              }
-            }
-
-            setChatConversation(response.conversation || null);
-            if (response.conversation) saveConversationToHistory(response.conversation);
-            setStreamingText('');
-            setStreamingThinking('');
-            setIsStreamingThinking(false);
-            setStreamingMessageId(null);
-            setIsChatLoading(false);
-            chatInputRef.current?.focus();
-          },
-          onError: (error: string) => {
-            thinkingTimer.stop();
-            setGeneratingError(error);
-            setStreamingText('');
-            setStreamingThinking('');
-            setIsStreamingThinking(false);
-            setStreamingMessageId(null);
-            setIsChatLoading(false);
-            chatInputRef.current?.focus();
-          },
-        }
-      );
-
-      streamCleanupRef.current = cleanup;
-    } catch (error) {
-      thinkingTimer.stop();
-      setGeneratingError(error instanceof Error ? error.message : 'Failed to get response');
-      console.error('Chat failed:', error);
-      setIsChatLoading(false);
-      chatInputRef.current?.focus();
-    }
-  }, [chatConversation, isChatLoading, autoScrollToBottom, thinkingTimer, isStreamingThinking]);
+  const handleGrowBranch = useCallback(
+    async (branch: Branch) => {
+      setShowBranchModal(false);
+      setSelectedBranch(null);
+      sendPrepMessage(branch.prompt.trim());
+    },
+    [sendPrepMessage]
+  );
 
   // Handle Enter key in chat input
-  const handleChatKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleChatSend();
-    }
-  }, [handleChatSend]);
+  const handleChatKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleChatSend();
+      }
+    },
+    [handleChatSend]
+  );
 
   const filteredPeople = useMemo(() => {
     if (!searchQuery.trim()) return people;
@@ -918,28 +878,8 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
       .join(' ');
   };
 
-  const getAvatarColor = (email: string) => {
-    const colors = [
-      'bg-blue-500',
-      'bg-cream',
-      'bg-accent',
-      'bg-pink-500',
-      'bg-accent',
-      'bg-yellow-500',
-      'bg-red-500',
-      'bg-teal-500',
-    ];
-    const hash = email.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return colors[hash % colors.length];
-  };
-
-  const getInitials = (person: Person) => {
-    const displayName = getDisplayName(person);
-    const nameParts = displayName.split(' ');
-    if (nameParts.length >= 2) {
-      return (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase();
-    }
-    return displayName.slice(0, 2).toUpperCase();
+  const getPersonInitials = (person: Person) => {
+    return getSharedInitials(person.email, person.name || undefined);
   };
 
   const togglePerson = (person: Person) => {
@@ -995,7 +935,6 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
     }
   };
 
-
   const renderParticipantSelection = () => (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
       <div className="relative bg-surface border border-accent/40 rounded-2xl p-5 shadow-[0_10px_50px_rgba(105,117,101,0.25)] flex flex-col overflow-hidden">
@@ -1017,8 +956,10 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
               onClick={() => togglePerson(person)}
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-accent/40 text-sm text-white hover:bg-accent/30 transition"
             >
-              <span className={`w-6 h-6 rounded-full ${getAvatarColor(person.email)} flex items-center justify-center text-white text-xs font-semibold`}>
-                {getInitials(person)}
+              <span
+                className={`w-6 h-6 rounded-full ${getAvatarColor(person.email)} flex items-center justify-center text-white text-xs font-semibold`}
+              >
+                {getPersonInitials(person)}
               </span>
               <span>{getDisplayName(person)}</span>
               <X className="w-3 h-3" />
@@ -1043,21 +984,19 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                     key={person.email}
                     onClick={() => togglePerson(person)}
                     className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-white/5 last:border-none transition ${
-                      isSelected
-                        ? 'bg-accent/20'
-                        : 'hover:bg-white/5'
+                      isSelected ? 'bg-accent/20' : 'hover:bg-white/5'
                     }`}
                   >
-                    <span className={`w-8 h-8 rounded-full ${getAvatarColor(person.email)} flex items-center justify-center text-white text-sm font-semibold`}>
-                      {getInitials(person)}
+                    <span
+                      className={`w-8 h-8 rounded-full ${getAvatarColor(person.email)} flex items-center justify-center text-white text-sm font-semibold`}
+                    >
+                      {getPersonInitials(person)}
                     </span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-white truncate">{getDisplayName(person)}</p>
                       <p className="text-xs text-slate-400 truncate">{person.email}</p>
                     </div>
-                    {isSelected && (
-                      <span className="text-xs text-accent">Selected</span>
-                    )}
+                    {isSelected && <span className="text-xs text-accent">Selected</span>}
                   </button>
                 );
               })}
@@ -1118,9 +1057,7 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                   <div className="flex-1 min-w-0 text-left">
                     <span className="text-sm text-white block truncate">{objective.label}</span>
                     <div className="flex items-center gap-2">
-                      {objective.isCustom && (
-                        <span className="text-xs text-accent">Custom</span>
-                      )}
+                      {objective.isCustom && <span className="text-xs text-accent">Custom</span>}
                       {objective.isModified && !objective.isCustom && (
                         <span className="text-xs text-amber-400">Modified</span>
                       )}
@@ -1153,23 +1090,34 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
   // Helper to get timeline event icon
   const getTimelineIcon = (type: TimelineEvent['type']) => {
     switch (type) {
-      case 'meeting': return <Calendar className="w-3.5 h-3.5" />;
-      case 'email': return <Mail className="w-3.5 h-3.5" />;
-      case 'note': return <MessageSquare className="w-3.5 h-3.5" />;
-      case 'deal_update': return <TrendingUp className="w-3.5 h-3.5" />;
-      case 'call': return <Users className="w-3.5 h-3.5" />;
-      default: return <Clock className="w-3.5 h-3.5" />;
+      case 'meeting':
+        return <Calendar className="w-3.5 h-3.5" />;
+      case 'email':
+        return <Mail className="w-3.5 h-3.5" />;
+      case 'note':
+        return <MessageSquare className="w-3.5 h-3.5" />;
+      case 'deal_update':
+        return <TrendingUp className="w-3.5 h-3.5" />;
+      case 'call':
+        return <Users className="w-3.5 h-3.5" />;
+      default:
+        return <Clock className="w-3.5 h-3.5" />;
     }
   };
 
   // Helper to get timeline source color
   const getSourceColor = (source: TimelineEvent['source']) => {
     switch (source) {
-      case 'Meeting Notes': return 'bg-accent/20 text-accent-hover dark:bg-accent/30 dark:text-accent';
-      case 'HubSpot': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300';
-      case 'Salesforce': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
-      case 'Email': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-cream';
-      default: return 'bg-card text-gray-700 dark:bg-edge/30 dark:text-gray-300';
+      case 'Meeting Notes':
+        return 'bg-accent/20 text-accent-hover dark:bg-accent/30 dark:text-accent';
+      case 'HubSpot':
+        return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300';
+      case 'Salesforce':
+        return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+      case 'Email':
+        return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-cream';
+      default:
+        return 'bg-card text-gray-700 dark:bg-edge/30 dark:text-gray-300';
     }
   };
 
@@ -1185,157 +1133,189 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
   };
 
   // Handle insight feedback for learning
-  const handleInsightFeedback = useCallback(async (
-    insightId: string,
-    insightCategory: string,
-    feedback: 'useful' | 'not_useful' | 'dismissed',
-    participantEmail?: string
-  ) => {
-    try {
-      await window.kakarot.prep.recordFeedback({
-        insightId,
-        insightCategory,
-        feedback,
-        participantEmail,
-      });
-      toast.success(feedback === 'useful' ? 'Thanks for the feedback!' : 'Got it, we\'ll adjust');
-    } catch (error) {
-      console.error('Failed to record feedback:', error);
-    }
-  }, []);
+  const handleInsightFeedback = useCallback(
+    async (
+      insightId: string,
+      insightCategory: string,
+      feedback: 'useful' | 'not_useful' | 'dismissed',
+      participantEmail?: string
+    ) => {
+      try {
+        await window.kakarot.prep.recordFeedback({
+          insightId,
+          insightCategory,
+          feedback,
+          participantEmail,
+        });
+        toast.success(feedback === 'useful' ? 'Thanks for the feedback!' : "Got it, we'll adjust");
+      } catch (error) {
+        console.error('Failed to record feedback:', error);
+      }
+    },
+    []
+  );
 
   // DynamicBriefCard component - extracted to properly use React hooks
-  const DynamicBriefCard = React.memo(({ participant, onFeedback }: {
-    participant: DynamicPrepParticipant;
-    onFeedback: (insightId: string, category: string, feedback: 'useful' | 'not_useful' | 'dismissed', email?: string) => void;
-  }) => {
-    const { brief } = participant;
-    const [expanded, setExpanded] = useState(true);
+  const DynamicBriefCard = React.memo(
+    ({
+      participant,
+      onFeedback,
+    }: {
+      participant: DynamicPrepParticipant;
+      onFeedback: (
+        insightId: string,
+        category: string,
+        feedback: 'useful' | 'not_useful' | 'dismissed',
+        email?: string
+      ) => void;
+    }) => {
+      const { brief } = participant;
+      const [expanded, setExpanded] = useState(true);
 
-    // Group insights by category
-    const groupedInsights = useMemo(() => {
-      return brief.insights.reduce((acc, insight) => {
-        if (!acc[insight.category]) acc[insight.category] = [];
-        acc[insight.category].push(insight);
-        return acc;
-      }, {} as Record<string, PrepInsight[]>);
-    }, [brief.insights]);
+      // Group insights by category
+      const groupedInsights = useMemo(() => {
+        return brief.insights.reduce(
+          (acc, insight) => {
+            if (!acc[insight.category]) acc[insight.category] = [];
+            acc[insight.category].push(insight);
+            return acc;
+          },
+          {} as Record<string, PrepInsight[]>
+        );
+      }, [brief.insights]);
 
-    return (
-      <div className="bg-gradient-to-r from-accent/10 to-accent-hover/10 rounded-xl p-4 mb-4 border border-accent/30">
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="flex items-center justify-between w-full"
-        >
-          <h4 className="text-sm font-semibold text-accent uppercase tracking-wide flex items-center gap-2">
-            <Zap className="w-4 h-4" />
-            30-Second Brief
-          </h4>
-          <ChevronDown className={`w-4 h-4 text-accent transition-transform ${expanded ? 'rotate-180' : ''}`} />
-        </button>
+      return (
+        <div className="bg-gradient-to-r from-accent/10 to-accent-hover/10 rounded-xl p-4 mb-4 border border-accent/30">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center justify-between w-full"
+          >
+            <h4 className="text-sm font-semibold text-accent uppercase tracking-wide flex items-center gap-2">
+              <Zap className="w-4 h-4" />
+              30-Second Brief
+            </h4>
+            <ChevronDown
+              className={`w-4 h-4 text-accent transition-transform ${expanded ? 'rotate-180' : ''}`}
+            />
+          </button>
 
-        {expanded && (
-          <div className="mt-3 space-y-3">
-            {/* Headline */}
-            <p className="text-white font-medium">{brief.headline}</p>
+          {expanded && (
+            <div className="mt-3 space-y-3">
+              {/* Headline */}
+              <p className="text-white font-medium">{brief.headline}</p>
 
-            {/* Dynamic sections - only render if insights exist */}
-            {groupedInsights['heads_up'] && (
-              <div>
-                <p className="text-xs text-yellow-400 uppercase mb-1 flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" />
-                  Heads Up
-                </p>
-                <ul className="text-sm text-yellow-200 space-y-1">
-                  {groupedInsights['heads_up'].map((insight) => (
-                    <li key={insight.id} className="flex items-start justify-between gap-2">
-                      <span className="flex items-start gap-2">
-                        <AlertCircle className="w-3 h-3 mt-1 flex-shrink-0" />
+              {/* Dynamic sections - only render if insights exist */}
+              {groupedInsights['heads_up'] && (
+                <div>
+                  <p className="text-xs text-yellow-400 uppercase mb-1 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    Heads Up
+                  </p>
+                  <ul className="text-sm text-yellow-200 space-y-1">
+                    {groupedInsights['heads_up'].map((insight) => (
+                      <li key={insight.id} className="flex items-start justify-between gap-2">
+                        <span className="flex items-start gap-2">
+                          <AlertCircle className="w-3 h-3 mt-1 flex-shrink-0" />
+                          {insight.content}
+                        </span>
+                        <div className="flex gap-1 flex-shrink-0">
+                          <button
+                            onClick={() =>
+                              onFeedback(
+                                insight.id,
+                                insight.category,
+                                'useful',
+                                participant.email || undefined
+                              )
+                            }
+                            className="p-1 hover:bg-white/10 rounded"
+                            title="Useful"
+                          >
+                            <ThumbsUp className="w-3 h-3 text-slate-400 hover:text-cream" />
+                          </button>
+                          <button
+                            onClick={() =>
+                              onFeedback(
+                                insight.id,
+                                insight.category,
+                                'not_useful',
+                                participant.email || undefined
+                              )
+                            }
+                            className="p-1 hover:bg-white/10 rounded"
+                            title="Not useful"
+                          >
+                            <ThumbsDown className="w-3 h-3 text-slate-400 hover:text-red-400" />
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {groupedInsights['pending_action'] && (
+                <div>
+                  <p className="text-xs text-orange-400 uppercase mb-1 flex items-center gap-1">
+                    <ListChecks className="w-3 h-3" />
+                    Pending Actions
+                  </p>
+                  <ul className="text-sm text-orange-200 space-y-1">
+                    {groupedInsights['pending_action'].map((insight) => (
+                      <li key={insight.id} className="flex items-start gap-2">
+                        <Target className="w-3 h-3 mt-1 flex-shrink-0" />
                         {insight.content}
-                      </span>
-                      <div className="flex gap-1 flex-shrink-0">
-                        <button
-                          onClick={() => onFeedback(insight.id, insight.category, 'useful', participant.email || undefined)}
-                          className="p-1 hover:bg-white/10 rounded"
-                          title="Useful"
-                        >
-                          <ThumbsUp className="w-3 h-3 text-slate-400 hover:text-cream" />
-                        </button>
-                        <button
-                          onClick={() => onFeedback(insight.id, insight.category, 'not_useful', participant.email || undefined)}
-                          className="p-1 hover:bg-white/10 rounded"
-                          title="Not useful"
-                        >
-                          <ThumbsDown className="w-3 h-3 text-slate-400 hover:text-red-400" />
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-            {groupedInsights['pending_action'] && (
-              <div>
-                <p className="text-xs text-orange-400 uppercase mb-1 flex items-center gap-1">
-                  <ListChecks className="w-3 h-3" />
-                  Pending Actions
-                </p>
-                <ul className="text-sm text-orange-200 space-y-1">
-                  {groupedInsights['pending_action'].map((insight) => (
-                    <li key={insight.id} className="flex items-start gap-2">
-                      <Target className="w-3 h-3 mt-1 flex-shrink-0" />
-                      {insight.content}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              {groupedInsights['deal'] && (
+                <div>
+                  <p className="text-xs text-blue-400 uppercase mb-1 flex items-center gap-1">
+                    <DollarSign className="w-3 h-3" />
+                    Deal Context
+                  </p>
+                  <ul className="text-sm text-blue-200 space-y-1">
+                    {groupedInsights['deal'].map((insight) => (
+                      <li key={insight.id} className="flex items-start gap-2">
+                        <TrendingUp className="w-3 h-3 mt-1 flex-shrink-0" />
+                        {insight.content}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-            {groupedInsights['deal'] && (
-              <div>
-                <p className="text-xs text-blue-400 uppercase mb-1 flex items-center gap-1">
-                  <DollarSign className="w-3 h-3" />
-                  Deal Context
-                </p>
-                <ul className="text-sm text-blue-200 space-y-1">
-                  {groupedInsights['deal'].map((insight) => (
-                    <li key={insight.id} className="flex items-start gap-2">
-                      <TrendingUp className="w-3 h-3 mt-1 flex-shrink-0" />
-                      {insight.content}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              {/* Suggested Actions */}
+              {brief.suggestedActions.length > 0 && (
+                <div className="pt-2 border-t border-white/10">
+                  <p className="text-xs text-cream uppercase mb-1">Your Moves</p>
+                  <ul className="text-sm text-green-200 space-y-1">
+                    {brief.suggestedActions.map((action, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <Target className="w-3 h-3 mt-1 flex-shrink-0" />
+                        {action}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-            {/* Suggested Actions */}
-            {brief.suggestedActions.length > 0 && (
+              {/* Bottom Line */}
               <div className="pt-2 border-t border-white/10">
-                <p className="text-xs text-cream uppercase mb-1">Your Moves</p>
-                <ul className="text-sm text-green-200 space-y-1">
-                  {brief.suggestedActions.map((action, i) => (
-                    <li key={i} className="flex items-start gap-2">
-                      <Target className="w-3 h-3 mt-1 flex-shrink-0" />
-                      {action}
-                    </li>
-                  ))}
-                </ul>
+                <p className="text-sm text-slate-300">
+                  <span className="font-semibold text-accent">Bottom Line: </span>
+                  {brief.bottomLine}
+                </p>
               </div>
-            )}
-
-            {/* Bottom Line */}
-            <div className="pt-2 border-t border-white/10">
-              <p className="text-sm text-slate-300">
-                <span className="font-semibold text-accent">Bottom Line: </span>
-                {brief.bottomLine}
-              </p>
             </div>
-          </div>
-        )}
-      </div>
-    );
-  });
+          )}
+        </div>
+      );
+    }
+  );
 
   // SynthesisSection component - displays cross-participant analysis for multi-person prep
   const SynthesisSection: React.FC<{ synthesis: MeetingSynthesis }> = ({ synthesis }) => (
@@ -1363,7 +1343,9 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
       {/* Connecting Threads */}
       {synthesis.connectingThreads.length > 0 && (
         <div className="mb-4">
-          <h4 className="text-xs text-slate-400 uppercase mb-2 tracking-wide">Connecting Threads</h4>
+          <h4 className="text-xs text-slate-400 uppercase mb-2 tracking-wide">
+            Connecting Threads
+          </h4>
           <ul className="text-sm text-slate-300 space-y-1">
             {synthesis.connectingThreads.map((thread, i) => (
               <li key={i} className="flex items-start gap-2">
@@ -1378,7 +1360,9 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
       {/* Forward-Looking Actions */}
       {synthesis.forwardActions.length > 0 && (
         <div>
-          <h4 className="text-xs text-slate-400 uppercase mb-2 tracking-wide">Preparation Points</h4>
+          <h4 className="text-xs text-slate-400 uppercase mb-2 tracking-wide">
+            Preparation Points
+          </h4>
           <ul className="text-sm text-slate-300 space-y-1">
             {synthesis.forwardActions.map((action, i) => (
               <li key={i} className="flex items-start gap-2">
@@ -1393,7 +1377,10 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
       {/* Relationship Type Indicator */}
       <div className="mt-4 pt-3 border-t border-accent/20">
         <span className="text-xs text-slate-500">
-          Relationship: <span className="text-accent capitalize">{synthesis.relationshipType.replace('-', ' ')}</span>
+          Relationship:{' '}
+          <span className="text-accent capitalize">
+            {synthesis.relationshipType.replace('-', ' ')}
+          </span>
         </span>
       </div>
     </div>
@@ -1407,19 +1394,19 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
         <div className="flex items-start justify-between">
           <div>
             <h4 className="text-lg font-semibold text-white">{participant.name}</h4>
-            {participant.email && (
-              <p className="text-sm text-slate-400">{participant.email}</p>
-            )}
+            {participant.email && <p className="text-sm text-slate-400">{participant.email}</p>}
           </div>
           {/* Confidence Badge with Source Attribution */}
           <div className="relative group">
-            <div className={`text-xs px-3 py-1.5 rounded-full cursor-help ${
-              participant.confidence.score >= 70
-                ? 'bg-cream/20 text-cream border border-cream/30'
-                : participant.confidence.score >= 40
-                ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                : 'bg-edge/50 text-slate-400 border border-slate-600'
-            }`}>
+            <div
+              className={`text-xs px-3 py-1.5 rounded-full cursor-help ${
+                participant.confidence.score >= 70
+                  ? 'bg-cream/20 text-cream border border-cream/30'
+                  : participant.confidence.score >= 40
+                    ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                    : 'bg-edge/50 text-slate-400 border border-slate-600'
+              }`}
+            >
               {participant.confidence.score}% confidence
             </div>
             {/* Tooltip with source breakdown */}
@@ -1448,12 +1435,18 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
           <div className="mt-3 p-3 bg-accent/10 rounded-lg border border-accent/20">
             <p className="text-sm text-accent">
               <Clock className="w-3.5 h-3.5 inline mr-1.5" />
-              We last spoke <span className="font-semibold">{participant.lastSeen.daysAgo} days ago</span> about "{participant.lastSeen.topic}"
-              <span className={`ml-2 px-2 py-0.5 rounded text-xs ${
-                participant.lastSeen.sentiment === 'Positive' ? 'bg-cream/20 text-cream' :
-                participant.lastSeen.sentiment === 'Tense' ? 'bg-red-500/20 text-red-300' :
-                'bg-edge/50 text-slate-300'
-              }`}>
+              We last spoke{' '}
+              <span className="font-semibold">{participant.lastSeen.daysAgo} days ago</span> about "
+              {participant.lastSeen.topic}"
+              <span
+                className={`ml-2 px-2 py-0.5 rounded text-xs ${
+                  participant.lastSeen.sentiment === 'Positive'
+                    ? 'bg-cream/20 text-cream'
+                    : participant.lastSeen.sentiment === 'Tense'
+                      ? 'bg-red-500/20 text-red-300'
+                      : 'bg-edge/50 text-slate-300'
+                }`}
+              >
                 {participant.lastSeen.sentiment}
               </span>
             </p>
@@ -1477,7 +1470,7 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
               </button>
               {participant.email && (
                 <button
-                  onClick={() => handleFetchCompanyInfo(participant.email!)}
+                  onClick={() => participant.email && handleFetchCompanyInfo(participant.email)}
                   disabled={fetchingCompanyInfo === participant.email}
                   className="text-xs px-3 py-1.5 bg-cream/20 text-cream rounded-lg hover:bg-cream/30 transition flex items-center gap-1.5 disabled:opacity-50"
                 >
@@ -1491,7 +1484,10 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
       </div>
 
       {/* Block A: The "Who" (Participant Intel) - Only render if there's meaningful data */}
-      {(participant.intel.persona || participant.intel.crmRole || participant.intel.personalFacts.length > 0 || participant.intel.recentActivity.length > 0) && (
+      {(participant.intel.persona ||
+        participant.intel.crmRole ||
+        participant.intel.personalFacts.length > 0 ||
+        participant.intel.recentActivity.length > 0) && (
         <div className="p-5 border-b border-white/10">
           <h5 className="text-sm font-semibold text-accent uppercase tracking-wide mb-3 flex items-center gap-2">
             <User className="w-4 h-4" />
@@ -1501,13 +1497,19 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
             {participant.intel.persona && (
               <div className="flex items-start gap-3">
                 <span className="text-xs text-slate-500 w-24 flex-shrink-0">Persona</span>
-                <span className={`text-xs px-2 py-1 rounded ${
-                  participant.intel.persona === 'Technical' ? 'bg-blue-500/20 text-blue-300' :
-                  participant.intel.persona === 'Executive' ? 'bg-accent/20 text-accent' :
-                  participant.intel.persona === 'Skeptic' ? 'bg-red-500/20 text-red-300' :
-                  participant.intel.persona === 'Champion' ? 'bg-cream/20 text-cream' :
-                  'bg-edge/50 text-slate-300'
-                }`}>
+                <span
+                  className={`text-xs px-2 py-1 rounded ${
+                    participant.intel.persona === 'Technical'
+                      ? 'bg-blue-500/20 text-blue-300'
+                      : participant.intel.persona === 'Executive'
+                        ? 'bg-accent/20 text-accent'
+                        : participant.intel.persona === 'Skeptic'
+                          ? 'bg-red-500/20 text-red-300'
+                          : participant.intel.persona === 'Champion'
+                            ? 'bg-cream/20 text-cream'
+                            : 'bg-edge/50 text-slate-300'
+                  }`}
+                >
                   {participant.intel.persona}
                 </span>
               </div>
@@ -1521,7 +1523,9 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
             {participant.intel.personalFacts.length > 0 && (
               <div className="flex items-start gap-3">
                 <span className="text-xs text-slate-500 w-24 flex-shrink-0">Personal</span>
-                <span className="text-sm text-slate-300">{participant.intel.personalFacts.join(' • ')}</span>
+                <span className="text-sm text-slate-300">
+                  {participant.intel.personalFacts.join(' • ')}
+                </span>
               </div>
             )}
             {participant.intel.recentActivity.length > 0 && (
@@ -1529,7 +1533,9 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                 <span className="text-xs text-slate-500 w-24 flex-shrink-0">Activity</span>
                 <div className="space-y-1">
                   {participant.intel.recentActivity.map((activity, i) => (
-                    <p key={i} className="text-sm text-slate-300">{activity}</p>
+                    <p key={i} className="text-sm text-slate-300">
+                      {activity}
+                    </p>
                   ))}
                 </div>
               </div>
@@ -1539,47 +1545,54 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
       )}
 
       {/* CRM Snapshot - Only render if there's meaningful CRM data (deal name, value, or stage) */}
-      {participant.crmSnapshot && (participant.crmSnapshot.dealName || participant.crmSnapshot.dealValue || participant.crmSnapshot.dealStage) && (
-        <div className="p-5 border-b border-white/10 bg-gradient-to-r from-accent/5 to-transparent">
-          <h5 className="text-sm font-semibold text-accent uppercase tracking-wide mb-3 flex items-center gap-2">
-            <DollarSign className="w-4 h-4" />
-            CRM Snapshot
-            <span className="text-xs font-normal normal-case text-slate-500">
-              via {participant.crmSnapshot.source === 'hubspot' ? 'HubSpot' : 'Salesforce'}
-            </span>
-          </h5>
-          <div className="flex flex-wrap gap-6">
-            {participant.crmSnapshot.dealName && (
-              <div>
-                <p className="text-xs text-slate-500">Deal</p>
-                <p className="text-sm text-white font-medium">{participant.crmSnapshot.dealName}</p>
-              </div>
-            )}
-            {participant.crmSnapshot.dealValue && (
-              <div>
-                <p className="text-xs text-slate-500">Value</p>
-                <p className="text-sm text-white font-medium">
-                  ${participant.crmSnapshot.dealValue.toLocaleString()}
+      {participant.crmSnapshot &&
+        (participant.crmSnapshot.dealName ||
+          participant.crmSnapshot.dealValue ||
+          participant.crmSnapshot.dealStage) && (
+          <div className="p-5 border-b border-white/10 bg-gradient-to-r from-accent/5 to-transparent">
+            <h5 className="text-sm font-semibold text-accent uppercase tracking-wide mb-3 flex items-center gap-2">
+              <DollarSign className="w-4 h-4" />
+              CRM Snapshot
+              <span className="text-xs font-normal normal-case text-slate-500">
+                via {participant.crmSnapshot.source === 'hubspot' ? 'HubSpot' : 'Salesforce'}
+              </span>
+            </h5>
+            <div className="flex flex-wrap gap-6">
+              {participant.crmSnapshot.dealName && (
+                <div>
+                  <p className="text-xs text-slate-500">Deal</p>
+                  <p className="text-sm text-white font-medium">
+                    {participant.crmSnapshot.dealName}
+                  </p>
+                </div>
+              )}
+              {participant.crmSnapshot.dealValue && (
+                <div>
+                  <p className="text-xs text-slate-500">Value</p>
+                  <p className="text-sm text-white font-medium">
+                    ${participant.crmSnapshot.dealValue.toLocaleString()}
+                  </p>
+                </div>
+              )}
+              {participant.crmSnapshot.dealStage && (
+                <div>
+                  <p className="text-xs text-slate-500">Stage</p>
+                  <p className="text-sm text-accent font-medium">
+                    {participant.crmSnapshot.dealStage}
+                  </p>
+                </div>
+              )}
+            </div>
+            {participant.crmSnapshot.blockers && participant.crmSnapshot.blockers.length > 0 && (
+              <div className="mt-3 p-2 bg-red-500/10 rounded border border-red-500/20">
+                <p className="text-xs text-red-300">
+                  <AlertCircle className="w-3 h-3 inline mr-1" />
+                  Blockers: {participant.crmSnapshot.blockers.join(', ')}
                 </p>
               </div>
             )}
-            {participant.crmSnapshot.dealStage && (
-              <div>
-                <p className="text-xs text-slate-500">Stage</p>
-                <p className="text-sm text-accent font-medium">{participant.crmSnapshot.dealStage}</p>
-              </div>
-            )}
           </div>
-          {participant.crmSnapshot.blockers && participant.crmSnapshot.blockers.length > 0 && (
-            <div className="mt-3 p-2 bg-red-500/10 rounded border border-red-500/20">
-              <p className="text-xs text-red-300">
-                <AlertCircle className="w-3 h-3 inline mr-1" />
-                Blockers: {participant.crmSnapshot.blockers.join(', ')}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
+        )}
 
       {/* Block B: The "History" (Action Items) */}
       {participant.actionItems.length > 0 && (
@@ -1598,17 +1611,23 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                   className="mt-1 rounded border-slate-600 bg-input text-accent focus:ring-accent focus:ring-offset-0"
                 />
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm ${
-                    completedActionItems.has(item.id) || item.completed
-                      ? 'line-through text-slate-500'
-                      : 'text-slate-300'
-                  }`}>
+                  <p
+                    className={`text-sm ${
+                      completedActionItems.has(item.id) || item.completed
+                        ? 'line-through text-slate-500'
+                        : 'text-slate-300'
+                    }`}
+                  >
                     {item.description}
                   </p>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    <span className={`px-1.5 py-0.5 rounded text-xs mr-2 ${
-                      item.assignedTo === 'them' ? 'bg-orange-500/20 text-orange-300' : 'bg-blue-500/20 text-blue-300'
-                    }`}>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-xs mr-2 ${
+                        item.assignedTo === 'them'
+                          ? 'bg-orange-500/20 text-orange-300'
+                          : 'bg-blue-500/20 text-blue-300'
+                      }`}
+                    >
                       {item.assignedTo === 'them' ? 'Their action' : 'Our action'}
                     </span>
                     {formatRelativeDate(item.meetingDate)} • {item.meetingTitle}
@@ -1629,7 +1648,10 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
           </h5>
           <div className="space-y-2">
             {participant.unresolvedThreads.map((thread) => (
-              <div key={thread.id} className="p-3 bg-amber-500/10 rounded-lg border border-amber-500/20">
+              <div
+                key={thread.id}
+                className="p-3 bg-amber-500/10 rounded-lg border border-amber-500/20"
+              >
                 <p className="text-sm text-amber-200">{thread.description}</p>
                 <p className="text-xs text-amber-400/70 mt-1">
                   From {thread.originMeetingTitle} • {formatRelativeDate(thread.originMeetingDate)}
@@ -1656,7 +1678,9 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs text-slate-500">{formatRelativeDate(event.date)}</span>
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${getSourceColor(event.source)}`}>
+                    <span
+                      className={`text-xs px-1.5 py-0.5 rounded ${getSourceColor(event.source)}`}
+                    >
                       {event.source}
                     </span>
                   </div>
@@ -1669,30 +1693,34 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
       )}
 
       {/* Company Info (fetched separately) */}
-      {participant.email && companyInfoCache[participant.email] && (
-        <div className="p-5 border-t border-white/10 bg-blue-500/5">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-blue-300">
-                {companyInfoCache[participant.email]!.name || companyInfoCache[participant.email]!.domain}
-              </p>
-              {companyInfoCache[participant.email]!.description && (
-                <p className="text-xs text-blue-400/70 mt-1 line-clamp-2">
-                  {companyInfoCache[participant.email]!.description}
+      {(() => {
+        const companyInfo = participant.email ? companyInfoCache[participant.email] : null;
+        if (!companyInfo) return null;
+        return (
+          <div className="p-5 border-t border-white/10 bg-blue-500/5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-300">
+                  {companyInfo.name || companyInfo.domain}
                 </p>
-              )}
+                {companyInfo.description && (
+                  <p className="text-xs text-blue-400/70 mt-1 line-clamp-2">
+                    {companyInfo.description}
+                  </p>
+                )}
+              </div>
+              <a
+                href={companyInfo.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
             </div>
-            <a
-              href={companyInfoCache[participant.email]!.website}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-400 hover:text-blue-300"
-            >
-              <ExternalLink className="w-4 h-4" />
-            </a>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 
@@ -1707,16 +1735,18 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
               <Zap className="w-5 h-5 text-accent" />
               Meeting Prep: {conversationalResult.participant.name}
             </h1>
-            <p className="text-sm text-slate-400">
-              {conversationalResult.participant.headline}
-            </p>
+            <p className="text-sm text-slate-400">{conversationalResult.participant.headline}</p>
           </div>
           <div className="flex items-center gap-2">
-            <span className={`text-xs px-2 py-1 rounded ${
-              conversationalResult.participant.dataQuality === 'rich' ? 'bg-cream/20 text-cream' :
-              conversationalResult.participant.dataQuality === 'moderate' ? 'bg-yellow-500/20 text-yellow-300' :
-              'bg-edge/20 text-slate-300'
-            }`}>
+            <span
+              className={`text-xs px-2 py-1 rounded ${
+                conversationalResult.participant.dataQuality === 'rich'
+                  ? 'bg-cream/20 text-cream'
+                  : conversationalResult.participant.dataQuality === 'moderate'
+                    ? 'bg-yellow-500/20 text-yellow-300'
+                    : 'bg-edge/20 text-slate-300'
+              }`}
+            >
               {conversationalResult.participant.meetingCount} meetings analyzed
             </span>
             <button
@@ -1740,9 +1770,14 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                 // H2 headers
                 if (line.startsWith('## ')) {
                   return (
-                    <h2 key={idx} className="text-lg font-semibold text-accent mt-6 mb-3 first:mt-0 flex items-center gap-2">
+                    <h2
+                      key={idx}
+                      className="text-lg font-semibold text-accent mt-6 mb-3 first:mt-0 flex items-center gap-2"
+                    >
                       {line.startsWith('## Key Active') && <Target className="w-4 h-4" />}
-                      {line.startsWith('## Quick Questions') && <MessageSquare className="w-4 h-4" />}
+                      {line.startsWith('## Quick Questions') && (
+                        <MessageSquare className="w-4 h-4" />
+                      )}
                       {line.startsWith('## Their Key') && <User className="w-4 h-4" />}
                       {line.startsWith('## Action Item') && <ListChecks className="w-4 h-4" />}
                       {line.replace('## ', '')}
@@ -1761,7 +1796,10 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                 if (line.startsWith('**Waiting on Them:') || line.startsWith('**You Owe Them:')) {
                   const isWaiting = line.includes('Waiting');
                   return (
-                    <h4 key={idx} className={`text-sm font-semibold mt-4 mb-2 ${isWaiting ? 'text-orange-400' : 'text-blue-400'}`}>
+                    <h4
+                      key={idx}
+                      className={`text-sm font-semibold mt-4 mb-2 ${isWaiting ? 'text-orange-400' : 'text-blue-400'}`}
+                    >
                       {line.replace(/\*\*/g, '')}
                     </h4>
                   );
@@ -1769,17 +1807,19 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                 // Bullet points
                 if (line.startsWith('- ')) {
                   // Extract citation if present
-                  const citationMatch = line.match(/\[(?:from|context|since|committed):\s*([^\]]+)\]/i);
-                  const mainContent = line.replace(/\[(?:from|context|since|committed):\s*[^\]]+\]/gi, '').replace('- ', '');
+                  const citationMatch = line.match(
+                    /\[(?:from|context|since|committed):\s*([^\]]+)\]/i
+                  );
+                  const mainContent = line
+                    .replace(/\[(?:from|context|since|committed):\s*[^\]]+\]/gi, '')
+                    .replace('- ', '');
                   return (
                     <div key={idx} className="flex items-start gap-2 my-1.5 text-slate-300">
                       <span className="text-accent mt-1">•</span>
                       <span>
                         {mainContent}
                         {citationMatch && (
-                          <span className="text-xs text-slate-500 ml-1">
-                            [{citationMatch[1]}]
-                          </span>
+                          <span className="text-xs text-slate-500 ml-1">[{citationMatch[1]}]</span>
                         )}
                       </span>
                     </div>
@@ -1790,7 +1830,11 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                   return <div key={idx} className="h-2" />;
                 }
                 // Regular text
-                return <p key={idx} className="text-slate-300 my-1">{line}</p>;
+                return (
+                  <p key={idx} className="text-slate-300 my-1">
+                    {line}
+                  </p>
+                );
               })}
             </div>
           </div>
@@ -1849,7 +1893,10 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
         {/* Dynamic Participant Cards */}
         <div className="flex-1 overflow-y-auto space-y-6 pr-2">
           {dynamicPrepResult.participants.map((participant, idx) => (
-            <div key={idx} className="bg-surface border border-accent/30 rounded-2xl overflow-hidden">
+            <div
+              key={idx}
+              className="bg-surface border border-accent/30 rounded-2xl overflow-hidden"
+            >
               {/* Participant Header */}
               <div className="p-5 border-b border-white/10">
                 <div className="flex items-start justify-between">
@@ -1860,13 +1907,15 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                     )}
                   </div>
                   {/* Priority Score Badge */}
-                  <div className={`text-xs px-3 py-1.5 rounded-full ${
-                    participant.computedPriority >= 70
-                      ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                      : participant.computedPriority >= 40
-                      ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                      : 'bg-cream/20 text-cream border border-cream/30'
-                  }`}>
+                  <div
+                    className={`text-xs px-3 py-1.5 rounded-full ${
+                      participant.computedPriority >= 70
+                        ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                        : participant.computedPriority >= 40
+                          ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                          : 'bg-cream/20 text-cream border border-cream/30'
+                    }`}
+                  >
                     Priority: {participant.computedPriority}
                   </div>
                 </div>
@@ -1874,14 +1923,12 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
 
               {/* 30-Second Brief Card */}
               <div className="p-5">
-                <DynamicBriefCard
-                  participant={participant}
-                  onFeedback={handleInsightFeedback}
-                />
+                <DynamicBriefCard participant={participant} onFeedback={handleInsightFeedback} />
 
                 {/* Pending Actions Section */}
-                {participant.pendingActions && (
-                  (participant.pendingActions.theyOweUs.length > 0 || participant.pendingActions.weOweThem.length > 0) && (
+                {participant.pendingActions &&
+                  (participant.pendingActions.theyOweUs.length > 0 ||
+                    participant.pendingActions.weOweThem.length > 0) && (
                     <div className="mt-4 space-y-3">
                       {participant.pendingActions.theyOweUs.length > 0 && (
                         <div className="p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
@@ -1916,8 +1963,7 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                         </div>
                       )}
                     </div>
-                  )
-                )}
+                  )}
 
                 {/* CRM Validations (discrepancies) */}
                 {participant.crmValidations && participant.crmValidations.length > 0 && (
@@ -1946,8 +1992,12 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                     <div className="mt-2 p-2 bg-input/50 rounded space-y-1">
                       {participant.signals.map((signal, i) => (
                         <div key={i} className="flex justify-between text-slate-400">
-                          <span>{signal.category} ({signal.source})</span>
-                          <span className="text-white">{(signal.normalizedScore * 100).toFixed(0)}%</span>
+                          <span>
+                            {signal.category} ({signal.source})
+                          </span>
+                          <span className="text-white">
+                            {(signal.normalizedScore * 100).toFixed(0)}%
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -2000,7 +2050,9 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
 
         {/* Participant Cards */}
         <div className="flex-1 overflow-y-auto space-y-6 pr-2">
-          {briefingResult.participants.map((participant, idx) => renderParticipantCard(participant, idx))}
+          {briefingResult.participants.map((participant, idx) =>
+            renderParticipantCard(participant, idx)
+          )}
         </div>
       </div>
     );
@@ -2027,10 +2079,7 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
           {chatConversation && chatConversation.messages.length > 0 ? (
             <div className="flex-1 flex flex-col min-h-0">
               {/* Messages Container */}
-              <div
-                ref={scrollContainerRef}
-                className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
-              >
+              <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
                 {chatConversation.messages.map((message) => (
                   <div
                     key={message.id}
@@ -2053,65 +2102,7 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                             />
                           )}
                           {/* Render markdown content */}
-                          {message.content.split('\n').map((line, idx) => {
-                            // H2 headers
-                            if (line.startsWith('## ')) {
-                              return (
-                                <h2 key={idx} className="text-base font-semibold text-accent mt-4 mb-2 first:mt-0">
-                                  {line.replace('## ', '')}
-                                </h2>
-                              );
-                            }
-                            // Bold text (entire line)
-                            if (line.startsWith('**') && line.endsWith('**')) {
-                              return (
-                                <p key={idx} className="font-semibold text-white mt-3 mb-1">
-                                  {line.replace(/\*\*/g, '')}
-                                </p>
-                              );
-                            }
-                            // Bullet points
-                            if (line.startsWith('- ')) {
-                              const content = line.replace('- ', '');
-                              // Handle inline bold
-                              const parts = content.split(/(\*\*[^*]+\*\*)/g);
-                              return (
-                                <div key={idx} className="flex items-start gap-2 my-1 text-slate-300">
-                                  <span className="text-accent mt-0.5">•</span>
-                                  <span>
-                                    {parts.map((part, i) =>
-                                      part.startsWith('**') && part.endsWith('**') ? (
-                                        <strong key={i} className="text-white font-medium">
-                                          {part.replace(/\*\*/g, '')}
-                                        </strong>
-                                      ) : (
-                                        <span key={i}>{part}</span>
-                                      )
-                                    )}
-                                  </span>
-                                </div>
-                              );
-                            }
-                            // Empty lines
-                            if (!line.trim()) {
-                              return <div key={idx} className="h-2" />;
-                            }
-                            // Regular text with inline bold handling
-                            const parts = line.split(/(\*\*[^*]+\*\*)/g);
-                            return (
-                              <p key={idx} className="text-slate-300 my-1">
-                                {parts.map((part, i) =>
-                                  part.startsWith('**') && part.endsWith('**') ? (
-                                    <strong key={i} className="text-white font-medium">
-                                      {part.replace(/\*\*/g, '')}
-                                    </strong>
-                                  ) : (
-                                    <span key={i}>{part}</span>
-                                  )
-                                )}
-                              </p>
-                            );
-                          })}
+                          {message.content.split('\n').map(renderMarkdownLine)}
                           {/* Meeting References */}
                           {message.meetingReferences && message.meetingReferences.length > 0 && (
                             <div className="mt-3 pt-3 border-t border-white/10">
@@ -2141,72 +2132,17 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                     <div className="max-w-[85%] bg-edge rounded-2xl rounded-bl-md px-4 py-3 border border-white/5">
                       {/* Show thinking timer - collapses to show duration once complete */}
                       <ThoughtTrace
-                        thinking={isStreamingThinking ? '' : 'Processing your question and analyzing context'}
+                        thinking={
+                          isStreamingThinking
+                            ? ''
+                            : 'Processing your question and analyzing context'
+                        }
                         thinkingDuration={thinkingTimer.elapsedMs}
                         isStreaming={isStreamingThinking}
                       />
                       {streamingText ? (
                         <div className="prose prose-invert prose-sm max-w-none">
-                          {/* Render streaming markdown content */}
-                          {streamingText.split('\n').map((line, idx) => {
-                            // H2 headers
-                            if (line.startsWith('## ')) {
-                              return (
-                                <h2 key={idx} className="text-base font-semibold text-accent mt-4 mb-2 first:mt-0">
-                                  {line.replace('## ', '')}
-                                </h2>
-                              );
-                            }
-                            // Bold text (entire line)
-                            if (line.startsWith('**') && line.endsWith('**')) {
-                              return (
-                                <p key={idx} className="font-semibold text-white mt-3 mb-1">
-                                  {line.replace(/\*\*/g, '')}
-                                </p>
-                              );
-                            }
-                            // Bullet points
-                            if (line.startsWith('- ')) {
-                              const content = line.replace('- ', '');
-                              const parts = content.split(/(\*\*[^*]+\*\*)/g);
-                              return (
-                                <div key={idx} className="flex items-start gap-2 my-1 text-slate-300">
-                                  <span className="text-accent mt-0.5">•</span>
-                                  <span>
-                                    {parts.map((part, i) =>
-                                      part.startsWith('**') && part.endsWith('**') ? (
-                                        <strong key={i} className="text-white font-medium">
-                                          {part.replace(/\*\*/g, '')}
-                                        </strong>
-                                      ) : (
-                                        <span key={i}>{part}</span>
-                                      )
-                                    )}
-                                  </span>
-                                </div>
-                              );
-                            }
-                            // Empty lines
-                            if (!line.trim()) {
-                              return <div key={idx} className="h-2" />;
-                            }
-                            // Regular text
-                            const parts = line.split(/(\*\*[^*]+\*\*)/g);
-                            return (
-                              <p key={idx} className="text-slate-300 my-1">
-                                {parts.map((part, i) =>
-                                  part.startsWith('**') && part.endsWith('**') ? (
-                                    <strong key={i} className="text-white font-medium">
-                                      {part.replace(/\*\*/g, '')}
-                                    </strong>
-                                  ) : (
-                                    <span key={i}>{part}</span>
-                                  )
-                                )}
-                              </p>
-                            );
-                          })}
-                          {/* Typing cursor */}
+                          {streamingText.split('\n').map(renderMarkdownLine)}
                           <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5" />
                         </div>
                       ) : (
@@ -2325,7 +2261,10 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                 {branches.length > 0 && (
                   <div className="mt-6 pt-6 border-t border-white/10">
                     <p className="text-xl font-semibold text-white mb-1">Branches</p>
-                    <p className="text-sm text-slate-400 mb-3">Pre-perfected prompt that allows you to retrieve data that's Rooted in your transcripts</p>
+                    <p className="text-sm text-slate-400 mb-3">
+                      Pre-perfected prompt that allows you to retrieve data that's Rooted in your
+                      transcripts
+                    </p>
                     <div className="grid grid-cols-4 gap-3">
                       {branches.map((branch) => (
                         <button
@@ -2336,8 +2275,12 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                           }}
                           className="flex flex-col bg-surface border border-white/10 hover:border-accent/50 rounded-xl transition-all p-3 text-left group"
                         >
-                          <p className="text-sm text-slate-300 group-hover:text-white font-medium transition-colors">{branch.name} 🌱</p>
-                          <p className="text-xs text-slate-500 mt-1 leading-snug">{branch.description}</p>
+                          <p className="text-sm text-slate-300 group-hover:text-white font-medium transition-colors">
+                            {branch.name} 🌱
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1 leading-snug">
+                            {branch.description}
+                          </p>
                         </button>
                       ))}
                     </div>
@@ -2353,14 +2296,20 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                     >
                       <History className="w-4 h-4" />
                       <span>Previous Chats</span>
-                      <ChevronDown className={`w-3 h-3 transition-transform ${showPreviousChats ? 'rotate-180' : ''}`} />
+                      <ChevronDown
+                        className={`w-3 h-3 transition-transform ${showPreviousChats ? 'rotate-180' : ''}`}
+                      />
                     </button>
                     {showPreviousChats && (
                       <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
                         {chatHistory.map((conv) => {
                           const firstUserMsg = conv.messages.find((m) => m.role === 'user');
-                          const title = firstUserMsg?.content.replace(/^🌱\s*/, '').trim() || 'Untitled';
-                          const date = new Date(conv.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                          const title =
+                            firstUserMsg?.content.replace(/^🌱\s*/, '').trim() || 'Untitled';
+                          const date = new Date(conv.createdAt).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                          });
                           return (
                             <button
                               key={conv.id}
@@ -2370,8 +2319,12 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                               }}
                               className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-left group"
                             >
-                              <span className="text-sm text-slate-300 group-hover:text-white truncate flex-1 transition-colors">{title}</span>
-                              <span className="text-xs text-slate-500 ml-3 flex-shrink-0">{date}</span>
+                              <span className="text-sm text-slate-300 group-hover:text-white truncate flex-1 transition-colors">
+                                {title}
+                              </span>
+                              <span className="text-xs text-slate-500 ml-3 flex-shrink-0">
+                                {date}
+                              </span>
                             </button>
                           );
                         })}
@@ -2388,9 +2341,7 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
       {/* Advanced Prep Mode */}
       {prepMode === 'advanced' && (
         <>
-          <div className="flex-1 min-h-0">
-            {renderParticipantSelection()}
-          </div>
+          <div className="flex-1 min-h-0">{renderParticipantSelection()}</div>
 
           <div className="mt-3 bg-surface border border-white/10 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -2400,7 +2351,8 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
               <div>
                 <p className="text-sm text-slate-400">Summary</p>
                 <p className="text-sm text-white">
-                  {selectedPeople.length} participant{selectedPeople.length === 1 ? '' : 's'} · {selectedObjectiveLabel || 'No objective yet'}
+                  {selectedPeople.length} participant{selectedPeople.length === 1 ? '' : 's'} ·{' '}
+                  {selectedObjectiveLabel || 'No objective yet'}
                 </p>
               </div>
             </div>
@@ -2413,10 +2365,16 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                     ? 'border-accent/50 bg-accent/10 text-accent'
                     : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20'
                 }`}
-                title={useDynamicPrep ? 'Using Dynamic Prep (signal-driven)' : 'Using Enhanced Prep (legacy)'}
+                title={
+                  useDynamicPrep
+                    ? 'Using Dynamic Prep (signal-driven)'
+                    : 'Using Enhanced Prep (legacy)'
+                }
               >
                 <Zap className={`w-4 h-4 ${useDynamicPrep ? 'text-accent' : 'text-slate-500'}`} />
-                <span className="text-xs font-medium">{useDynamicPrep ? 'Dynamic' : 'Enhanced'}</span>
+                <span className="text-xs font-medium">
+                  {useDynamicPrep ? 'Dynamic' : 'Enhanced'}
+                </span>
               </button>
               <button
                 onClick={handleGenerateBriefing}
@@ -2428,9 +2386,7 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
             </div>
           </div>
 
-          {generatingError && (
-            <p className="mt-2 text-sm text-amber-300">{generatingError}</p>
-          )}
+          {generatingError && <p className="mt-2 text-sm text-amber-300">{generatingError}</p>}
         </>
       )}
 
@@ -2443,8 +2399,8 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                 {editingStandardId
                   ? 'Edit Standard Objective'
                   : editingType
-                  ? 'Edit Meeting Objective'
-                  : 'Create Meeting Objective'}
+                    ? 'Edit Meeting Objective'
+                    : 'Create Meeting Objective'}
               </h3>
               <button onClick={closeModal} className="p-2 hover:bg-white/5 rounded-lg">
                 <X className="w-5 h-5 text-slate-400" />
@@ -2459,7 +2415,7 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                   <input
                     type="text"
                     value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                     placeholder="e.g., Customer Discovery Call"
                     className="w-full px-4 py-2 bg-[#0D0D0D] border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-accent-hover focus:outline-none"
                   />
@@ -2471,7 +2427,9 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                 <label className="block text-sm text-slate-400 mb-1">Description</label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, description: e.target.value }))
+                  }
                   placeholder="What is this meeting objective for?"
                   rows={2}
                   className="w-full px-4 py-2 bg-[#0D0D0D] border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-accent-hover focus:outline-none resize-none"
@@ -2485,7 +2443,7 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                   <div className="flex gap-3">
                     <button
                       type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, isExternal: false }))}
+                      onClick={() => setFormData((prev) => ({ ...prev, isExternal: false }))}
                       className={`flex-1 px-4 py-3 rounded-lg border flex items-center justify-center gap-2 transition-colors ${
                         !formData.isExternal
                           ? 'border-accent-hover bg-accent-hover/20 text-white'
@@ -2497,7 +2455,7 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, isExternal: true }))}
+                      onClick={() => setFormData((prev) => ({ ...prev, isExternal: true }))}
                       className={`flex-1 px-4 py-3 rounded-lg border flex items-center justify-center gap-2 transition-colors ${
                         formData.isExternal
                           ? 'border-accent-hover bg-accent-hover/20 text-white'
@@ -2516,12 +2474,19 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                 <label className="block text-sm text-slate-400 mb-2">Typical Attendee Roles</label>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {formData.attendeeRoles.map((role, idx) => (
-                    <span key={idx} className="px-3 py-1 bg-accent/20 text-accent rounded-full text-sm flex items-center gap-1">
+                    <span
+                      key={idx}
+                      className="px-3 py-1 bg-accent/20 text-accent rounded-full text-sm flex items-center gap-1"
+                    >
                       {role}
-                      <button onClick={() => setFormData(prev => ({
-                        ...prev,
-                        attendeeRoles: prev.attendeeRoles.filter((_, i) => i !== idx)
-                      }))}>
+                      <button
+                        onClick={() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            attendeeRoles: prev.attendeeRoles.filter((_, i) => i !== idx),
+                          }))
+                        }
+                      >
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -2554,10 +2519,14 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                     <div key={idx} className="flex items-center gap-2">
                       <Target className="w-4 h-4 text-cream flex-shrink-0" />
                       <span className="flex-1 text-sm text-white">{obj}</span>
-                      <button onClick={() => setFormData(prev => ({
-                        ...prev,
-                        objectives: prev.objectives.filter((_, i) => i !== idx)
-                      }))}>
+                      <button
+                        onClick={() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            objectives: prev.objectives.filter((_, i) => i !== idx),
+                          }))
+                        }
+                      >
                         <X className="w-4 h-4 text-slate-400 hover:text-red-400" />
                       </button>
                     </div>
@@ -2568,7 +2537,9 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                     type="text"
                     value={newObjective}
                     onChange={(e) => setNewObjective(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addObjectiveItem())}
+                    onKeyPress={(e) =>
+                      e.key === 'Enter' && (e.preventDefault(), addObjectiveItem())
+                    }
                     placeholder="Add objective (e.g., Identify pain points)"
                     className="flex-1 px-3 py-2 bg-[#0D0D0D] border border-white/10 rounded-lg text-white placeholder:text-slate-500 text-sm focus:border-accent-hover focus:outline-none"
                   />
@@ -2587,7 +2558,9 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                 <label className="block text-sm text-slate-400 mb-1">AI Preparation Prompt</label>
                 <textarea
                   value={formData.customPrompt}
-                  onChange={(e) => setFormData(prev => ({ ...prev, customPrompt: e.target.value }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, customPrompt: e.target.value }))
+                  }
                   placeholder="Instructions for AI when preparing for this meeting..."
                   rows={3}
                   className="w-full px-4 py-2 bg-[#0D0D0D] border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-accent-hover focus:outline-none resize-none"
@@ -2681,35 +2654,11 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
               {/* Content */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 {/* Thumbnail */}
-                {selectedBranch.id === 'leadership-coaching' ? (
+                {BRANCH_IMAGES[selectedBranch.id] ? (
                   <div className="w-full h-48 rounded-xl border border-edge overflow-hidden">
                     <img
-                      src={leadershipCoachingImage}
-                      alt="Leadership Coaching"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ) : selectedBranch.id === 'last-weeks-report' ? (
-                  <div className="w-full h-48 rounded-xl border border-edge overflow-hidden">
-                    <img
-                      src={weeklyReportImage}
-                      alt="Last Week's Report"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ) : selectedBranch.id === 'monthly-recap' ? (
-                  <div className="w-full h-48 rounded-xl border border-edge overflow-hidden">
-                    <img
-                      src={monthlyReportImage}
-                      alt="Monthly Recap"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ) : selectedBranch.id === 'sort-my-calendar' ? (
-                  <div className="w-full h-48 rounded-xl border border-edge overflow-hidden">
-                    <img
-                      src={sortCalendarImage}
-                      alt="Sort my Calendar"
+                      src={BRANCH_IMAGES[selectedBranch.id].src}
+                      alt={BRANCH_IMAGES[selectedBranch.id].alt}
                       className="w-full h-full object-cover"
                     />
                   </div>
@@ -2722,7 +2671,9 @@ export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
                 {/* Explanation */}
                 <div>
                   <h3 className="text-lg font-semibold text-white mb-2">What this branch does</h3>
-                  <p className="text-sm text-slate-300 leading-relaxed">{selectedBranch.explanation}</p>
+                  <p className="text-sm text-slate-300 leading-relaxed">
+                    {selectedBranch.explanation}
+                  </p>
                 </div>
               </div>
 

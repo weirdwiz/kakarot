@@ -70,6 +70,74 @@ export interface AECMetrics {
   converged?: boolean;
 }
 
+/** Native AudioCaptureAddon instance interface */
+interface NativeAudioAddon {
+  processRenderAudio(buffer: Float32Array): void;
+  processCaptureAudio(buffer: Float32Array): Float32Array;
+  startMicrophoneCapture(callback: (samples: Float32Array, timestamp: number) => void): boolean;
+  stopMicrophoneCapture(): boolean;
+  getMetrics(): Record<string, unknown>;
+  isHeadphonesConnected(): boolean;
+  setEchoCancellationEnabled(enabled: boolean): void;
+  resetAEC(): void;
+}
+
+/**
+ * Load the native audio_capture_native module, trying bindings first
+ * then falling back to direct require at known paths.
+ */
+function loadNativeModule(): {
+  AudioCaptureAddon: new (config: Record<string, boolean>) => NativeAudioAddon;
+} {
+  try {
+    const mod = bindings('audio_capture_native') as {
+      AudioCaptureAddon?: new (config: Record<string, boolean>) => NativeAudioAddon;
+    };
+    if (mod?.AudioCaptureAddon)
+      return mod as {
+        AudioCaptureAddon: new (config: Record<string, boolean>) => NativeAudioAddon;
+      };
+  } catch {
+    // bindings() failed, fall through to path search
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fs = require('fs');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const path = require('path');
+
+  const possiblePaths = [
+    path.join(__dirname, 'audio_capture_native.node'),
+    path.join(process.cwd(), 'native/build/Release/audio_capture_native.node'),
+    path.join(process.cwd(), 'build/Release/audio_capture_native.node'),
+    path.join(process.cwd(), 'audio_capture_native.node'),
+  ];
+
+  if (process.resourcesPath) {
+    possiblePaths.push(
+      path.join(process.resourcesPath, 'app/native/build/Release/audio_capture_native.node'),
+      path.join(process.resourcesPath, 'native/build/Release/audio_capture_native.node'),
+      path.join(process.resourcesPath, 'app/audio_capture_native.node'),
+      path.join(process.resourcesPath, 'audio_capture_native.node')
+    );
+  }
+
+  for (const testPath of possiblePaths) {
+    try {
+      if (fs.existsSync(testPath)) {
+        logger.info('Found native addon', { path: testPath });
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const mod = require(testPath);
+        if (mod?.AudioCaptureAddon) return mod;
+      }
+    } catch {
+      // skip invalid paths
+    }
+  }
+
+  throw new Error('Could not find native audio_capture_native module');
+}
+
 const DEFAULT_CONFIG: Required<AECConfig> = {
   enableAec: true,
   enableNs: true,
@@ -84,13 +152,10 @@ const DEFAULT_CONFIG: Required<AECConfig> = {
  * Manages render/capture processing and native mic capture.
  */
 export class AECProcessor {
-  private nativeModule: any = null;
-  private nativeInstance: any = null;
+  private nativeInstance: NativeAudioAddon | null = null;
   private config: Required<AECConfig>;
   private isInitialized = false;
   private isDestroyed = false;
-  private renderBufferQueue: Float32Array[] = [];
-  private readonly MAX_RENDER_QUEUE = 10;
   private micCapturing = false;
   private micAudioCallback?: (samples: Float32Array, timestamp: number) => void;
 
@@ -98,87 +163,9 @@ export class AECProcessor {
     this.config = { ...DEFAULT_CONFIG, ...config };
 
     try {
-      // Load the native module (exports a class AudioCaptureAddon)
-      let nativeModule;
-      
-      try {
-        // First try: use bindings module (works in dev/unbundled)
-        logger.debug('Attempting to load native addon via bindings module...');
-        nativeModule = bindings('audio_capture_native');
-        logger.debug('Loaded native addon via bindings module');
-      } catch (bindingsError) {
-        // Fallback: try to require directly at runtime using multiple possible paths
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const fs = require('fs');
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const path = require('path');
-        
-        const errorMsg = bindingsError instanceof Error ? bindingsError.message : String(bindingsError);
-        logger.debug('bindings() failed, trying direct require paths', { error: errorMsg.substring(0, 100) });
-        
-        const possiblePaths: string[] = [];
-        
-        // Try same directory as the bundled code (after build copy)
-        possiblePaths.push(
-          path.join(__dirname, 'audio_capture_native.node')
-        );
-        
-        // Try cwd-relative paths
-        possiblePaths.push(
-          path.join(process.cwd(), 'native/build/Release/audio_capture_native.node'),
-          path.join(process.cwd(), 'build/Release/audio_capture_native.node'),
-          path.join(process.cwd(), 'audio_capture_native.node')
-        );
-        
-        // Try relative to app directory (for production)
-        if (process.resourcesPath) {
-          possiblePaths.push(
-            path.join(process.resourcesPath, 'app/native/build/Release/audio_capture_native.node'),
-            path.join(process.resourcesPath, 'native/build/Release/audio_capture_native.node'),
-            path.join(process.resourcesPath, 'app/audio_capture_native.node'),
-            path.join(process.resourcesPath, 'audio_capture_native.node')
-          );
-        }
+      const nativeModule = loadNativeModule();
 
-        let foundPath: string | null = null;
-        const checkedPaths: string[] = [];
-        
-        for (const testPath of possiblePaths) {
-          checkedPaths.push(testPath);
-          try {
-            if (fs.existsSync(testPath)) {
-              logger.info('Found native addon', { path: testPath });
-              foundPath = testPath;
-              break;
-            }
-          } catch (e) {
-            logger.debug('Path check failed', { path: testPath, error: String(e).substring(0, 50) });
-          }
-        }
-
-        if (!foundPath) {
-          const checkedStr = checkedPaths.slice(0, 2).join(' OR ');
-          throw new Error(
-            `Could not find native audio_capture_native module. Checked: ${checkedStr}`
-          );
-        }
-
-        logger.debug('Loading native addon using require()', { path: foundPath });
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        nativeModule = require(foundPath);
-        logger.debug('Loaded native addon via direct require()');
-      }
-
-      if (!nativeModule || typeof nativeModule.AudioCaptureAddon !== 'function') {
-        logger.error('Invalid native module structure', { hasModule: !!nativeModule, hasAudioCaptureAddon: !!nativeModule?.AudioCaptureAddon });
-        throw new Error('Failed to load native audio_capture_native module');
-      }
-
-      this.nativeModule = nativeModule;
-
-      // Create native instance with config (init occurs in constructor)
-      logger.debug('Creating native AudioCaptureAddon instance...');
-      this.nativeInstance = new this.nativeModule.AudioCaptureAddon({
+      this.nativeInstance = new nativeModule.AudioCaptureAddon({
         enableAec: this.config.enableAec,
         enableNs: this.config.enableNs,
         enableAgc: this.config.enableAgc,
@@ -194,7 +181,10 @@ export class AECProcessor {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error('AEC initialization failed', { errorMessage: message, errorType: error instanceof Error ? 'Error' : 'Other' });
+      logger.error('AEC initialization failed', {
+        errorMessage: message,
+        errorType: error instanceof Error ? 'Error' : 'Other',
+      });
       throw new Error(`AEC initialization failed: ${message}`);
     }
   }
@@ -204,35 +194,11 @@ export class AECProcessor {
    * Must be called BEFORE corresponding processCaptureAudio() call.
    */
   public processRenderAudio(renderBuffer: Float32Array): boolean {
-    if (this.isDestroyed) {
-      logger.warn('Cannot process render audio: AEC processor is destroyed');
-      return false;
-    }
-
-    if (!this.isInitialized) {
-      logger.warn('Cannot process render audio: AEC not initialized');
-      return false;
-    }
-
-    if (!renderBuffer || renderBuffer.length === 0) {
-      logger.warn('Render buffer is empty, skipping');
-      return false;
-    }
+    if (!this.isReady() || !this.nativeInstance) return false;
+    if (!renderBuffer || renderBuffer.length === 0) return false;
 
     try {
-      // Queue the render buffer for processing
-      // The native module will process it internally and use it as reference
-      // for the next processCaptureAudio call
-      if (this.nativeInstance && typeof this.nativeInstance.processRenderAudio === 'function') {
-        this.nativeInstance.processRenderAudio(renderBuffer);
-      }
-
-      // Keep a reference for metrics if needed
-      if (this.renderBufferQueue.length >= this.MAX_RENDER_QUEUE) {
-        this.renderBufferQueue.shift();
-      }
-      this.renderBufferQueue.push(renderBuffer);
-
+      this.nativeInstance.processRenderAudio(renderBuffer);
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -246,30 +212,11 @@ export class AECProcessor {
    * Returns echo-cancelled audio, or null on error.
    */
   public processCaptureAudio(captureBuffer: Float32Array): Float32Array | null {
-    if (this.isDestroyed) {
-      logger.warn('Cannot process capture audio: AEC processor is destroyed');
-      return null;
-    }
-
-    if (!this.isInitialized) {
-      logger.warn('Cannot process capture audio: AEC not initialized');
-      return null;
-    }
-
-    if (!captureBuffer || captureBuffer.length === 0) {
-      logger.warn('Capture buffer is empty, returning null');
-      return null;
-    }
+    if (!this.isReady() || !this.nativeInstance) return null;
+    if (!captureBuffer || captureBuffer.length === 0) return null;
 
     try {
-      // Call the native module to process capture audio and return echo-cancelled result
-      if (this.nativeInstance && typeof this.nativeInstance.processCaptureAudio === 'function') {
-        const result = this.nativeInstance.processCaptureAudio(captureBuffer);
-        return result as Float32Array;
-      }
-
-      logger.warn('processCaptureAudio not available in native module');
-      return null;
+      return this.nativeInstance.processCaptureAudio(captureBuffer);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('Error processing capture audio', { error: message });
@@ -281,70 +228,33 @@ export class AECProcessor {
    * Start native microphone capture using AudioUnit.
    * Timestamps use the same monotonic clock as system audio for AEC sync.
    */
-  public startMicrophoneCapture(callback: (samples: Float32Array, timestamp: number) => void): boolean {
-    if (this.isDestroyed) {
-      logger.warn('Cannot start mic capture: AEC processor is destroyed');
-      return false;
-    }
-
-    if (!this.isInitialized) {
-      logger.warn('Cannot start mic capture: AEC not initialized');
-      return false;
-    }
-
-    if (this.micCapturing) {
-      logger.warn('Microphone capture already running');
-      return true;
-    }
-
-    if (!callback || typeof callback !== 'function') {
-      logger.error('Invalid callback provided to startMicrophoneCapture');
-      return false;
-    }
+  public startMicrophoneCapture(
+    callback: (samples: Float32Array, timestamp: number) => void
+  ): boolean {
+    if (!this.isReady() || !this.nativeInstance) return false;
+    if (this.micCapturing) return true;
 
     try {
       this.micAudioCallback = callback;
 
-      if (this.nativeInstance && typeof this.nativeInstance.startMicrophoneCapture === 'function') {
-        const success = this.nativeInstance.startMicrophoneCapture((samples: Float32Array, timestamp: number) => {
-          if (this.micAudioCallback) {
-            this.micAudioCallback(samples, timestamp);
-          }
-        });
-
-        if (success) {
-          this.micCapturing = true;
-          logger.info('Native microphone capture started');
-          return true;
-        } else {
-          logger.error('Native module failed to start microphone capture');
-          this.micAudioCallback = undefined;
-          return false;
+      const success = this.nativeInstance.startMicrophoneCapture(
+        (samples: Float32Array, timestamp: number) => {
+          this.micAudioCallback?.(samples, timestamp);
         }
-      } else {
-        logger.error('startMicrophoneCapture not available in native module');
-        this.micAudioCallback = undefined;
-        return false;
+      );
+
+      if (success) {
+        this.micCapturing = true;
+        logger.info('Native microphone capture started');
+        return true;
       }
+
+      logger.error('Native module failed to start microphone capture');
+      this.micAudioCallback = undefined;
+      return false;
     } catch (error) {
-      // Better error extraction for debugging
-      let errorMsg = 'Unknown error';
-      let errorStack = '';
-      if (error instanceof Error) {
-        errorMsg = error.message;
-        errorStack = error.stack || '';
-      } else if (typeof error === 'object' && error !== null) {
-        errorMsg = JSON.stringify(error);
-      } else {
-        errorMsg = String(error);
-      }
-      
-      logger.error('Error starting native microphone capture', { 
-        error: errorMsg,
-        stack: errorStack,
-        errorType: typeof error,
-        errorKeys: error && typeof error === 'object' ? Object.keys(error) : []
-      });
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Error starting native microphone capture', { error: message });
       this.micAudioCallback = undefined;
       return false;
     }
@@ -354,27 +264,16 @@ export class AECProcessor {
    * Stop native microphone capture.
    */
   public stopMicrophoneCapture(): boolean {
-    if (!this.micCapturing) {
-      return true;
-    }
+    if (!this.micCapturing || !this.nativeInstance) return true;
 
     try {
-      if (this.nativeInstance && typeof this.nativeInstance.stopMicrophoneCapture === 'function') {
-        const success = this.nativeInstance.stopMicrophoneCapture();
-        
-        if (success) {
-          this.micCapturing = false;
-          this.micAudioCallback = undefined;
-          logger.info('Native microphone capture stopped');
-          return true;
-        } else {
-          logger.warn('Native module failed to stop microphone capture');
-          return false;
-        }
-      } else {
-        logger.warn('stopMicrophoneCapture not available in native module');
-        return false;
+      const success = this.nativeInstance.stopMicrophoneCapture();
+      if (success) {
+        this.micCapturing = false;
+        this.micAudioCallback = undefined;
+        logger.info('Native microphone capture stopped');
       }
+      return success;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('Error stopping native microphone capture', { error: message });
@@ -393,25 +292,19 @@ export class AECProcessor {
    * Get current AEC metrics (ERLE, residual echo level, convergence status).
    */
   public getMetrics(): AECMetrics {
-    if (!this.isInitialized || this.isDestroyed) {
-      return {};
-    }
+    if (!this.isReady() || !this.nativeInstance) return {};
 
     try {
-      if (this.nativeInstance && typeof this.nativeInstance.getMetrics === 'function') {
-        const m = this.nativeInstance.getMetrics() as any;
-        // Map native keys to AECMetrics interface
-        const mapped: AECMetrics = {
-          erle: typeof m.echoReturnLossEnhancement === 'number' ? m.echoReturnLossEnhancement : undefined,
-          rerl: typeof m.echoReturnLoss === 'number' ? m.echoReturnLoss : undefined,
-          renderDelayMs: typeof m.renderDelayMs === 'number' ? m.renderDelayMs : undefined,
-          converged: typeof m.aecConverged === 'boolean' ? m.aecConverged : undefined,
-          echoPower: typeof m.rmsLevel === 'number' ? m.rmsLevel : undefined,
-          residualEchoLevel: typeof m.peakLevel === 'number' ? m.peakLevel : undefined,
-        };
-        return mapped;
-      }
-      return {};
+      const m = this.nativeInstance.getMetrics();
+      return {
+        erle:
+          typeof m.echoReturnLossEnhancement === 'number' ? m.echoReturnLossEnhancement : undefined,
+        rerl: typeof m.echoReturnLoss === 'number' ? m.echoReturnLoss : undefined,
+        renderDelayMs: typeof m.renderDelayMs === 'number' ? m.renderDelayMs : undefined,
+        converged: typeof m.aecConverged === 'boolean' ? m.aecConverged : undefined,
+        echoPower: typeof m.rmsLevel === 'number' ? m.rmsLevel : undefined,
+        residualEchoLevel: typeof m.peakLevel === 'number' ? m.peakLevel : undefined,
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.warn('Failed to get AEC metrics', { error: message });
@@ -419,56 +312,32 @@ export class AECProcessor {
     }
   }
 
-  /**
-   * Check if headphones are currently connected.
-   */
   public isHeadphonesConnected(): boolean {
-    if (!this.isInitialized || this.isDestroyed) {
-      return false;
-    }
+    if (!this.isReady() || !this.nativeInstance) return false;
 
     try {
-      if (this.nativeInstance && typeof this.nativeInstance.isHeadphonesConnected === 'function') {
-        return this.nativeInstance.isHeadphonesConnected() as boolean;
-      }
-      return false;
-    } catch (error) {
-      logger.warn('Failed to check headphone status', { error });
+      return this.nativeInstance.isHeadphonesConnected();
+    } catch {
       return false;
     }
   }
 
-  /**
-   * Enable or disable echo cancellation at runtime.
-   */
   public setEchoCancellationEnabled(enabled: boolean): void {
-    if (!this.isInitialized || this.isDestroyed) {
-      return;
-    }
+    if (!this.isReady() || !this.nativeInstance) return;
 
     try {
-      if (this.nativeInstance && typeof this.nativeInstance.setEchoCancellationEnabled === 'function') {
-        this.nativeInstance.setEchoCancellationEnabled(enabled);
-        logger.info('AEC enabled set to:', { enabled });
-      }
+      this.nativeInstance.setEchoCancellationEnabled(enabled);
+      logger.info('AEC enabled state changed', { enabled });
     } catch (error) {
       logger.warn('Failed to set AEC enabled state', { error });
     }
   }
 
-  /**
-   * Reset AEC state (useful between calls or for troubleshooting)
-   */
   public reset(): void {
-    if (!this.isInitialized || this.isDestroyed) {
-      return;
-    }
+    if (!this.isReady() || !this.nativeInstance) return;
 
     try {
-      if (this.nativeInstance && typeof this.nativeInstance.resetAEC === 'function') {
-        this.nativeInstance.resetAEC();
-      }
-      this.renderBufferQueue = [];
+      this.nativeInstance.resetAEC();
       logger.info('AEC state reset');
     } catch (error) {
       logger.warn('Failed to reset AEC state', { error });
@@ -479,30 +348,18 @@ export class AECProcessor {
    * Clean up and destroy the AEC processor. Call when no longer needed.
    */
   public destroy(): void {
-    if (this.isDestroyed) {
-      logger.warn('AEC processor already destroyed');
-      return;
+    if (this.isDestroyed) return;
+
+    if (this.micCapturing) {
+      this.stopMicrophoneCapture();
     }
 
-    try {
-      // Stop native mic capture if running
-      if (this.micCapturing) {
-        this.stopMicrophoneCapture();
-      }
+    this.isInitialized = false;
+    this.isDestroyed = true;
+    this.micAudioCallback = undefined;
+    this.nativeInstance = null;
 
-      // Native instance will be GC'd; just drop references
-      this.renderBufferQueue = [];
-      this.isInitialized = false;
-      this.isDestroyed = true;
-      this.micAudioCallback = undefined;
-      this.nativeInstance = null;
-      this.nativeModule = null;
-
-      logger.info('AEC processor destroyed');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error('Error destroying AEC processor', { error: message });
-    }
+    logger.info('AEC processor destroyed');
   }
 
   /**

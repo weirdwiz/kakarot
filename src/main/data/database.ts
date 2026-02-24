@@ -32,7 +32,7 @@ export async function initializeDatabase(): Promise<void> {
     logger.info('Created new database', { path: dbPath });
   }
 
-  createTables();
+  runMigrations();
   seedInitialBranches();
   saveDatabase();
 }
@@ -109,21 +109,20 @@ interface Migration {
 function addColumnIfMissing(table: string, column: string, def: string): void {
   if (!db) return;
   const columns = db.exec(`PRAGMA table_info(${table})`);
-  const existing = columns.length > 0
-    ? columns[0].values.map((row) => row[1] as string)
-    : [];
+  const existing = columns.length > 0 ? columns[0].values.map((row) => row[1] as string) : [];
   if (!existing.includes(column)) {
     db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
   }
 }
 
 function getMigrations(): Migration[] {
+  const database = getDatabase();
   return [
     {
       version: 1,
       description: 'Create core tables',
       up: () => {
-        db!.run(`
+        database.run(`
           CREATE TABLE IF NOT EXISTS meetings (
             id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
@@ -159,7 +158,7 @@ function getMigrations(): Migration[] {
       version: 2,
       description: 'Create transcript, people, callouts, settings tables',
       up: () => {
-        db!.run(`
+        database.run(`
           CREATE TABLE IF NOT EXISTS transcript_segments (
             id TEXT PRIMARY KEY,
             meeting_id TEXT NOT NULL,
@@ -173,7 +172,7 @@ function getMigrations(): Migration[] {
           )
         `);
 
-        db!.run(`
+        database.run(`
           CREATE TABLE IF NOT EXISTS people (
             email TEXT PRIMARY KEY,
             name TEXT,
@@ -187,7 +186,7 @@ function getMigrations(): Migration[] {
           )
         `);
 
-        db!.run(`
+        database.run(`
           CREATE TABLE IF NOT EXISTS callouts (
             id TEXT PRIMARY KEY,
             meeting_id TEXT NOT NULL,
@@ -201,22 +200,24 @@ function getMigrations(): Migration[] {
           )
         `);
 
-        db!.run(`
+        database.run(`
           CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
           )
         `);
 
-        db!.run('CREATE INDEX IF NOT EXISTS idx_segments_meeting ON transcript_segments(meeting_id)');
-        db!.run('CREATE INDEX IF NOT EXISTS idx_callouts_meeting ON callouts(meeting_id)');
+        database.run(
+          'CREATE INDEX IF NOT EXISTS idx_segments_meeting ON transcript_segments(meeting_id)'
+        );
+        database.run('CREATE INDEX IF NOT EXISTS idx_callouts_meeting ON callouts(meeting_id)');
       },
     },
     {
       version: 3,
       description: 'Create transcript chunks and deep dive cache',
       up: () => {
-        db!.run(`
+        database.run(`
           CREATE TABLE IF NOT EXISTS transcript_chunks (
             id TEXT PRIMARY KEY,
             meeting_id TEXT NOT NULL,
@@ -232,7 +233,7 @@ function getMigrations(): Migration[] {
           )
         `);
 
-        db!.run(`
+        database.run(`
           CREATE TABLE IF NOT EXISTS deep_dive_cache (
             id TEXT PRIMARY KEY,
             meeting_id TEXT NOT NULL,
@@ -247,15 +248,19 @@ function getMigrations(): Migration[] {
           )
         `);
 
-        db!.run('CREATE INDEX IF NOT EXISTS idx_chunks_meeting ON transcript_chunks(meeting_id)');
-        db!.run('CREATE INDEX IF NOT EXISTS idx_cache_lookup ON deep_dive_cache(meeting_id, note_block_hash)');
+        database.run(
+          'CREATE INDEX IF NOT EXISTS idx_chunks_meeting ON transcript_chunks(meeting_id)'
+        );
+        database.run(
+          'CREATE INDEX IF NOT EXISTS idx_cache_lookup ON deep_dive_cache(meeting_id, note_block_hash)'
+        );
       },
     },
     {
       version: 4,
       description: 'Create dynamic prep system tables',
       up: () => {
-        db!.run(`
+        database.run(`
           CREATE TABLE IF NOT EXISTS signal_weights (
             id TEXT PRIMARY KEY,
             category TEXT UNIQUE NOT NULL,
@@ -265,7 +270,7 @@ function getMigrations(): Migration[] {
           )
         `);
 
-        db!.run(`
+        database.run(`
           CREATE TABLE IF NOT EXISTS insight_feedback (
             id TEXT PRIMARY KEY,
             insight_id TEXT NOT NULL,
@@ -276,7 +281,7 @@ function getMigrations(): Migration[] {
           )
         `);
 
-        db!.run(`
+        database.run(`
           CREATE TABLE IF NOT EXISTS inferred_objectives (
             id TEXT PRIMARY KEY,
             calendar_event_id TEXT,
@@ -288,7 +293,7 @@ function getMigrations(): Migration[] {
           )
         `);
 
-        db!.run(`
+        database.run(`
           CREATE TABLE IF NOT EXISTS crm_validations (
             id TEXT PRIMARY KEY,
             participant_email TEXT NOT NULL,
@@ -301,7 +306,7 @@ function getMigrations(): Migration[] {
           )
         `);
 
-        db!.run(`
+        database.run(`
           CREATE TABLE IF NOT EXISTS branches (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -314,9 +319,15 @@ function getMigrations(): Migration[] {
           )
         `);
 
-        db!.run('CREATE INDEX IF NOT EXISTS idx_insight_feedback_category ON insight_feedback(insight_category)');
-        db!.run('CREATE INDEX IF NOT EXISTS idx_inferred_objectives_event ON inferred_objectives(calendar_event_id)');
-        db!.run('CREATE INDEX IF NOT EXISTS idx_crm_validations_email ON crm_validations(participant_email)');
+        database.run(
+          'CREATE INDEX IF NOT EXISTS idx_insight_feedback_category ON insight_feedback(insight_category)'
+        );
+        database.run(
+          'CREATE INDEX IF NOT EXISTS idx_inferred_objectives_event ON inferred_objectives(calendar_event_id)'
+        );
+        database.run(
+          'CREATE INDEX IF NOT EXISTS idx_crm_validations_email ON crm_validations(participant_email)'
+        );
       },
     },
   ];
@@ -334,7 +345,10 @@ function runMigrations(): void {
   }
 
   for (const migration of migrations) {
-    logger.info('Running migration', { version: migration.version, description: migration.description });
+    logger.info('Running migration', {
+      version: migration.version,
+      description: migration.description,
+    });
     try {
       migration.up();
       setSchemaVersion(migration.version);
@@ -344,15 +358,10 @@ function runMigrations(): void {
     }
   }
 
-  logger.info('Migrations complete', { from: currentVersion, to: migrations[migrations.length - 1].version });
-}
-
-function createTables(): void {
-  if (!db) throw new Error('Database not initialized');
-
-  runMigrations();
-
-  logger.debug('Database tables created/verified');
+  logger.info('Migrations complete', {
+    from: currentVersion,
+    to: migrations[migrations.length - 1].version,
+  });
 }
 
 // Transaction management
@@ -404,15 +413,6 @@ export async function withTransaction<T>(fn: () => T | Promise<T>): Promise<T> {
   }
 }
 
-export function resultToObject(result: { columns: string[]; values: unknown[][] }): Record<string, unknown> {
-  if (result.values.length === 0) return {};
-  const obj: Record<string, unknown> = {};
-  for (let i = 0; i < result.columns.length; i++) {
-    obj[result.columns[i]] = result.values[0][i];
-  }
-  return obj;
-}
-
 export function resultToObjectByIndex(
   result: { columns: string[]; values: unknown[][] },
   rowIndex: number
@@ -424,15 +424,20 @@ export function resultToObjectByIndex(
   return obj;
 }
 
-/**
- * Seed initial branches if the table is empty
- */
+export function resultToObject(result: {
+  columns: string[];
+  values: unknown[][];
+}): Record<string, unknown> {
+  if (result.values.length === 0) return {};
+  return resultToObjectByIndex(result, 0);
+}
+
 export function seedInitialBranches(): void {
   if (!db) throw new Error('Database not initialized');
 
   // Check if branches already exist
   const existingBranches = db.exec('SELECT COUNT(*) as count FROM branches');
-  const count = existingBranches[0]?.values[0]?.[0] as number || 0;
+  const count = (existingBranches[0]?.values[0]?.[0] as number) || 0;
 
   if (count > 0) {
     logger.debug('Branches already seeded, skipping');
@@ -445,7 +450,8 @@ export function seedInitialBranches(): void {
       id: 'leadership-coaching',
       name: 'Leadership Coaching',
       description: 'Get personalized leadership insights and coaching tips',
-      explanation: 'This branch analyzes your recent meetings to provide tailored leadership coaching advice, helping you improve your management style, communication, and team dynamics.',
+      explanation:
+        'This branch analyzes your recent meetings to provide tailored leadership coaching advice, helping you improve your management style, communication, and team dynamics.',
       prompt: `<Leadership Coaching Curriculum>
 ### 1. The Foundational Pillars: ACT and The Emotional Brain
 
@@ -597,7 +603,8 @@ You should output no more than 5 points, combining insights and recommendations.
       id: 'sort-my-calendar',
       name: 'Sort my Calendar',
       description: 'Organize and prioritize your upcoming schedule',
-      explanation: 'This branch reviews your meeting patterns and commitments to help you optimize your calendar, identify scheduling conflicts, and suggest time management improvements.',
+      explanation:
+        'This branch reviews your meeting patterns and commitments to help you optimize your calendar, identify scheduling conflicts, and suggest time management improvements.',
       prompt: `Look at the next seven days and tell me 2-3 things that would actually make my upcoming week better. Be conversational about it.
 
 A couple of rules:
@@ -646,7 +653,8 @@ Remember, you don't have my full context, so just make light touch suggestions.`
       id: 'last-weeks-report',
       name: "Last Week's Report",
       description: 'Generate a comprehensive weekly summary',
-      explanation: 'This branch compiles all your meetings, decisions, and action items from the past week into a structured report, perfect for weekly updates or personal review.',
+      explanation:
+        'This branch compiles all your meetings, decisions, and action items from the past week into a structured report, perfect for weekly updates or personal review.',
       prompt: `Generate a weekly **Last Week's Report** update for a direct report to share with their manager. The goal is to surface blockers, priorities, and forward-looking topics in a **scannable way** that builds visibility, prevents surprises, and ensures recognition.
 
 ---
@@ -781,7 +789,8 @@ Thanks,
       id: 'monthly-recap',
       name: 'Monthly Recap',
       description: 'Generate a comprehensive monthly summary',
-      explanation: 'This branch analyzes all your meetings from the current calendar month to create a detailed recap of your work and accomplishments to share with your team.',
+      explanation:
+        'This branch analyzes all your meetings from the current calendar month to create a detailed recap of your work and accomplishments to share with your team.',
       prompt: `I need to write a recap of my month to share with my team. The goal is for my team to understand what I worked on / accomplished. Recaps should always focus on a full calendar month. Figure out today's date - and give a report of all meetings that have taken place from the first of that month to today's date.`,
       thumbnailUrl: null,
     },

@@ -39,10 +39,6 @@ export class AudioBackendFactory {
     }
   }
 
-  static getSupportedPlatforms(): Platform[] {
-    return ['darwin', 'win32', 'linux'];
-  }
-
   static isPlatformSupported(): boolean {
     return isPlatform(process.platform);
   }

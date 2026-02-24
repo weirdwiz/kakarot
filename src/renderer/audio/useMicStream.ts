@@ -2,8 +2,8 @@
  * Microphone Stream Hook
  * Captures microphone audio using Web Audio API and AudioWorklet
  */
-import { useRef, useCallback } from "react";
-import { createLogger } from "@renderer/lib/logger";
+import { useRef, useCallback, useMemo } from 'react';
+import { createLogger } from '@renderer/lib/logger';
 
 export interface MicStreamCallbacks {
   onRmsUpdate: (rms: number) => void;
@@ -14,7 +14,7 @@ export function useMicStream(
   onRmsUpdate: (rms: number) => void,
   onPcmUpdate: (pcm: Float32Array, sampleRate: number) => void
 ) {
-  const logger = createLogger("MicStream");
+  const logger = useMemo(() => createLogger('MicStream'), []);
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const processorRef = useRef<AudioWorkletNode | null>(null);
@@ -26,16 +26,16 @@ export function useMicStream(
 
   const start = useCallback(async () => {
     if (isStartingRef.current) {
-      logger.debug("startMic ignored (startup in progress)");
+      logger.debug('startMic ignored (startup in progress)');
       return;
     }
 
     if (isStartedRef.current) {
-      logger.debug("startMic ignored (already started)");
+      logger.debug('startMic ignored (already started)');
       return;
     }
 
-    logger.debug("startMic entering");
+    logger.debug('startMic entering');
     isStartingRef.current = true;
 
     try {
@@ -47,7 +47,7 @@ export function useMicStream(
           autoGainControl: false,
         },
       });
-      logger.debug("getUserMedia success");
+      logger.debug('getUserMedia success');
       streamRef.current = stream;
 
       // Small delay to ensure stream is ready
@@ -58,16 +58,19 @@ export function useMicStream(
         const audioContext = new AudioContext({ sampleRate: 48000 });
         audioContextRef.current = audioContext;
         await audioContext.resume();
-        await audioContext.audioWorklet.addModule("/pcm-worklet.js");
+        await audioContext.audioWorklet.addModule('/pcm-worklet.js');
         isContextReadyRef.current = true;
-        logger.debug("AudioContext initialized");
+        logger.debug('AudioContext initialized');
       }
 
-      const audioContext = audioContextRef.current!;
+      const audioContext = audioContextRef.current;
+      if (!audioContext) {
+        throw new Error('AudioContext not initialized');
+      }
       const source = audioContext.createMediaStreamSource(stream);
       sourceRef.current = source;
 
-      const workletNode = new AudioWorkletNode(audioContext, "pcm-worklet");
+      const workletNode = new AudioWorkletNode(audioContext, 'pcm-worklet');
       processorRef.current = workletNode;
 
       // Create gain node with zero gain to prevent feedback
@@ -83,7 +86,7 @@ export function useMicStream(
 
       workletNode.port.onmessage = (event) => {
         try {
-          if (event.data.type === "audio") {
+          if (event.data.type === 'audio') {
             const { rms, pcm } = event.data;
             const now = Date.now();
 
@@ -95,7 +98,7 @@ export function useMicStream(
 
             // Throttle logging
             if (now - lastLogTime > LOG_INTERVAL) {
-              logger.debug("RMS", { rms: Number(rms.toFixed(4)) });
+              logger.debug('RMS', { rms: Number(rms.toFixed(4)) });
               lastLogTime = now;
             }
 
@@ -103,7 +106,7 @@ export function useMicStream(
             onPcmUpdate(pcm, audioContext.sampleRate);
           }
         } catch (error) {
-          logger.error("Error in onmessage", error);
+          logger.error('Error in onmessage', error);
         }
       };
 
@@ -113,22 +116,22 @@ export function useMicStream(
       gain.connect(audioContext.destination);
 
       isStartedRef.current = true;
-      logger.info("startMic fully active");
+      logger.info('startMic fully active');
     } catch (error) {
-      logger.error("Error starting mic", error);
+      logger.error('Error starting mic', error);
       throw error;
     } finally {
       isStartingRef.current = false;
     }
-  }, [onRmsUpdate, onPcmUpdate]);
+  }, [onRmsUpdate, onPcmUpdate, logger]);
 
   const stop = useCallback(() => {
     if (isStartingRef.current) {
-      logger.debug("stopMic ignored (startup in progress)");
+      logger.debug('stopMic ignored (startup in progress)');
       return;
     }
 
-    logger.debug("stopMic called");
+    logger.debug('stopMic called');
     isStartedRef.current = false;
 
     if (gainRef.current) {
@@ -157,8 +160,8 @@ export function useMicStream(
       streamRef.current = null;
     }
 
-    logger.info("stopMic complete");
-  }, []);
+    logger.info('stopMic complete');
+  }, [logger]);
 
   const isActive = useCallback(() => isStartedRef.current, []);
 

@@ -41,14 +41,16 @@ export default function App() {
     dismissedEventIds,
     selectedMeeting,
     lastCompletedNoteId,
-  } = useAppStore(useShallow((state) => ({
-    view: state.view,
-    recordingState: state.recordingState,
-    dashboardDataLoaded: state.dashboardDataLoaded,
-    dismissedEventIds: state.dismissedEventIds,
-    selectedMeeting: state.selectedMeeting,
-    lastCompletedNoteId: state.lastCompletedNoteId,
-  })));
+  } = useAppStore(
+    useShallow((state) => ({
+      view: state.view,
+      recordingState: state.recordingState,
+      dashboardDataLoaded: state.dashboardDataLoaded,
+      dismissedEventIds: state.dismissedEventIds,
+      selectedMeeting: state.selectedMeeting,
+      lastCompletedNoteId: state.lastCompletedNoteId,
+    }))
+  );
 
   const setRecordingState = useAppStore((state) => state.setRecordingState);
   const setAudioLevels = useAppStore((state) => state.setAudioLevels);
@@ -61,10 +63,12 @@ export default function App() {
   const setCalendarMappings = useAppStore((state) => state.setCalendarMappings);
   const setDashboardDataLoaded = useAppStore((state) => state.setDashboardDataLoaded);
   const navigate = useAppStore((state) => state.navigate);
-  const { isCompleted: onboardingCompleted, isLoading: onboardingLoading } = useOnboardingStore(useShallow((state) => ({
-    isCompleted: state.isCompleted,
-    isLoading: state.isLoading,
-  })));
+  const { isCompleted: onboardingCompleted, isLoading: onboardingLoading } = useOnboardingStore(
+    useShallow((state) => ({
+      isCompleted: state.isCompleted,
+      isLoading: state.isLoading,
+    }))
+  );
   const completeOnboarding = useOnboardingStore((state) => state.completeOnboarding);
   const resetOnboarding = useOnboardingStore((state) => state.resetOnboarding);
   const loadFromSettings = useOnboardingStore((state) => state.loadFromSettings);
@@ -121,12 +125,20 @@ export default function App() {
 
   // Full-height layout logic
   const isLiveRecording = recordingState === 'recording' || recordingState === 'paused';
-  const needsFullHeight = view === 'history' || view === 'people' || view === 'recording' || view === 'meeting-detail' || (view === 'home' && (isLiveRecording || pillarTab === 'prep'));
+  const needsFullHeight =
+    view === 'history' ||
+    view === 'people' ||
+    view === 'recording' ||
+    view === 'meeting-detail' ||
+    (view === 'home' && (isLiveRecording || pillarTab === 'prep'));
 
-  const handleAudioLevels = useCallback((levels: Partial<AudioLevels>) => {
-    const currentLevels = useAppStore.getState().audioLevels;
-    setAudioLevels({ ...currentLevels, ...levels });
-  }, [setAudioLevels]);
+  const handleAudioLevels = useCallback(
+    (levels: Partial<AudioLevels>) => {
+      const currentLevels = useAppStore.getState().audioLevels;
+      setAudioLevels({ ...currentLevels, ...levels });
+    },
+    [setAudioLevels]
+  );
 
   const loadDashboardData = useCallback(async () => {
     const currentDismissedIds = useAppStore.getState().dismissedEventIds;
@@ -136,7 +148,7 @@ export default function App() {
       setCachedCalendarEvents((prev) => (areCalendarEventsEqual(prev, events) ? prev : events));
       classifyCalendarEvents(events, currentDismissedIds);
 
-      const settings = await window.kakarot.settings.get() as AppSettings;
+      const settings = (await window.kakarot.settings.get()) as AppSettings;
       const mappings = settings.calendarEventMappings || {};
       setCalendarMappings(mappings);
     } catch (err) {
@@ -151,14 +163,16 @@ export default function App() {
         .filter((m) => new Date(m.endedAt).getTime() < now)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .slice(0, 5)
-        .map((m): PreviousMeetingItem => ({
-          id: m.id,
-          title: m.title,
-          start: new Date(m.createdAt),
-          end: new Date(m.endedAt),
-          hasTranscript: m.transcript.length > 0,
-          isCalendarEvent: false,
-        }));
+        .map(
+          (m): PreviousMeetingItem => ({
+            id: m.id,
+            title: m.title,
+            start: new Date(m.createdAt),
+            end: new Date(m.endedAt),
+            hasTranscript: m.transcript.length > 0,
+            isCalendarEvent: false,
+          })
+        );
       setPreviousMeetings(completed);
     } catch (err) {
       console.error('Failed to load previous meetings:', err);
@@ -171,7 +185,6 @@ export default function App() {
     loadFromSettings();
     window.kakarot.settings.get().then(setSettings);
     const unsubDevReset = window.kakarot.dev.onResetOnboarding(() => {
-      console.log('[DEV] Resetting onboarding via keyboard shortcut');
       resetOnboarding();
     });
     const unsubState = window.kakarot.recording.onStateChange(setRecordingState);
@@ -189,7 +202,15 @@ export default function App() {
       unsubTranscript();
       unsubFinal();
     };
-  }, [setRecordingState, handleAudioLevels, setPartialSegment, addTranscriptSegment, setSettings, resetOnboarding, loadFromSettings]);
+  }, [
+    setRecordingState,
+    handleAudioLevels,
+    setPartialSegment,
+    addTranscriptSegment,
+    setSettings,
+    resetOnboarding,
+    loadFromSettings,
+  ]);
 
   useEffect(() => {
     loadDashboardData();
@@ -206,11 +227,15 @@ export default function App() {
       if (unsubNotesComplete) unsubNotesComplete();
       if (unsubSettingsChange) unsubSettingsChange();
     };
-  }, [loadDashboardData]);
+  }, [loadDashboardData, setSettings]);
 
   const prevRecordingStateRef = React.useRef(recordingState);
   useEffect(() => {
-    if (prevRecordingStateRef.current === 'recording' && recordingState === 'idle' && dashboardDataLoaded) {
+    if (
+      prevRecordingStateRef.current === 'recording' &&
+      recordingState === 'idle' &&
+      dashboardDataLoaded
+    ) {
       setTimeout(loadDashboardData, 300);
     }
     prevRecordingStateRef.current = recordingState;
@@ -231,14 +256,16 @@ export default function App() {
       useAppStore.getState().setRecordingContext(event);
     }
 
-    const calendarContextData = event ? {
-      calendarEventId: event.id,
-      calendarEventTitle: event.title,
-      calendarEventAttendees: event.attendees,
-      calendarEventStart: event.start.toISOString(),
-      calendarEventEnd: event.end.toISOString(),
-      calendarProvider: event.provider,
-    } : undefined;
+    const calendarContextData = event
+      ? {
+          calendarEventId: event.id,
+          calendarEventTitle: event.title,
+          calendarEventAttendees: event.attendees,
+          calendarEventStart: event.start.toISOString(),
+          calendarEventEnd: event.end.toISOString(),
+          calendarProvider: event.provider,
+        }
+      : undefined;
 
     try {
       useAppStore.getState().clearLiveTranscript();
@@ -319,8 +346,12 @@ export default function App() {
                     {renderContent()}
                   </div>
                 ) : (
-                  <div className={`rounded-2xl border border-edge bg-card shadow-soft-card ${needsFullHeight ? 'flex-1 min-h-0 flex flex-col' : ''}`}>
-                    <div className={`${needsFullHeight ? 'h-full flex flex-col p-6' : 'p-6 sm:p-8'}`}>
+                  <div
+                    className={`rounded-2xl border border-edge bg-card shadow-soft-card ${needsFullHeight ? 'flex-1 min-h-0 flex flex-col' : ''}`}
+                  >
+                    <div
+                      className={`${needsFullHeight ? 'h-full flex flex-col p-6' : 'p-6 sm:p-8'}`}
+                    >
                       {renderContent()}
                     </div>
                   </div>

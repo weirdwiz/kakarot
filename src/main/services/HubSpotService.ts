@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { Client } from '@hubspot/api-client';
 import { createLogger } from '../core/logger';
 import type { HubSpotOAuthToken } from '../providers/HubSpotOAuthProvider';
 import { BACKEND_BASE_URL } from '../providers/BackendAPIProvider';
@@ -229,9 +228,9 @@ export class HubSpotService {
         email: contact.properties?.email || email,
         firstName: contact.properties?.firstname,
         lastName: contact.properties?.lastname,
-        name: [contact.properties?.firstname, contact.properties?.lastname]
-          .filter(Boolean)
-          .join(' ') || undefined,
+        name:
+          [contact.properties?.firstname, contact.properties?.lastname].filter(Boolean).join(' ') ||
+          undefined,
       };
 
       logger.info('Found HubSpot contact', {
@@ -265,7 +264,9 @@ export class HubSpotService {
       const lastName = nameParts.slice(1).join(' ') || '';
 
       // Build filter groups - search by firstname OR lastname containing the name parts
-      const filterGroups: Array<{ filters: Array<{ propertyName: string; operator: string; value: string }> }> = [];
+      const filterGroups: Array<{
+        filters: Array<{ propertyName: string; operator: string; value: string }>;
+      }> = [];
 
       // If we have a full name, try exact match first
       if (firstName && lastName) {
@@ -286,9 +287,7 @@ export class HubSpotService {
 
       if (lastName) {
         filterGroups.push({
-          filters: [
-            { propertyName: 'lastname', operator: 'CONTAINS_TOKEN', value: lastName },
-          ],
+          filters: [{ propertyName: 'lastname', operator: 'CONTAINS_TOKEN', value: lastName }],
         });
       }
 
@@ -333,9 +332,10 @@ export class HubSpotService {
         email: bestMatch.properties?.email || '',
         firstName: bestMatch.properties?.firstname,
         lastName: bestMatch.properties?.lastname,
-        name: [bestMatch.properties?.firstname, bestMatch.properties?.lastname]
-          .filter(Boolean)
-          .join(' ') || undefined,
+        name:
+          [bestMatch.properties?.firstname, bestMatch.properties?.lastname]
+            .filter(Boolean)
+            .join(' ') || undefined,
       };
 
       logger.info('Found HubSpot contact by name', {
@@ -383,10 +383,7 @@ export class HubSpotService {
   /**
    * Create or get a note object
    */
-  public async createNote(
-    noteBody: string,
-    accessToken: string
-  ): Promise<string> {
+  public async createNote(noteBody: string, accessToken: string): Promise<string> {
     try {
       logger.debug('Creating HubSpot note');
 
@@ -450,21 +447,9 @@ export class HubSpotService {
   }
 
   /**
-   * Get HubSpot API client (for advanced operations)
-   * Use this if you need to do more complex operations
-   */
-  public getApiClient(accessToken: string): Client {
-    const client = new Client({ accessToken });
-    return client;
-  }
-
-  /**
    * Get deals associated with a contact
    */
-  public async getDealsForContact(
-    contactId: string,
-    accessToken: string
-  ): Promise<HubSpotDeal[]> {
+  public async getDealsForContact(contactId: string, accessToken: string): Promise<HubSpotDeal[]> {
     try {
       logger.debug('Fetching HubSpot deals for contact', { contactId });
 
@@ -487,7 +472,8 @@ export class HubSpotService {
 
       // Fetch deal details
       const deals: HubSpotDeal[] = [];
-      for (const dealId of dealIds.slice(0, 5)) { // Limit to 5 deals
+      for (const dealId of dealIds.slice(0, 5)) {
+        // Limit to 5 deals
         try {
           const dealResponse = await axios.get(
             `https://api.hubapi.com/crm/v3/objects/deals/${dealId}`,
@@ -598,10 +584,7 @@ export class HubSpotService {
    * Get comprehensive contact data including deals, emails, and notes
    * This is the main method for prep data collection
    */
-  public async getContactData(
-    email: string,
-    accessToken: string
-  ): Promise<CRMContactData | null> {
+  public async getContactData(email: string, accessToken: string): Promise<CRMContactData | null> {
     try {
       // First, find the contact
       const contact = await this.searchContactByEmail(email, accessToken);
@@ -617,7 +600,7 @@ export class HubSpotService {
       ]);
 
       // Transform deals to CRMSnapshot format
-      const crmDeals: CRMSnapshot[] = deals.map(deal => ({
+      const crmDeals: CRMSnapshot[] = deals.map((deal) => ({
         dealId: deal.id,
         dealName: deal.name,
         dealValue: deal.amount,
@@ -628,19 +611,19 @@ export class HubSpotService {
 
       // Separate emails and notes from engagements
       const emails: CRMEmailActivity[] = engagements
-        .filter(e => e.type === 'EMAIL')
-        .map(e => ({
+        .filter((e) => e.type === 'EMAIL')
+        .map((e) => ({
           id: e.id,
           subject: e.subject || 'No Subject',
           snippet: e.body ? e.body.substring(0, 200) : undefined,
           date: new Date(e.timestamp).toISOString(),
-          direction: e.direction === 'INBOUND' ? 'inbound' as const : 'outbound' as const,
+          direction: e.direction === 'INBOUND' ? ('inbound' as const) : ('outbound' as const),
           source: 'hubspot' as const,
         }));
 
       const notes: CRMNote[] = engagements
-        .filter(e => e.type === 'NOTE')
-        .map(e => ({
+        .filter((e) => e.type === 'NOTE')
+        .map((e) => ({
           id: e.id,
           content: e.body || '',
           date: new Date(e.timestamp).toISOString(),
@@ -648,9 +631,8 @@ export class HubSpotService {
         }));
 
       // Find last activity date
-      const lastActivityDate = engagements.length > 0
-        ? new Date(engagements[0].timestamp).toISOString()
-        : undefined;
+      const lastActivityDate =
+        engagements.length > 0 ? new Date(engagements[0].timestamp).toISOString() : undefined;
 
       const contactData: CRMContactData = {
         contactId: contact.id,

@@ -3,12 +3,12 @@
  * Captures system audio using Web Audio API via virtual audio devices
  * (BlackHole, Aggregate Device, etc.)
  */
-import { useRef, useCallback } from "react";
-import { createLogger } from "@renderer/lib/logger";
+import { useRef, useCallback } from 'react';
+import { createLogger } from '@renderer/lib/logger';
 
-export type SystemAudioSourcePreference = "blackhole" | "aggregate" | "auto";
+export type SystemAudioSourcePreference = 'blackhole' | 'aggregate' | 'auto';
 
-const logger = createLogger("SystemAudioStream");
+const logger = createLogger('SystemAudioStream');
 
 /**
  * Find a system audio device by preference
@@ -17,35 +17,35 @@ async function findSystemAudioDeviceId(
   pref: SystemAudioSourcePreference
 ): Promise<string | undefined> {
   const devices = await navigator.mediaDevices.enumerateDevices();
-  const inputs = devices.filter((d) => d.kind === "audioinput");
+  const inputs = devices.filter((d) => d.kind === 'audioinput');
 
   const byName = (name: string) =>
-    inputs.find((d) => (d.label || "").toLowerCase().includes(name.toLowerCase()))?.deviceId;
+    inputs.find((d) => (d.label || '').toLowerCase().includes(name.toLowerCase()))?.deviceId;
 
-  if (pref === "blackhole" || pref === "auto") {
-    const id = byName("blackhole");
+  if (pref === 'blackhole' || pref === 'auto') {
+    const id = byName('blackhole');
     if (id) {
-      logger.debug("Found BlackHole device");
+      logger.debug('Found BlackHole device');
       return id;
     }
   }
 
-  if (pref === "aggregate" || pref === "auto") {
-    const id = byName("aggregate");
+  if (pref === 'aggregate' || pref === 'auto') {
+    const id = byName('aggregate');
     if (id) {
-      logger.debug("Found Aggregate device");
+      logger.debug('Found Aggregate device');
       return id;
     }
   }
 
-  logger.debug("No preferred device found, using default");
+  logger.debug('No preferred device found, using default');
   return undefined;
 }
 
 export function useSystemAudioStream(
   onRmsUpdate: (rms: number) => void,
   onPcmUpdate: (pcm: Float32Array, sampleRate: number) => void,
-  preference: SystemAudioSourcePreference = "auto"
+  preference: SystemAudioSourcePreference = 'auto'
 ) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -58,16 +58,16 @@ export function useSystemAudioStream(
 
   const start = useCallback(async () => {
     if (isStartingRef.current) {
-      logger.debug("Start ignored (startup in progress)");
+      logger.debug('Start ignored (startup in progress)');
       return;
     }
 
     if (isStartedRef.current) {
-      logger.debug("Start ignored (already started)");
+      logger.debug('Start ignored (already started)');
       return;
     }
 
-    logger.debug("Start entering");
+    logger.debug('Start entering');
     isStartingRef.current = true;
 
     try {
@@ -94,23 +94,26 @@ export function useSystemAudioStream(
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
-      logger.debug("Stream acquired");
+      logger.debug('Stream acquired');
 
       // Initialize AudioContext and worklet if not ready
       if (!isContextReadyRef.current) {
         const audioContext = new AudioContext({ sampleRate: 48000 });
         audioContextRef.current = audioContext;
         await audioContext.resume();
-        await audioContext.audioWorklet.addModule("/pcm-worklet.js");
+        await audioContext.audioWorklet.addModule('/pcm-worklet.js');
         isContextReadyRef.current = true;
-        logger.debug("AudioContext initialized");
+        logger.debug('AudioContext initialized');
       }
 
-      const audioContext = audioContextRef.current!;
+      const audioContext = audioContextRef.current;
+      if (!audioContext) {
+        throw new Error('AudioContext not initialized');
+      }
       const source = audioContext.createMediaStreamSource(stream);
       sourceRef.current = source;
 
-      const workletNode = new AudioWorkletNode(audioContext, "pcm-worklet");
+      const workletNode = new AudioWorkletNode(audioContext, 'pcm-worklet');
       processorRef.current = workletNode;
 
       // Create gain node with zero gain to prevent feedback
@@ -123,7 +126,7 @@ export function useSystemAudioStream(
       const RMS_UPDATE_INTERVAL = 100; // ms
 
       workletNode.port.onmessage = (event) => {
-        if (event.data.type === "audio") {
+        if (event.data.type === 'audio') {
           const { rms, pcm } = event.data;
           const now = Date.now();
 
@@ -144,9 +147,9 @@ export function useSystemAudioStream(
       gain.connect(audioContext.destination);
 
       isStartedRef.current = true;
-      logger.info("Start complete");
+      logger.info('Start complete');
     } catch (error) {
-      logger.error("Error starting system audio stream", error);
+      logger.error('Error starting system audio stream', error);
       throw error;
     } finally {
       isStartingRef.current = false;
@@ -155,11 +158,11 @@ export function useSystemAudioStream(
 
   const stop = useCallback(() => {
     if (isStartingRef.current) {
-      logger.debug("Stop ignored (startup in progress)");
+      logger.debug('Stop ignored (startup in progress)');
       return;
     }
 
-    logger.debug("Stop called");
+    logger.debug('Stop called');
     isStartedRef.current = false;
 
     if (gainRef.current) {
@@ -188,7 +191,7 @@ export function useSystemAudioStream(
       streamRef.current = null;
     }
 
-    logger.info("Stop complete");
+    logger.info('Stop complete');
   }, []);
 
   const isActive = useCallback(() => isStartedRef.current, []);

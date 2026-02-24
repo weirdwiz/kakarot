@@ -14,7 +14,9 @@ export default function SettingsView() {
   const [localSettings, setLocalSettings] = useState<AppSettings | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [connectingProvider, setConnectingProvider] = useState<'google' | 'outlook' | 'icloud' | null>(null);
+  const [connectingProvider, setConnectingProvider] = useState<
+    'google' | 'outlook' | 'icloud' | null
+  >(null);
   const [connectingCRM, setConnectingCRM] = useState<'salesforce' | 'hubspot' | null>(null);
   const [googleCalendars, setGoogleCalendars] = useState<Array<{ id: string; name: string }>>([]);
   const [visibleGoogleIds, setVisibleGoogleIds] = useState<string[]>([]);
@@ -117,7 +119,7 @@ export default function SettingsView() {
       return;
     }
 
-    setIcloudModal(prev => ({ ...prev, isOpen: false }));
+    setIcloudModal((prev) => ({ ...prev, isOpen: false }));
     setConnectingProvider('icloud');
 
     try {
@@ -242,9 +244,7 @@ export default function SettingsView() {
       <div className="max-w-2xl mx-auto p-6 space-y-8">
         <div>
           <h1 className="text-2xl font-medium tracking-tight text-cream">Settings</h1>
-          <p className="text-dim text-sm mt-1.5">
-            Configure your preferences and integrations
-          </p>
+          <p className="text-dim text-sm mt-1.5">Configure your preferences and integrations</p>
         </div>
 
         {/* UI Preferences */}
@@ -261,7 +261,8 @@ export default function SettingsView() {
                   Show the live meeting indicator
                 </h3>
                 <p className="text-xs text-muted">
-                  The meeting indicator sits on the right of your screen, and shows when you're transcribing
+                  The meeting indicator sits on the right of your screen, and shows when you're
+                  transcribing
                 </p>
               </div>
               <ToggleSwitch
@@ -273,12 +274,8 @@ export default function SettingsView() {
             {/* Open on Login */}
             <div className="flex items-start justify-between px-4 py-3 rounded-lg border border-edge bg-input shadow-soft">
               <div className="flex-1 pr-4">
-                <h3 className="text-sm font-medium text-cream mb-1">
-                  Open Treeto when you log in
-                </h3>
-                <p className="text-xs text-muted">
-                  Treeto will open automatically when you log in
-                </p>
+                <h3 className="text-sm font-medium text-cream mb-1">Open Treeto when you log in</h3>
+                <p className="text-xs text-muted">Treeto will open automatically when you log in</p>
               </div>
               <ToggleSwitch
                 enabled={localSettings.openOnLogin ?? false}
@@ -403,7 +400,10 @@ export default function SettingsView() {
               {googleCalendars.map((cal) => {
                 const enabled = visibleGoogleIds.includes(cal.id);
                 return (
-                  <div key={cal.id} className="flex items-center justify-between px-4 py-3 rounded-lg border border-edge bg-input shadow-soft">
+                  <div
+                    key={cal.id}
+                    className="flex items-center justify-between px-4 py-3 rounded-lg border border-edge bg-input shadow-soft"
+                  >
                     <div className="flex items-center gap-3">
                       <span className="w-3 h-3 rounded-sm bg-cream" />
                       <p className="text-sm text-cream">{cal.name}</p>
@@ -415,7 +415,13 @@ export default function SettingsView() {
                           ? Array.from(new Set([...visibleGoogleIds, cal.id]))
                           : visibleGoogleIds.filter((id) => id !== cal.id);
                         setVisibleGoogleIds(next);
-                        const nextSettings = { ...localSettings!, visibleCalendars: { ...(localSettings!.visibleCalendars || {}), google: next } };
+                        const nextSettings = {
+                          ...localSettings,
+                          visibleCalendars: {
+                            ...(localSettings?.visibleCalendars || {}),
+                            google: next,
+                          },
+                        };
                         setLocalSettings(nextSettings);
                         // Update visible calendars - settings change event will trigger automatic refresh
                         window.kakarot.calendar.setVisibleCalendars('google', next).catch((err) => {
@@ -437,9 +443,7 @@ export default function SettingsView() {
           <h2 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted border-b border-edge pb-2">
             Slack integration
           </h2>
-          <p className="text-sm text-muted">
-            Connect Slack to send notes directly to channels.
-          </p>
+          <p className="text-sm text-muted">Connect Slack to send notes directly to channels.</p>
           <SlackIntegration showTitle={false} />
         </section>
 
@@ -453,98 +457,50 @@ export default function SettingsView() {
           </p>
 
           <div className="space-y-3">
-            {/* Salesforce */}
-            <button
-              onClick={() =>
-                connectedCRMs.salesforce
-                  ? handleDisconnectCRM('salesforce')
-                  : handleConnectCRM('salesforce')
-              }
-              disabled={connectingCRM === 'salesforce'}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-colors ${
-                connectedCRMs.salesforce
-                  ? 'border-cream/50 bg-cream/10'
-                  : 'border-edge bg-input hover:border-edge-light'
-              }`}
-            >
-              <div className="flex items-center gap-3">
+            <CRMConnectionButton
+              provider="salesforce"
+              label="Salesforce"
+              isConnected={connectedCRMs.salesforce}
+              isLoading={connectingCRM === 'salesforce'}
+              onConnect={() => handleConnectCRM('salesforce')}
+              onDisconnect={() => handleDisconnectCRM('salesforce')}
+              icon={
                 <img src={salesforceLogo} alt="Salesforce" className="w-5 h-5 object-contain" />
-                <div className="text-left">
-                  <p className="text-sm font-medium text-cream">
-                    {connectedCRMs.salesforce ? 'Salesforce Connected' : 'Connect Salesforce'}
-                  </p>
-                  {connectedCRMs.salesforce && (
-                    <p className="text-xs text-dim">Notes will be synced to contact records</p>
-                  )}
-                </div>
-              </div>
-              {connectedCRMs.salesforce ? (
-                <span className="text-sm text-cream">
-                  {connectingCRM === 'salesforce' ? 'Disconnecting...' : 'Disconnect'}
-                </span>
-              ) : (
-                <span className="text-sm text-accent">
-                  {connectingCRM === 'salesforce' ? 'Connecting...' : '+ Connect'}
-                </span>
-              )}
-            </button>
-
-            {/* HubSpot */}
-            <button
-              onClick={() =>
-                connectedCRMs.hubspot
-                  ? handleDisconnectCRM('hubspot')
-                  : handleConnectCRM('hubspot')
               }
-              disabled={connectingCRM === 'hubspot'}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-colors ${
-                connectedCRMs.hubspot
-                  ? 'border-cream/50 bg-cream/10'
-                  : 'border-edge bg-input hover:border-edge-light'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <img src={hubspotLogo} alt="HubSpot" className="w-5 h-5 object-contain" />
-                <div className="text-left">
-                  <p className="text-sm font-medium text-cream">
-                    {connectedCRMs.hubspot ? 'HubSpot Connected' : 'Connect HubSpot'}
-                  </p>
-                  {connectedCRMs.hubspot && (
-                    <p className="text-xs text-dim">Notes will be synced to contact records</p>
-                  )}
-                </div>
-              </div>
-              {connectedCRMs.hubspot ? (
-                <span className="text-sm text-cream">
-                  {connectingCRM === 'hubspot' ? 'Disconnecting...' : 'Disconnect'}
-                </span>
-              ) : (
-                <span className="text-sm text-accent">
-                  {connectingCRM === 'hubspot' ? 'Connecting...' : '+ Connect'}
-                </span>
-              )}
-            </button>
+            />
+            <CRMConnectionButton
+              provider="hubspot"
+              label="HubSpot"
+              isConnected={connectedCRMs.hubspot}
+              isLoading={connectingCRM === 'hubspot'}
+              onConnect={() => handleConnectCRM('hubspot')}
+              onDisconnect={() => handleDisconnectCRM('hubspot')}
+              icon={<img src={hubspotLogo} alt="HubSpot" className="w-5 h-5 object-contain" />}
+            />
           </div>
 
           {/* CRM Notes Behavior */}
           {(connectedCRMs.salesforce || connectedCRMs.hubspot) && (
             <div>
-              <label className="block text-sm text-muted mb-3">
-                When sending notes to CRM
-              </label>
+              <label className="block text-sm text-muted mb-3">When sending notes to CRM</label>
               <div className="space-y-2">
                 <label className="flex items-center gap-3 px-4 py-3 rounded-lg border border-edge bg-input shadow-soft cursor-pointer hover:border-edge-light transition-colors">
                   <input
                     type="radio"
                     name="crmNotes"
                     value="always"
-                    checked={localSettings?.crmNotesBehavior === 'always' || localSettings?.crmNotesBehavior === undefined}
-                    onChange={(e) => handleChange('crmNotesBehavior', e.target.value as any)}
+                    checked={
+                      localSettings?.crmNotesBehavior === 'always' ||
+                      localSettings?.crmNotesBehavior === undefined
+                    }
+                    onChange={(e) => handleChange('crmNotesBehavior', e.target.value)}
                     className="w-4 h-4 cursor-pointer"
                   />
                   <div>
                     <p className="text-sm font-medium text-cream">Send all notes automatically</p>
-                    <p className="text-xs text-dim">Notes are always pushed to participant records</p>
+                    <p className="text-xs text-dim">
+                      Notes are always pushed to participant records
+                    </p>
                   </div>
                 </label>
                 <label className="flex items-center gap-3 px-4 py-3 rounded-lg border border-edge bg-input shadow-soft cursor-pointer hover:border-edge-light transition-colors">
@@ -553,7 +509,7 @@ export default function SettingsView() {
                     name="crmNotes"
                     value="ask"
                     checked={localSettings?.crmNotesBehavior === 'ask'}
-                    onChange={(e) => handleChange('crmNotesBehavior', e.target.value as any)}
+                    onChange={(e) => handleChange('crmNotesBehavior', e.target.value)}
                     className="w-4 h-4 cursor-pointer"
                   />
                   <div>
@@ -590,12 +546,17 @@ export default function SettingsView() {
         cancelLabel="Cancel"
         variant="warning"
         onConfirm={confirmDisconnect}
-        onCancel={() => setDisconnectConfirm({ isOpen: false, type: null, provider: null, label: '' })}
+        onCancel={() =>
+          setDisconnectConfirm({ isOpen: false, type: null, provider: null, label: '' })
+        }
       />
 
       {/* iCloud credentials modal */}
       {icloudModal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center animate-backdrop-in" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center animate-backdrop-in"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+        >
           <div className="bg-card border border-edge rounded-lg shadow-overlay w-full max-w-sm mx-4 animate-modal-in">
             <div className="flex items-center justify-between p-4 border-b border-edge">
               <h3 className="text-sm font-medium text-cream">Connect iCloud Calendar</h3>
@@ -612,7 +573,7 @@ export default function SettingsView() {
                 <input
                   type="email"
                   value={icloudModal.appleId}
-                  onChange={(e) => setIcloudModal(prev => ({ ...prev, appleId: e.target.value }))}
+                  onChange={(e) => setIcloudModal((prev) => ({ ...prev, appleId: e.target.value }))}
                   placeholder="you@icloud.com"
                   className="w-full bg-input border border-edge text-cream rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/30 placeholder:text-dim"
                   autoFocus
@@ -623,10 +584,14 @@ export default function SettingsView() {
                 <input
                   type="password"
                   value={icloudModal.appPassword}
-                  onChange={(e) => setIcloudModal(prev => ({ ...prev, appPassword: e.target.value }))}
+                  onChange={(e) =>
+                    setIcloudModal((prev) => ({ ...prev, appPassword: e.target.value }))
+                  }
                   placeholder="xxxx-xxxx-xxxx-xxxx"
                   className="w-full bg-input border border-edge text-cream rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/30 placeholder:text-dim"
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleIcloudConnect(); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleIcloudConnect();
+                  }}
                 />
                 <p className="text-[11px] text-dim mt-1.5">
                   Generate one at appleid.apple.com under Sign-In and Security.
@@ -720,9 +685,7 @@ function CalendarConnectionButton({
       onClick={handleClick}
       disabled={isLoading}
       className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-colors ${
-        isConnected
-          ? 'border-cream/50 bg-cream/10'
-          : 'border-edge bg-input hover:border-edge-light'
+        isConnected ? 'border-cream/50 bg-cream/10' : 'border-edge bg-input hover:border-edge-light'
       }`}
     >
       <div className="flex items-center gap-3">
@@ -732,7 +695,68 @@ function CalendarConnectionButton({
             {isConnected ? `${label} Connected` : `Connect Your ${label}`}
           </p>
           {isConnected && (
-            <p className="text-xs text-dim">Syncing your {provider.charAt(0).toUpperCase() + provider.slice(1)} events</p>
+            <p className="text-xs text-dim">
+              Syncing your {provider.charAt(0).toUpperCase() + provider.slice(1)} events
+            </p>
+          )}
+        </div>
+      </div>
+      <span className={`text-sm ${isConnected ? 'text-cream' : 'text-accent'}`}>
+        {getActionLabel()}
+      </span>
+    </button>
+  );
+}
+
+interface CRMConnectionButtonProps {
+  provider: string;
+  label: string;
+  isConnected: boolean;
+  isLoading: boolean;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  icon: React.ReactNode;
+}
+
+function CRMConnectionButton({
+  label,
+  isConnected,
+  isLoading,
+  onConnect,
+  onDisconnect,
+  icon,
+}: CRMConnectionButtonProps) {
+  const handleClick = () => {
+    if (isConnected) {
+      onDisconnect();
+    } else {
+      onConnect();
+    }
+  };
+
+  const getActionLabel = (): string => {
+    if (isConnected) {
+      return isLoading ? 'Disconnecting...' : 'Disconnect';
+    }
+    return isLoading ? 'Connecting...' : '+ Connect';
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={isLoading}
+      className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-colors ${
+        isConnected ? 'border-cream/50 bg-cream/10' : 'border-edge bg-input hover:border-edge-light'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        {icon}
+        <div className="text-left">
+          <p className="text-sm font-medium text-cream">
+            {isConnected ? `${label} Connected` : `Connect ${label}`}
+          </p>
+          {isConnected && (
+            <p className="text-xs text-dim">Notes will be synced to contact records</p>
           )}
         </div>
       </div>

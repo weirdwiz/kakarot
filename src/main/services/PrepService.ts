@@ -2,15 +2,22 @@ import { getContainer } from '../core/container';
 import { createLogger } from '../core/logger';
 import { CRMEmailMatcher } from './CRMEmailMatcher';
 import * as chrono from 'chrono-node';
-import { isGreeting, isPureGreeting, startsWithGreeting, stripGreeting, getGreetingResponse } from '@shared/utils/greetingDetection';
+import {
+  isGreeting,
+  isPureGreeting,
+  startsWithGreeting,
+  stripGreeting,
+  getGreetingResponse,
+} from '@shared/utils/greetingDetection';
 import type {
   Meeting,
+  NoteEntry,
+  TranscriptSegment,
   HubSpotOAuthToken,
+  AppSettings,
   TaskCommitment,
   CompanyInfo,
   SalesforceOAuthToken,
-  TranscriptSegment,
-  // New enhanced types
   EnhancedMeetingPrepResult,
   EnhancedPrepParticipant,
   ParticipantIntel,
@@ -22,7 +29,6 @@ import type {
   CRMContactData,
   MeetingSentiment,
   ParticipantPersona,
-  // Dynamic prep types
   CustomMeetingType,
   CalendarEvent,
   SignalScore,
@@ -34,9 +40,7 @@ import type {
   DynamicPrepResult,
   DynamicPrepParticipant,
   SignalWeight,
-  // Multi-person synthesis types
   MeetingSynthesis,
-  // Conversational prep types
   QuickPrepInput,
   ConversationalPrepResult,
   ProjectContext,
@@ -44,22 +48,23 @@ import type {
   SuggestedQuestion,
   InferredTrait,
   Person,
-  // Conversational chat types
   PrepChatInput,
   PrepChatResponse,
   PrepChatMessage,
   PrepConversation,
-  // Query intelligence types
   QueryType,
   ClassifiedQuery,
   UserContext,
-  // LLM entity extraction types
   ExtractedEntity,
   ExtractedEntityType,
   QueryIntent,
   TemporalReference,
 } from '@shared/types';
-import type { ContactSearchResult } from './HubSpotService';
+import type { HubSpotService, ContactSearchResult } from './HubSpotService';
+import type { SalesforceService } from './SalesforceService';
+import type { AIProvider } from '../providers/OpenAIProvider';
+import type { MeetingRepository } from '../data/repositories/MeetingRepository';
+import type { PeopleRepository } from '../data/repositories/PeopleRepository';
 
 const CONFIDENCE_THRESHOLD = 70;
 
@@ -120,7 +125,8 @@ export interface MeetingPrepOutput {
 
 export class PrepService {
   // Cache for entity extractions (key: normalized query, value: extracted entity with timestamp)
-  private entityExtractionCache: Map<string, { entity: ExtractedEntity; timestamp: number }> = new Map();
+  private entityExtractionCache: Map<string, { entity: ExtractedEntity; timestamp: number }> =
+    new Map();
   private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   // Cache for CRM contact data (key: email or name, value: CRM data with timestamp)
@@ -183,15 +189,12 @@ EXAMPLES:
 Return ONLY valid JSON, no explanation.`;
 
     try {
-      const response = await aiProvider.chat(
-        [{ role: 'user', content: extractionPrompt }],
-        {
-          model: 'gpt-4o-mini', // Use faster model for extraction
-          temperature: 0.1,
-          maxTokens: 500,
-          responseFormat: 'json',
-        }
-      );
+      const response = await aiProvider.chat([{ role: 'user', content: extractionPrompt }], {
+        model: 'gpt-4o-mini', // Use faster model for extraction
+        temperature: 0.1,
+        maxTokens: 500,
+        responseFormat: 'json',
+      });
 
       const extracted = JSON.parse(response) as ExtractedEntity;
 
@@ -234,15 +237,19 @@ Return ONLY valid JSON, no explanation.`;
     const parts: string[] = [];
 
     if (context.participantContext) {
-      parts.push(`Currently discussing: ${context.participantContext.name}${context.participantContext.email ? ` (${context.participantContext.email})` : ''}`);
+      parts.push(
+        `Currently discussing: ${context.participantContext.name}${context.participantContext.email ? ` (${context.participantContext.email})` : ''}`
+      );
     }
 
     // Include last few messages for pronoun resolution
     const recentMessages = context.messages.slice(-4);
     if (recentMessages.length > 0) {
       parts.push('Recent conversation:');
-      recentMessages.forEach(m => {
-        parts.push(`- ${m.role}: ${m.content.substring(0, 100)}${m.content.length > 100 ? '...' : ''}`);
+      recentMessages.forEach((m) => {
+        parts.push(
+          `- ${m.role}: ${m.content.substring(0, 100)}${m.content.length > 100 ? '...' : ''}`
+        );
       });
     }
 
@@ -253,17 +260,54 @@ Return ONLY valid JSON, no explanation.`;
    * Validate and normalize extracted entity
    */
   private validateExtractedEntity(extracted: Partial<ExtractedEntity>): ExtractedEntity {
-    const validTypes: ExtractedEntityType[] = ['person', 'company', 'project', 'meeting', 'topic', 'unknown'];
-    const validIntents: QueryIntent[] = ['prep', 'status', 'contact_info', 'follow_up', 'context', 'comparison', 'issues', 'action_items', 'discovery', 'unknown'];
-    const validTemporal: TemporalReference[] = ['next', 'last', 'recent', 'today', 'tomorrow', 'this_week', 'last_week', 'specific', null];
+    const validTypes: ExtractedEntityType[] = [
+      'person',
+      'company',
+      'project',
+      'meeting',
+      'topic',
+      'unknown',
+    ];
+    const validIntents: QueryIntent[] = [
+      'prep',
+      'status',
+      'contact_info',
+      'follow_up',
+      'context',
+      'comparison',
+      'issues',
+      'action_items',
+      'discovery',
+      'unknown',
+    ];
+    const validTemporal: TemporalReference[] = [
+      'next',
+      'last',
+      'recent',
+      'today',
+      'tomorrow',
+      'this_week',
+      'last_week',
+      'specific',
+      null,
+    ];
 
     return {
       entity: extracted.entity || null,
-      type: validTypes.includes(extracted.type as ExtractedEntityType) ? extracted.type as ExtractedEntityType : 'unknown',
-      intent: validIntents.includes(extracted.intent as QueryIntent) ? extracted.intent as QueryIntent : 'unknown',
-      temporal: validTemporal.includes(extracted.temporal as TemporalReference) ? extracted.temporal as TemporalReference : null,
+      type: validTypes.includes(extracted.type as ExtractedEntityType)
+        ? (extracted.type as ExtractedEntityType)
+        : 'unknown',
+      intent: validIntents.includes(extracted.intent as QueryIntent)
+        ? (extracted.intent as QueryIntent)
+        : 'unknown',
+      temporal: validTemporal.includes(extracted.temporal as TemporalReference)
+        ? (extracted.temporal as TemporalReference)
+        : null,
       implicitResolutions: extracted.implicitResolutions || {},
-      confidence: typeof extracted.confidence === 'number' ? Math.max(0, Math.min(1, extracted.confidence)) : 0.5,
+      confidence:
+        typeof extracted.confidence === 'number'
+          ? Math.max(0, Math.min(1, extracted.confidence))
+          : 0.5,
       contextClues: {
         urgency: extracted.contextClues?.urgency || undefined,
         emotionalTone: extracted.contextClues?.emotionalTone || undefined,
@@ -287,18 +331,6 @@ Return ONLY valid JSON, no explanation.`;
     };
   }
 
-  /**
-   * Clean up expired cache entries
-   */
-  cleanupEntityCache(): void {
-    const now = Date.now();
-    for (const [key, value] of this.entityExtractionCache.entries()) {
-      if (now - value.timestamp > this.CACHE_TTL_MS) {
-        this.entityExtractionCache.delete(key);
-      }
-    }
-  }
-
   async generateMeetingPrep(input: GenerateMeetingPrepInput): Promise<MeetingPrepOutput> {
     logger.info('Generating meeting prep', {
       meetingType: input.meeting.meeting_type,
@@ -320,20 +352,17 @@ Return ONLY valid JSON, no explanation.`;
     const agentPrompt = this.buildAgentPrompt(input, participantContexts);
 
     // Call OpenAI with structured output (lower temperature for determinism)
-    const prepContent = await aiProvider.chat(
-      [{ role: 'user', content: agentPrompt }],
-      {
-        model: 'gpt-4o',
-        temperature: 0.35,
-        maxTokens: 2000,
-        responseFormat: 'json',
-      }
-    );
+    const prepContent = await aiProvider.chat([{ role: 'user', content: agentPrompt }], {
+      model: 'gpt-4o',
+      temperature: 0.35,
+      maxTokens: 2000,
+      responseFormat: 'json',
+    });
 
     // Parse and validate response
-    let prepData: MeetingPrepOutput;
+    let prepData: Record<string, unknown>;
     try {
-      prepData = JSON.parse(prepContent);
+      prepData = JSON.parse(prepContent) as Record<string, unknown>;
     } catch (error) {
       logger.error('Failed to parse prep output', { error });
       throw new Error('Invalid AI response format');
@@ -343,7 +372,10 @@ Return ONLY valid JSON, no explanation.`;
     const validatedOutput = this.validateAndFormatOutput(prepData, input);
 
     // Enrich with additional data and apply confidence filtering
-    const enrichedOutput = await this.enrichWithAdditionalData(validatedOutput, participantContexts);
+    const enrichedOutput = await this.enrichWithAdditionalData(
+      validatedOutput,
+      participantContexts
+    );
 
     // Filter low confidence content
     return this.filterLowConfidenceContent(enrichedOutput, participantContexts);
@@ -364,7 +396,11 @@ Return ONLY valid JSON, no explanation.`;
       const settings = settingsRepo.getSettings();
       let hubspotToken = settings.crmConnections?.hubspot as HubSpotOAuthToken | undefined;
 
-      if (hubspotToken && hubSpotService.isTokenExpired(hubspotToken) && hubspotToken.refreshToken) {
+      if (
+        hubspotToken &&
+        hubSpotService.isTokenExpired(hubspotToken) &&
+        hubspotToken.refreshToken
+      ) {
         hubspotToken = await hubSpotService.refreshAccessToken(hubspotToken.refreshToken);
         settingsRepo.updateSettings({
           crmConnections: {
@@ -389,7 +425,9 @@ Return ONLY valid JSON, no explanation.`;
       }
 
       const pastMeetings = meetingRepo.findAll().filter((meeting) => {
-        const attendees = meeting.attendeeEmails?.length ? meeting.attendeeEmails : meeting.participants;
+        const attendees = meeting.attendeeEmails?.length
+          ? meeting.attendeeEmails
+          : meeting.participants;
         return attendees?.includes(contactEmail);
       });
 
@@ -444,7 +482,10 @@ Return ONLY valid JSON, no explanation.`;
     return contexts;
   }
 
-  private filterMeetingsByParticipant(meetings: Meeting[], participant: PrepParticipant): Meeting[] {
+  private filterMeetingsByParticipant(
+    meetings: Meeting[],
+    participant: PrepParticipant
+  ): Meeting[] {
     const participantNameLower = participant.name?.toLowerCase() || '';
     const participantEmailLower = participant.email?.toLowerCase() || '';
     const participantDomain = participant.domain?.toLowerCase() || '';
@@ -453,7 +494,7 @@ Return ONLY valid JSON, no explanation.`;
     return meetings.filter((meeting) => {
       // Rule 1: Filter by exact email in attendeeEmails
       if (participantEmailLower && meeting.attendeeEmails?.length) {
-        if (meeting.attendeeEmails.some(e => e.toLowerCase() === participantEmailLower)) {
+        if (meeting.attendeeEmails.some((e) => e.toLowerCase() === participantEmailLower)) {
           return true;
         }
       }
@@ -461,17 +502,24 @@ Return ONLY valid JSON, no explanation.`;
       // Rule 2: Filter by email in participants array (JSON field)
       if (participantEmailLower && meeting.participants) {
         try {
-          const participants = typeof meeting.participants === 'string'
-            ? JSON.parse(meeting.participants)
-            : meeting.participants;
+          const participants =
+            typeof meeting.participants === 'string'
+              ? JSON.parse(meeting.participants)
+              : meeting.participants;
           if (Array.isArray(participants)) {
-            const emailMatch = participants.some((p: any) =>
-              p?.email?.toLowerCase() === participantEmailLower ||
-              p?.toLowerCase?.() === participantEmailLower
-            );
+            const emailMatch = participants.some((p: unknown) => {
+              const participant = p as Record<string, unknown>;
+              return (
+                (typeof participant?.email === 'string' &&
+                  participant.email.toLowerCase() === participantEmailLower) ||
+                (typeof p === 'string' && p.toLowerCase() === participantEmailLower)
+              );
+            });
             if (emailMatch) return true;
           }
-        } catch { /* ignore parse errors */ }
+        } catch {
+          /* ignore parse errors */
+        }
       }
 
       // Rule 3: Filter by name in meeting title (e.g., "Meeting with John Smith")
@@ -501,7 +549,11 @@ Return ONLY valid JSON, no explanation.`;
         const titleLower = meeting.title?.toLowerCase() || '';
         const notesLower = typeof meeting.notes === 'string' ? meeting.notes.toLowerCase() : '';
         const summaryLower = meeting.summary?.toLowerCase() || '';
-        if (titleLower.includes(participantCompany) || notesLower.includes(participantCompany) || summaryLower.includes(participantCompany)) {
+        if (
+          titleLower.includes(participantCompany) ||
+          notesLower.includes(participantCompany) ||
+          summaryLower.includes(participantCompany)
+        ) {
           return true;
         }
       }
@@ -509,23 +561,25 @@ Return ONLY valid JSON, no explanation.`;
       // Rule 6: Filter by name in people array (JSON field)
       if (participantNameLower && meeting.people) {
         try {
-          const people = typeof meeting.people === 'string'
-            ? JSON.parse(meeting.people)
-            : meeting.people;
+          const people =
+            typeof meeting.people === 'string' ? JSON.parse(meeting.people) : meeting.people;
           if (Array.isArray(people)) {
-            const nameMatch = people.some((p: any) =>
-              p?.name?.toLowerCase()?.includes(participantNameLower) ||
-              participantNameLower.includes(p?.name?.toLowerCase() || '')
-            );
+            const nameMatch = people.some((p: unknown) => {
+              const person = p as Record<string, unknown>;
+              const name = typeof person?.name === 'string' ? person.name.toLowerCase() : '';
+              return name.includes(participantNameLower) || participantNameLower.includes(name);
+            });
             if (nameMatch) return true;
           }
-        } catch { /* ignore parse errors */ }
+        } catch {
+          /* ignore parse errors */
+        }
       }
 
       // Rule 7: Filter by name/email in noteEntries content
       if ((participantNameLower || participantEmailLower) && Array.isArray(meeting.noteEntries)) {
         const noteEntriesText = meeting.noteEntries
-          .map((entry: any) => entry.content || '')
+          .map((entry: NoteEntry) => entry.content || '')
           .join(' ')
           .toLowerCase();
         if (participantNameLower && noteEntriesText.includes(participantNameLower)) {
@@ -651,7 +705,7 @@ Return ONLY valid JSON, no explanation.`;
 
         // Build context lines conditionally - omit lines with no data
         const lines: string[] = [
-          `**${participant.name}${participant.email ? ` (${participant.email})` : ''} [${strength}]**`
+          `**${participant.name}${participant.email ? ` (${participant.email})` : ''} [${strength}]**`,
         ];
         if (participant.company) lines.push(`- Organization: ${participant.company}`);
         if (participant.domain) lines.push(`- Domain: ${participant.domain}`);
@@ -732,7 +786,7 @@ RESPONSE FORMAT:
   }
 
   private validateAndFormatOutput(
-    prepData: any,
+    prepData: Record<string, unknown>,
     input: GenerateMeetingPrepInput
   ): MeetingPrepOutput {
     // Ensure top-level structure
@@ -740,49 +794,66 @@ RESPONSE FORMAT:
       throw new Error('Invalid prep output structure');
     }
 
+    const meetingData = prepData.meeting as Record<string, unknown>;
+    const agendaData = prepData.agenda as Record<string, unknown>;
+    const participantsData = prepData.participants as Record<string, unknown>[];
+
     // Ensure meeting object
     const meeting = {
-      type: prepData.meeting.type || input.meeting.meeting_type,
-      objective: prepData.meeting.objective || input.meeting.objective,
+      type: (meetingData.type as string) || input.meeting.meeting_type,
+      objective: (meetingData.objective as string) || input.meeting.objective,
       duration_minutes: 5 as const,
     };
 
     // Ensure participants array
-    const participants: ParticipantPrepSection[] = (prepData.participants || []).map(
-      (p: any, index: number) => ({
-        name: p.name || input.participants[index]?.name || input.participants[index]?.email || '',
-        email: p.email || null,
-        history_strength: (['strong', 'weak', 'org-only', 'none'].includes(p.history_strength)
-          ? p.history_strength
-          : 'none') as 'strong' | 'weak' | 'org-only' | 'none',
-        is_first_meeting: p.is_first_meeting ?? (p.context?.meeting_count === 0),
-        org_has_met_before: false, // Will be enriched later
-        confidence_score: 0, // Will be calculated later
-        data_gaps: [], // Will be populated later
-        pending_task_commitments: [], // Will be populated later
-        context: {
-          last_meeting_date: p.context?.last_meeting_date || null,
-          meeting_count: p.context?.meeting_count || 0,
-          recent_topics: Array.isArray(p.context?.recent_topics) ? p.context.recent_topics : [],
-          key_points: Array.isArray(p.context?.key_points) ? p.context.key_points : [],
-        },
-        talking_points: Array.isArray(p.talking_points) ? p.talking_points : [],
-        questions_to_ask: Array.isArray(p.questions_to_ask) ? p.questions_to_ask : [],
-        background: p.background || '',
-      })
+    const participants: ParticipantPrepSection[] = (participantsData || []).map(
+      (p: Record<string, unknown>, index: number) => {
+        const ctx = p.context as Record<string, unknown> | undefined;
+        return {
+          name:
+            (p.name as string) ||
+            input.participants[index]?.name ||
+            input.participants[index]?.email ||
+            '',
+          email: (p.email as string) || null,
+          history_strength: (['strong', 'weak', 'org-only', 'none'].includes(
+            p.history_strength as string
+          )
+            ? p.history_strength
+            : 'none') as 'strong' | 'weak' | 'org-only' | 'none',
+          is_first_meeting: (p.is_first_meeting as boolean) ?? ctx?.meeting_count === 0,
+          org_has_met_before: false, // Will be enriched later
+          confidence_score: 0, // Will be calculated later
+          data_gaps: [], // Will be populated later
+          pending_task_commitments: [], // Will be populated later
+          context: {
+            last_meeting_date: (ctx?.last_meeting_date as string) || null,
+            meeting_count: (ctx?.meeting_count as number) || 0,
+            recent_topics: Array.isArray(ctx?.recent_topics) ? (ctx.recent_topics as string[]) : [],
+            key_points: Array.isArray(ctx?.key_points) ? (ctx.key_points as string[]) : [],
+          },
+          talking_points: Array.isArray(p.talking_points) ? (p.talking_points as string[]) : [],
+          questions_to_ask: Array.isArray(p.questions_to_ask)
+            ? (p.questions_to_ask as string[])
+            : [],
+          background: (p.background as string) || '',
+        };
+      }
     );
 
     // Ensure agenda
     const agenda = {
-      opening: prepData.agenda?.opening || `Prepare to discuss ${input.meeting.objective}.`,
-      key_topics: Array.isArray(prepData.agenda?.key_topics) ? prepData.agenda.key_topics : [],
-      closing: prepData.agenda?.closing || 'Confirm next steps and follow-up items.',
+      opening: (agendaData?.opening as string) || `Prepare to discuss ${input.meeting.objective}.`,
+      key_topics: Array.isArray(agendaData?.key_topics) ? (agendaData.key_topics as string[]) : [],
+      closing: (agendaData?.closing as string) || 'Confirm next steps and follow-up items.',
     };
 
     // Ensure metrics and mitigations
-    const success_metrics = Array.isArray(prepData.success_metrics) ? prepData.success_metrics : [];
+    const success_metrics = Array.isArray(prepData.success_metrics)
+      ? (prepData.success_metrics as string[])
+      : [];
     const risk_mitigation = Array.isArray(prepData.risk_mitigation)
-      ? prepData.risk_mitigation
+      ? (prepData.risk_mitigation as string[])
       : [];
 
     return {
@@ -821,9 +892,7 @@ RESPONSE FORMAT:
         );
 
         // Get task commitments from past meetings
-        const taskCommitments = p.email
-          ? await this.getTaskCommitmentsForParticipant(p.email)
-          : [];
+        const taskCommitments = p.email ? await this.getTaskCommitmentsForParticipant(p.email) : [];
 
         // Calculate confidence score
         let confidenceScore = 0;
@@ -871,8 +940,10 @@ RESPONSE FORMAT:
         if (p.confidence_score < CONFIDENCE_THRESHOLD) {
           return {
             ...p,
-            talking_points: p.talking_points.map(tp =>
-              tp.startsWith('Consider') ? tp : `Consider discussing: ${tp.replace(/^(Discuss|Talk about|Mention)\s*/i, '')}`
+            talking_points: p.talking_points.map((tp) =>
+              tp.startsWith('Consider')
+                ? tp
+                : `Consider discussing: ${tp.replace(/^(Discuss|Talk about|Mention)\s*/i, '')}`
             ),
             background: p.is_first_meeting
               ? `This is your first meeting with ${p.name}. ${p.org_has_met_before ? 'Others in your organization have met with them before.' : 'No prior organizational history available.'}`
@@ -903,7 +974,7 @@ RESPONSE FORMAT:
       if (participantEmail && m.attendeeEmails?.includes(participantEmail)) {
         return true;
       }
-      if (participantDomain && m.attendeeEmails?.some(e => e.endsWith(`@${participantDomain}`))) {
+      if (participantDomain && m.attendeeEmails?.some((e) => e.endsWith(`@${participantDomain}`))) {
         return true;
       }
       return false;
@@ -963,76 +1034,6 @@ RESPONSE FORMAT:
       .slice(0, 10);
   }
 
-  /**
-   * Extract task commitments from transcript using AI
-   */
-  async extractTasksFromTranscript(
-    meetingId: string,
-    participantEmail: string
-  ): Promise<TaskCommitment[]> {
-    const { meetingRepo, aiProvider } = getContainer();
-    if (!meetingRepo || !aiProvider) {
-      return [];
-    }
-
-    const meeting = meetingRepo.findById(meetingId);
-    if (!meeting || !meeting.transcript || meeting.transcript.length === 0) {
-      return [];
-    }
-
-    // Build transcript text
-    const transcriptText = meeting.transcript
-      .map(s => `[${s.source}]: ${s.text}`)
-      .join('\n');
-
-    const prompt = `Analyze this meeting transcript and extract any commitments, promises, or action items made.
-
-TRANSCRIPT:
-${transcriptText}
-
-RULES:
-- Only extract CLEAR commitments (e.g., "I will...", "We'll follow up...", "Let me send you...")
-- Do NOT invent or assume commitments
-- If no clear commitments are found, return an empty array
-- Keep descriptions concise (under 100 characters)
-
-Return JSON only:
-{
-  "commitments": [
-    { "description": "string", "speaker": "mic|system" }
-  ]
-}`;
-
-    try {
-      const response = await aiProvider.chat(
-        [{ role: 'user', content: prompt }],
-        {
-          model: 'gpt-4o',
-          temperature: 0.2, // Very low for consistency
-          maxTokens: 500,
-          responseFormat: 'json',
-        }
-      );
-
-      const parsed = JSON.parse(response);
-      const commitments = parsed.commitments || [];
-
-      return commitments.map((c: { description: string; speaker: string }, idx: number) => ({
-        id: `${meetingId}-extracted-${idx}`,
-        meetingId,
-        meetingTitle: meeting.title,
-        meetingDate: meeting.createdAt,
-        participantEmail,
-        description: c.description,
-        completed: false,
-        source: 'transcript_extraction' as const,
-      }));
-    } catch (error) {
-      logger.error('Failed to extract tasks from transcript', { error, meetingId });
-      return [];
-    }
-  }
-
   // ============================================================
   // ENHANCED PREP GENERATION - New revamped meeting prep
   // ============================================================
@@ -1041,13 +1042,16 @@ Return JSON only:
    * Generate enhanced meeting prep with the new format
    * Includes: Last seen context, CRM snapshot, participant intel, action items, timeline
    */
-  async generateEnhancedMeetingPrep(input: GenerateMeetingPrepInput): Promise<EnhancedMeetingPrepResult> {
+  async generateEnhancedMeetingPrep(
+    input: GenerateMeetingPrepInput
+  ): Promise<EnhancedMeetingPrepResult> {
     logger.info('Generating enhanced meeting prep', {
       meetingType: input.meeting.meeting_type,
       participantCount: input.participants.length,
     });
 
-    const { aiProvider, meetingRepo, settingsRepo, hubSpotService, salesforceService } = getContainer();
+    const { aiProvider, meetingRepo, settingsRepo, hubSpotService, salesforceService } =
+      getContainer();
     if (!aiProvider) throw new Error('AI provider not available');
     if (!meetingRepo) throw new Error('Meeting repository not available');
 
@@ -1081,18 +1085,19 @@ Return JSON only:
    */
   private async buildEnhancedParticipant(
     participant: PrepParticipant,
-    meetingRepo: any,
-    aiProvider: any,
-    settings: any,
-    hubSpotService: any,
-    salesforceService: any
+    meetingRepo: MeetingRepository,
+    aiProvider: AIProvider | null,
+    settings: AppSettings,
+    hubSpotService: HubSpotService,
+    salesforceService: SalesforceService
   ): Promise<EnhancedPrepParticipant> {
     const email = participant.email;
 
     // Get past meetings with this participant
     const allMeetings = meetingRepo.findAll();
-    const participantMeetings = this.filterMeetingsByParticipant(allMeetings, participant)
-      .sort((a: Meeting, b: Meeting) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const participantMeetings = this.filterMeetingsByParticipant(allMeetings, participant).sort(
+      (a: Meeting, b: Meeting) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
 
     const isFirstMeeting = participantMeetings.length === 0;
 
@@ -1152,9 +1157,9 @@ Return JSON only:
    */
   private async fetchCRMDataCached(
     email: string,
-    settings: any,
-    hubSpotService: any,
-    salesforceService: any
+    settings: AppSettings,
+    hubSpotService: HubSpotService,
+    salesforceService: SalesforceService
   ): Promise<CRMContactData | null> {
     const cacheKey = email.toLowerCase();
     const cached = this.crmDataCache.get(cacheKey);
@@ -1173,9 +1178,9 @@ Return JSON only:
    */
   private async fetchCRMData(
     email: string,
-    settings: any,
-    hubSpotService: any,
-    salesforceService: any
+    settings: AppSettings,
+    hubSpotService: HubSpotService,
+    salesforceService: SalesforceService
   ): Promise<CRMContactData | null> {
     try {
       // Try HubSpot first
@@ -1191,7 +1196,9 @@ Return JSON only:
       }
 
       // Try Salesforce
-      const salesforceToken = settings?.crmConnections?.salesforce as SalesforceOAuthToken | undefined;
+      const salesforceToken = settings?.crmConnections?.salesforce as
+        | SalesforceOAuthToken
+        | undefined;
       if (salesforceToken?.accessToken && salesforceService) {
         const data = await salesforceService.getContactData(
           email,
@@ -1216,17 +1223,25 @@ Return JSON only:
     personEmail: string | null | undefined,
     personName: string | null | undefined,
     useNameSearch: boolean,
-    settings: any,
-    hubSpotService: any,
-    salesforceService: any
+    settings: AppSettings,
+    hubSpotService: HubSpotService,
+    salesforceService: SalesforceService
   ): Promise<CRMContactData | null> {
     let crmData: CRMContactData | null = null;
 
     // First try email-based lookup (faster, more accurate)
     if (personEmail && !useNameSearch) {
-      crmData = await this.fetchCRMDataCached(personEmail, settings, hubSpotService, salesforceService);
+      crmData = await this.fetchCRMDataCached(
+        personEmail,
+        settings,
+        hubSpotService,
+        salesforceService
+      );
       if (crmData) {
-        logger.debug('Fetched CRM data by email for chat', { email: personEmail, hasCrmData: true });
+        logger.debug('Fetched CRM data by email for chat', {
+          email: personEmail,
+          hasCrmData: true,
+        });
         return crmData;
       }
     }
@@ -1245,9 +1260,17 @@ Return JSON only:
           const contact = await hubSpotService.searchContactByName(personName, token.accessToken);
           if (contact?.email) {
             // Found contact by name, fetch full CRM data with caching
-            crmData = await this.fetchCRMDataCached(contact.email, settings, hubSpotService, salesforceService);
+            crmData = await this.fetchCRMDataCached(
+              contact.email,
+              settings,
+              hubSpotService,
+              salesforceService
+            );
             if (crmData) {
-              logger.info('Found CRM contact by name search', { name: personName, email: contact.email });
+              logger.info('Found CRM contact by name search', {
+                name: personName,
+                email: contact.email,
+              });
             }
           }
         }
@@ -1264,7 +1287,7 @@ Return JSON only:
    */
   private buildLastSeenContext(
     meetings: Meeting[],
-    _aiProvider: any
+    _aiProvider: AIProvider | null
   ): LastSeenContext | null {
     if (meetings.length === 0) return null;
 
@@ -1282,7 +1305,11 @@ Return JSON only:
     const summary = (lastMeeting.summary || '').toLowerCase();
     if (summary.includes('great') || summary.includes('excellent') || summary.includes('agreed')) {
       sentiment = 'Positive';
-    } else if (summary.includes('concern') || summary.includes('issue') || summary.includes('disagree')) {
+    } else if (
+      summary.includes('concern') ||
+      summary.includes('issue') ||
+      summary.includes('disagree')
+    ) {
       sentiment = 'Tense';
     }
 
@@ -1302,7 +1329,7 @@ Return JSON only:
     _participant: PrepParticipant,
     meetings: Meeting[],
     crmData: CRMContactData | null,
-    aiProvider: any
+    aiProvider: AIProvider | null
   ): Promise<ParticipantIntel> {
     // Derive persona from meeting content and CRM data
     const persona = await this.derivePersona(meetings, crmData, aiProvider);
@@ -1330,11 +1357,11 @@ Return JSON only:
   private async derivePersona(
     meetings: Meeting[],
     crmData: CRMContactData | null,
-    _aiProvider: any
+    _aiProvider: AIProvider | null
   ): Promise<ParticipantPersona | null> {
     // Simple heuristics - in production would use AI
     const allText = meetings
-      .map(m => `${m.title || ''} ${m.summary || ''}`)
+      .map((m) => `${m.title || ''} ${m.summary || ''}`)
       .join(' ')
       .toLowerCase();
 
@@ -1346,15 +1373,28 @@ Return JSON only:
 
     // Check job title
     const jobTitle = (crmData?.jobTitle || '').toLowerCase();
-    if (jobTitle.includes('engineer') || jobTitle.includes('developer') || jobTitle.includes('technical')) {
+    if (
+      jobTitle.includes('engineer') ||
+      jobTitle.includes('developer') ||
+      jobTitle.includes('technical')
+    ) {
       return 'Technical';
     }
-    if (jobTitle.includes('ceo') || jobTitle.includes('cto') || jobTitle.includes('director') || jobTitle.includes('vp')) {
+    if (
+      jobTitle.includes('ceo') ||
+      jobTitle.includes('cto') ||
+      jobTitle.includes('director') ||
+      jobTitle.includes('vp')
+    ) {
       return 'Executive';
     }
 
     // Check meeting content
-    if (allText.includes('api') || allText.includes('integration') || allText.includes('technical')) {
+    if (
+      allText.includes('api') ||
+      allText.includes('integration') ||
+      allText.includes('technical')
+    ) {
       return 'Technical';
     }
     if (allText.includes('budget') || allText.includes('roi') || allText.includes('approval')) {
@@ -1363,7 +1403,11 @@ Return JSON only:
     if (allText.includes('concern') || allText.includes('risk') || allText.includes('competitor')) {
       return 'Skeptic';
     }
-    if (allText.includes('excited') || allText.includes('champion') || allText.includes('advocate')) {
+    if (
+      allText.includes('excited') ||
+      allText.includes('champion') ||
+      allText.includes('advocate')
+    ) {
       return 'Champion';
     }
 
@@ -1382,8 +1426,8 @@ Return JSON only:
       if (!meeting.transcript) continue;
 
       const text = meeting.transcript
-        .filter(s => s.source === 'system') // Other participant's speech
-        .map(s => s.text)
+        .filter((s) => s.source === 'system') // Other participant's speech
+        .map((s) => s.text)
         .join(' ')
         .toLowerCase();
 
@@ -1424,7 +1468,9 @@ Return JSON only:
     const recentEmails = crmData.emails?.slice(0, 3) || [];
     if (recentEmails.length > 0) {
       const latestEmail = recentEmails[0];
-      activities.push(`Latest email: "${latestEmail.subject}" (${this.formatRelativeDate(latestEmail.date)})`);
+      activities.push(
+        `Latest email: "${latestEmail.subject}" (${this.formatRelativeDate(latestEmail.date)})`
+      );
     }
 
     // Recent notes (support tickets, etc.)
@@ -1460,9 +1506,12 @@ Return JSON only:
         // Simple heuristic to determine assignment
         const itemLower = item.toLowerCase();
         const assignedTo: 'them' | 'us' =
-          itemLower.includes('they will') || itemLower.includes('they\'ll') ||
-          itemLower.includes('send us') || itemLower.includes('get back')
-            ? 'them' : 'us';
+          itemLower.includes('they will') ||
+          itemLower.includes("they'll") ||
+          itemLower.includes('send us') ||
+          itemLower.includes('get back')
+            ? 'them'
+            : 'us';
 
         items.push({
           id: `${meeting.id}-action-${i}`,
@@ -1553,7 +1602,7 @@ Return JSON only:
   private async extractUnresolvedThreads(
     meetings: Meeting[],
     crmData: CRMContactData | null,
-    _aiProvider: any
+    _aiProvider: AIProvider | null
   ): Promise<UnresolvedThread[]> {
     const threads: UnresolvedThread[] = [];
 
@@ -1568,15 +1617,16 @@ Return JSON only:
         // Check if it's something they were supposed to do
         if (
           itemLower.includes('they will send') ||
-          itemLower.includes('they\'ll send') ||
+          itemLower.includes("they'll send") ||
           itemLower.includes('promised to') ||
           itemLower.includes('will provide') ||
           itemLower.includes('get back to us')
         ) {
           // Check if there's a follow-up email in CRM mentioning completion
           const resolved = crmData?.emails?.some(
-            e => e.subject.toLowerCase().includes('attached') ||
-                 e.subject.toLowerCase().includes('as discussed')
+            (e) =>
+              e.subject.toLowerCase().includes('attached') ||
+              e.subject.toLowerCase().includes('as discussed')
           );
 
           if (!resolved) {
@@ -1637,36 +1687,6 @@ Return JSON only:
   }
 
   /**
-   * Analyze meeting sentiment using AI
-   */
-  async analyzeMeetingSentiment(transcript: TranscriptSegment[]): Promise<MeetingSentiment> {
-    const { aiProvider } = getContainer();
-    if (!aiProvider || transcript.length === 0) return 'Neutral';
-
-    const text = transcript.map(s => s.text).join(' ').substring(0, 2000);
-
-    const prompt = `Analyze the overall sentiment/mood of this meeting transcript.
-Return ONLY one word: "Positive", "Neutral", or "Tense"
-
-Transcript:
-${text}`;
-
-    try {
-      const response = await aiProvider.chat(
-        [{ role: 'user', content: prompt }],
-        { model: 'gpt-4o', temperature: 0.1, maxTokens: 10 }
-      );
-
-      const cleaned = response.trim().toLowerCase();
-      if (cleaned.includes('positive')) return 'Positive';
-      if (cleaned.includes('tense')) return 'Tense';
-      return 'Neutral';
-    } catch {
-      return 'Neutral';
-    }
-  }
-
-  /**
    * Format relative date for display
    */
   private formatRelativeDate(dateStr: string): string {
@@ -1686,53 +1706,6 @@ ${text}`;
   // ============================================================
 
   /**
-   * Build dynamic prompt that injects customPrompt, attendeeRoles, and objectives
-   * from the CustomMeetingType (if provided)
-   */
-  buildDynamicPrompt(
-    basePrompt: string,
-    objective: CustomMeetingType | null,
-    signals: SignalScore[]
-  ): string {
-    let prompt = basePrompt;
-
-    // Inject signal context
-    if (signals.length > 0) {
-      const signalSummary = signals
-        .filter(s => s.normalizedScore > 0.3) // Only include meaningful signals
-        .map(s => `- ${s.category}: ${s.normalizedScore.toFixed(2)} (weight: ${s.weight.toFixed(2)})`)
-        .join('\n');
-
-      if (signalSummary) {
-        prompt += `\n\nIMPORTANCE SIGNALS (use to prioritize content):\n${signalSummary}`;
-      }
-    }
-
-    // Inject customPrompt if defined
-    if (objective?.customPrompt) {
-      prompt += `\n\nADDITIONAL FOCUS (user-defined):\n${objective.customPrompt}`;
-    }
-
-    // Inject attendeeRoles if defined
-    if (objective?.attendeeRoles?.length) {
-      const roleContext = objective.attendeeRoles
-        .map(role => `- ${role}: Tailor talking points for this role`)
-        .join('\n');
-      prompt += `\n\nEXPECTED ATTENDEE ROLES:\n${roleContext}`;
-    }
-
-    // Inject objectives as success criteria
-    if (objective?.objectives?.length) {
-      const objectiveList = objective.objectives
-        .map((obj, i) => `${i + 1}. ${obj}`)
-        .join('\n');
-      prompt += `\n\nMEETING SUCCESS CRITERIA:\n${objectiveList}`;
-    }
-
-    return prompt;
-  }
-
-  /**
    * Infer meeting objective from calendar, CRM, and historical signals
    * Used for hybrid mode: system suggests, user can override
    */
@@ -1748,21 +1721,28 @@ ${text}`;
     const signals = {
       // Calendar signals
       title: calendarEvent?.title || '',
-      duration: calendarEvent?.end && calendarEvent?.start
-        ? (new Date(calendarEvent.end).getTime() - new Date(calendarEvent.start).getTime()) / 60000
-        : 30,
-      isRecurring: calendarEvent?.title?.toLowerCase().includes('weekly') ||
-                   calendarEvent?.title?.toLowerCase().includes('sync') || false,
+      duration:
+        calendarEvent?.end && calendarEvent?.start
+          ? (new Date(calendarEvent.end).getTime() - new Date(calendarEvent.start).getTime()) /
+            60000
+          : 30,
+      isRecurring:
+        calendarEvent?.title?.toLowerCase().includes('weekly') ||
+        calendarEvent?.title?.toLowerCase().includes('sync') ||
+        false,
       attendeeCount: attendees.length,
 
       // CRM signals
-      dealStages: crmData.map(c => c.deals?.[0]?.dealStage).filter(Boolean),
-      contactRoles: crmData.map(c => c.jobTitle).filter(Boolean),
-      hasActiveDeals: crmData.some(c => c.deals && c.deals.length > 0),
+      dealStages: crmData.map((c) => c.deals?.[0]?.dealStage).filter(Boolean),
+      contactRoles: crmData.map((c) => c.jobTitle).filter(Boolean),
+      hasActiveDeals: crmData.some((c) => c.deals && c.deals.length > 0),
 
       // Historical signals
       pastMeetingCount: pastMeetings.length,
-      recentTopics: pastMeetings.slice(0, 3).map(m => m.title).filter(Boolean),
+      recentTopics: pastMeetings
+        .slice(0, 3)
+        .map((m) => m.title)
+        .filter(Boolean),
     };
 
     // If no AI provider, use heuristic inference
@@ -1793,10 +1773,12 @@ Return JSON only:
 }`;
 
     try {
-      const response = await aiProvider.chat(
-        [{ role: 'user', content: prompt }],
-        { model: 'gpt-4o', temperature: 0.3, maxTokens: 200, responseFormat: 'json' }
-      );
+      const response = await aiProvider.chat([{ role: 'user', content: prompt }], {
+        model: 'gpt-4o',
+        temperature: 0.3,
+        maxTokens: 200,
+        responseFormat: 'json',
+      });
 
       const parsed = JSON.parse(response);
       return {
@@ -1825,35 +1807,95 @@ Return JSON only:
 
     // Check title for hints
     if (titleLower.includes('onboard') || titleLower.includes('training')) {
-      return { suggestedType: 'onboarding', confidence: 80, reasoning: 'Title mentions onboarding/training', userCanOverride: true };
+      return {
+        suggestedType: 'onboarding',
+        confidence: 80,
+        reasoning: 'Title mentions onboarding/training',
+        userCanOverride: true,
+      };
     }
     if (titleLower.includes('demo') || titleLower.includes('discovery')) {
-      return { suggestedType: 'discovery', confidence: 75, reasoning: 'Title suggests discovery/demo', userCanOverride: true };
+      return {
+        suggestedType: 'discovery',
+        confidence: 75,
+        reasoning: 'Title suggests discovery/demo',
+        userCanOverride: true,
+      };
     }
-    if (titleLower.includes('technical') || titleLower.includes('integration') || titleLower.includes('api')) {
-      return { suggestedType: 'technical_review', confidence: 75, reasoning: 'Title mentions technical topics', userCanOverride: true };
+    if (
+      titleLower.includes('technical') ||
+      titleLower.includes('integration') ||
+      titleLower.includes('api')
+    ) {
+      return {
+        suggestedType: 'technical_review',
+        confidence: 75,
+        reasoning: 'Title mentions technical topics',
+        userCanOverride: true,
+      };
     }
-    if (titleLower.includes('issue') || titleLower.includes('problem') || titleLower.includes('urgent')) {
-      return { suggestedType: 'problem_solving', confidence: 70, reasoning: 'Title suggests issue resolution', userCanOverride: true };
+    if (
+      titleLower.includes('issue') ||
+      titleLower.includes('problem') ||
+      titleLower.includes('urgent')
+    ) {
+      return {
+        suggestedType: 'problem_solving',
+        confidence: 70,
+        reasoning: 'Title suggests issue resolution',
+        userCanOverride: true,
+      };
     }
-    if (titleLower.includes('update') || titleLower.includes('status') || titleLower.includes('review')) {
-      return { suggestedType: 'project_update', confidence: 65, reasoning: 'Title suggests status update', userCanOverride: true };
+    if (
+      titleLower.includes('update') ||
+      titleLower.includes('status') ||
+      titleLower.includes('review')
+    ) {
+      return {
+        suggestedType: 'project_update',
+        confidence: 65,
+        reasoning: 'Title suggests status update',
+        userCanOverride: true,
+      };
     }
 
     // Check CRM context
-    if (signals.hasActiveDeals && signals.dealStages.some(s => s?.toLowerCase().includes('negotiation'))) {
-      return { suggestedType: 'deal_progression', confidence: 70, reasoning: 'Active deal in negotiation stage', userCanOverride: true };
+    if (
+      signals.hasActiveDeals &&
+      signals.dealStages.some((s) => s?.toLowerCase().includes('negotiation'))
+    ) {
+      return {
+        suggestedType: 'deal_progression',
+        confidence: 70,
+        reasoning: 'Active deal in negotiation stage',
+        userCanOverride: true,
+      };
     }
 
     // Check history
     if (signals.pastMeetingCount === 0) {
-      return { suggestedType: 'discovery', confidence: 60, reasoning: 'First meeting with this contact', userCanOverride: true };
+      return {
+        suggestedType: 'discovery',
+        confidence: 60,
+        reasoning: 'First meeting with this contact',
+        userCanOverride: true,
+      };
     }
     if (signals.isRecurring && signals.pastMeetingCount >= 3) {
-      return { suggestedType: 'relationship_check', confidence: 60, reasoning: 'Recurring meeting with established contact', userCanOverride: true };
+      return {
+        suggestedType: 'relationship_check',
+        confidence: 60,
+        reasoning: 'Recurring meeting with established contact',
+        userCanOverride: true,
+      };
     }
 
-    return { suggestedType: 'general', confidence: 40, reasoning: 'Insufficient signals for specific inference', userCanOverride: true };
+    return {
+      suggestedType: 'general',
+      confidence: 40,
+      reasoning: 'Insufficient signals for specific inference',
+      userCanOverride: true,
+    };
   }
 
   /**
@@ -1870,9 +1912,10 @@ Return JSON only:
 
     // Calendar signals
     if (calendar) {
-      const durationMinutes = calendar.end && calendar.start
-        ? (new Date(calendar.end).getTime() - new Date(calendar.start).getTime()) / 60000
-        : 30;
+      const durationMinutes =
+        calendar.end && calendar.start
+          ? (new Date(calendar.end).getTime() - new Date(calendar.start).getTime()) / 60000
+          : 30;
 
       signals.push({
         source: 'calendar',
@@ -1921,7 +1964,7 @@ Return JSON only:
         source: 'meetings',
         category: 'recency',
         rawValue: daysSince,
-        normalizedScore: Math.max(1 - (daysSince / 90), 0),
+        normalizedScore: Math.max(1 - daysSince / 90, 0),
         weight: feedbackWeights['recency'] ?? 1.0,
       });
 
@@ -1960,7 +2003,7 @@ Return JSON only:
     if (signals.length === 0) return 50;
 
     const totalWeight = signals.reduce((sum, s) => sum + s.weight, 0);
-    const weightedSum = signals.reduce((sum, s) => sum + (s.normalizedScore * s.weight), 0);
+    const weightedSum = signals.reduce((sum, s) => sum + s.normalizedScore * s.weight, 0);
     return Math.round((weightedSum / totalWeight) * 100);
   }
 
@@ -1980,7 +2023,8 @@ Return JSON only:
       hasObjective: !!input.objective,
     });
 
-    const { aiProvider, meetingRepo, settingsRepo, hubSpotService, salesforceService } = getContainer();
+    const { aiProvider, meetingRepo, settingsRepo, hubSpotService, salesforceService } =
+      getContainer();
     if (!aiProvider) throw new Error('AI provider not available');
     if (!meetingRepo) throw new Error('Meeting repository not available');
 
@@ -2023,13 +2067,13 @@ Return JSON only:
     if (!input.objective && input.calendarEvent) {
       const crmData = await Promise.all(
         input.participants
-          .filter(p => p.email)
-          .map(p => this.fetchCRMData(p.email!, settings, hubSpotService, salesforceService))
+          .filter((p): p is PrepParticipant & { email: string } => p.email !== null)
+          .map((p) => this.fetchCRMData(p.email, settings, hubSpotService, salesforceService))
       );
       const allMeetings = meetingRepo.findAll();
       const inferredObj = await this.inferMeetingObjective(
         input.calendarEvent,
-        input.participants.map(p => p.email).filter(Boolean) as string[],
+        input.participants.map((p) => p.email).filter(Boolean) as string[],
         crmData.filter(Boolean) as CRMContactData[],
         allMeetings
       );
@@ -2057,8 +2101,8 @@ Return JSON only:
   private async generateMultiPersonSynthesis(
     participants: DynamicPrepParticipant[],
     objective: string,
-    meetingRepo: any,
-    aiProvider: any
+    meetingRepo: MeetingRepository,
+    aiProvider: AIProvider | null
   ): Promise<MeetingSynthesis> {
     const allMeetings = meetingRepo.findAll();
 
@@ -2066,13 +2110,15 @@ Return JSON only:
     const relationshipType = this.detectRelationshipType(participants);
 
     // Build context for each participant
-    const participantContexts = participants.map(p => {
-      const participantMeetings = this.filterMeetingsByParticipant(
-        allMeetings,
-        { name: p.name, email: p.email, company: null, domain: p.email?.split('@')[1] || null }
-      ).slice(0, 5); // Last 5 meetings
+    const participantContexts = participants.map((p) => {
+      const participantMeetings = this.filterMeetingsByParticipant(allMeetings, {
+        name: p.name,
+        email: p.email,
+        company: null,
+        domain: p.email?.split('@')[1] || null,
+      }).slice(0, 5); // Last 5 meetings
 
-      const recentMeetings = participantMeetings.map(m => ({
+      const recentMeetings = participantMeetings.map((m) => ({
         title: m.title,
         date: new Date(m.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         summary: m.summary || m.overview || '',
@@ -2082,7 +2128,7 @@ Return JSON only:
         name: p.name,
         email: p.email,
         recentMeetings,
-        topics: recentMeetings.map(m => m.title).join(', '),
+        topics: recentMeetings.map((m) => m.title).join(', '),
         lastMeeting: recentMeetings[0]?.date || 'Never',
       };
     });
@@ -2099,10 +2145,13 @@ Return JSON only:
     );
 
     try {
-      const response = await aiProvider.chat(
-        [{ role: 'user', content: prompt }],
-        { model: 'gpt-4o', temperature: 0.4, maxTokens: 800, responseFormat: 'json' }
-      );
+      if (!aiProvider) throw new Error('AI provider not available');
+      const response = await aiProvider.chat([{ role: 'user', content: prompt }], {
+        model: 'gpt-4o',
+        temperature: 0.4,
+        maxTokens: 800,
+        responseFormat: 'json',
+      });
 
       const parsed = JSON.parse(response);
       return {
@@ -2129,9 +2178,7 @@ Return JSON only:
   private detectRelationshipType(
     participants: DynamicPrepParticipant[]
   ): 'teammates' | 'cross-functional' | 'external' | 'unknown' {
-    const domains = participants
-      .map(p => p.email?.split('@')[1])
-      .filter(Boolean) as string[];
+    const domains = participants.map((p) => p.email?.split('@')[1]).filter(Boolean) as string[];
 
     if (domains.length === 0) return 'unknown';
 
@@ -2148,16 +2195,19 @@ Return JSON only:
     allMeetings: Meeting[],
     participants: DynamicPrepParticipant[]
   ): Array<{ title: string; date: string; participantsPresent: string[] }> {
-    const sharedMeetings: Array<{ title: string; date: string; participantsPresent: string[] }> = [];
+    const sharedMeetings: Array<{ title: string; date: string; participantsPresent: string[] }> =
+      [];
 
     for (const meeting of allMeetings) {
       const presentParticipants: string[] = [];
 
       for (const p of participants) {
-        const found = this.filterMeetingsByParticipant(
-          [meeting],
-          { name: p.name, email: p.email, company: null, domain: p.email?.split('@')[1] || null }
-        );
+        const found = this.filterMeetingsByParticipant([meeting], {
+          name: p.name,
+          email: p.email,
+          company: null,
+          domain: p.email?.split('@')[1] || null,
+        });
         if (found.length > 0) {
           presentParticipants.push(p.name);
         }
@@ -2166,7 +2216,10 @@ Return JSON only:
       if (presentParticipants.length >= 2) {
         sharedMeetings.push({
           title: meeting.title,
-          date: new Date(meeting.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          date: new Date(meeting.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+          }),
           participantsPresent: presentParticipants,
         });
       }
@@ -2193,7 +2246,10 @@ Return JSON only:
     const participantsSection = participantContexts
       .map((p, i) => {
         const meetingsList = p.recentMeetings
-          .map(m => `  - "${m.title}" (${m.date})${m.summary ? ': ' + m.summary.substring(0, 100) : ''}`)
+          .map(
+            (m) =>
+              `  - "${m.title}" (${m.date})${m.summary ? ': ' + m.summary.substring(0, 100) : ''}`
+          )
           .join('\n');
         return `${i + 1}. ${p.name}${p.email ? ` (${p.email})` : ''}
    Recent topics: ${p.topics || 'No recent meetings'}
@@ -2202,14 +2258,20 @@ Return JSON only:
       })
       .join('\n\n');
 
-    const sharedSection = sharedMeetings.length > 0
-      ? sharedMeetings.map(m => `- "${m.title}" (${m.date}) - ${m.participantsPresent.join(', ')}`).join('\n')
-      : 'None - first time meeting together';
+    const sharedSection =
+      sharedMeetings.length > 0
+        ? sharedMeetings
+            .map((m) => `- "${m.title}" (${m.date}) - ${m.participantsPresent.join(', ')}`)
+            .join('\n')
+        : 'None - first time meeting together';
 
     const relationshipGuidance = {
-      teammates: 'Focus on shared projects, internal handoffs, team dynamics, and collaboration patterns.',
-      'cross-functional': 'Look for project overlaps, handoff points, dependencies between their work areas.',
-      external: 'Focus on business relationship, deal progression, mutual value exchange, and partnership dynamics.',
+      teammates:
+        'Focus on shared projects, internal handoffs, team dynamics, and collaboration patterns.',
+      'cross-functional':
+        'Look for project overlaps, handoff points, dependencies between their work areas.',
+      external:
+        'Focus on business relationship, deal progression, mutual value exchange, and partnership dynamics.',
       unknown: 'Analyze based on meeting context and any available information.',
     }[relationshipType];
 
@@ -2253,18 +2315,19 @@ Include 2-4 likely topics, 2-3 connecting threads, and 3-5 forward actions.`;
     objective: CustomMeetingType | null,
     calendarEvent: CalendarEvent | null,
     feedbackWeights: Record<string, number>,
-    meetingRepo: any,
-    aiProvider: any,
-    settings: any,
-    hubSpotService: any,
-    salesforceService: any
+    meetingRepo: MeetingRepository,
+    aiProvider: AIProvider | null,
+    settings: AppSettings,
+    hubSpotService: HubSpotService,
+    salesforceService: SalesforceService
   ): Promise<DynamicPrepParticipant> {
     const email = participant.email;
 
     // Get past meetings
     const allMeetings = meetingRepo.findAll();
-    const participantMeetings = this.filterMeetingsByParticipant(allMeetings, participant)
-      .sort((a: Meeting, b: Meeting) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const participantMeetings = this.filterMeetingsByParticipant(allMeetings, participant).sort(
+      (a: Meeting, b: Meeting) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
 
     const isFirstMeeting = participantMeetings.length === 0;
 
@@ -2275,14 +2338,19 @@ Include 2-4 likely topics, 2-3 connecting threads, and 3-5 forward actions.`;
     }
 
     // Calculate signals
-    const signals = this.calculateSignals(calendarEvent, crmData, participantMeetings, feedbackWeights);
+    const signals = this.calculateSignals(
+      calendarEvent,
+      crmData,
+      participantMeetings,
+      feedbackWeights
+    );
     const computedPriority = this.computePriority(signals);
 
     // Build pending actions
     const actionItems = this.buildActionItems(participantMeetings, email);
     const pendingActions: PendingActions = {
-      theyOweUs: actionItems.filter(a => a.assignedTo === 'them' && !a.completed),
-      weOweThem: actionItems.filter(a => a.assignedTo === 'us' && !a.completed),
+      theyOweUs: actionItems.filter((a) => a.assignedTo === 'them' && !a.completed),
+      weOweThem: actionItems.filter((a) => a.assignedTo === 'us' && !a.completed),
     };
 
     // Cross-validate against CRM
@@ -2302,7 +2370,12 @@ Include 2-4 likely topics, 2-3 connecting threads, and 3-5 forward actions.`;
 
     // Build other context (reuse existing methods)
     const lastSeen = this.buildLastSeenContext(participantMeetings, aiProvider);
-    const intel = await this.buildParticipantIntel(participant, participantMeetings, crmData, aiProvider);
+    const intel = await this.buildParticipantIntel(
+      participant,
+      participantMeetings,
+      crmData,
+      aiProvider
+    );
     const timeline = this.buildTimeline(participantMeetings, crmData);
     const crmSnapshot = crmData?.deals?.[0] || undefined;
     const confidence = this.calculateConfidence(participantMeetings, crmData);
@@ -2342,8 +2415,10 @@ Include 2-4 likely topics, 2-3 connecting threads, and 3-5 forward actions.`;
     const meetingText = [
       recentMeeting.title,
       recentMeeting.summary,
-      recentMeeting.actionItems?.join('. ')
-    ].filter(Boolean).join(' ');
+      recentMeeting.actionItems?.join('. '),
+    ]
+      .filter(Boolean)
+      .join(' ');
 
     if (meetingText.length < 50) return [];
 
@@ -2376,10 +2451,12 @@ Return JSON:
 If no discrepancies, return: { "discrepancies": [] }`;
 
     try {
-      const response = await aiProvider.chat(
-        [{ role: 'user', content: prompt }],
-        { model: 'gpt-4o', temperature: 0.2, maxTokens: 400, responseFormat: 'json' }
-      );
+      const response = await aiProvider.chat([{ role: 'user', content: prompt }], {
+        model: 'gpt-4o',
+        temperature: 0.2,
+        maxTokens: 400,
+        responseFormat: 'json',
+      });
 
       const parsed = JSON.parse(response);
       for (const d of parsed.discrepancies || []) {
@@ -2409,7 +2486,7 @@ If no discrepancies, return: { "discrepancies": [] }`;
     crmData: CRMContactData | null,
     meetings: Meeting[],
     objective: CustomMeetingType | null,
-    aiProvider: any
+    aiProvider: AIProvider | null
   ): Promise<DynamicBrief> {
     const insights: PrepInsight[] = [];
 
@@ -2419,7 +2496,9 @@ If no discrepancies, return: { "discrepancies": [] }`;
         insights.push({
           id: `discrepancy-${validation.field}`,
           category: 'heads_up',
-          content: validation.discrepancyNote || `${validation.field}: Meeting said "${validation.meetingClaim}" but CRM shows "${validation.crmValue}"`,
+          content:
+            validation.discrepancyNote ||
+            `${validation.field}: Meeting said "${validation.meetingClaim}" but CRM shows "${validation.crmValue}"`,
           priority: 95,
           source: 'crm',
           actionable: true,
@@ -2432,7 +2511,10 @@ If no discrepancies, return: { "discrepancies": [] }`;
       insights.push({
         id: 'pending-them',
         category: 'pending_action',
-        content: `Waiting on them: ${pendingActions.theyOweUs.slice(0, 3).map(a => a.description).join('; ')}`,
+        content: `Waiting on them: ${pendingActions.theyOweUs
+          .slice(0, 3)
+          .map((a) => a.description)
+          .join('; ')}`,
         priority: 90,
         source: 'meetings',
         actionable: true,
@@ -2442,7 +2524,10 @@ If no discrepancies, return: { "discrepancies": [] }`;
       insights.push({
         id: 'pending-us',
         category: 'pending_action',
-        content: `You owe them: ${pendingActions.weOweThem.slice(0, 3).map(a => a.description).join('; ')}`,
+        content: `You owe them: ${pendingActions.weOweThem
+          .slice(0, 3)
+          .map((a) => a.description)
+          .join('; ')}`,
         priority: 85,
         source: 'meetings',
         actionable: true,
@@ -2501,14 +2586,14 @@ If no discrepancies, return: { "discrepancies": [] }`;
       participant,
       insights,
       signals,
-      meetings,  // Pass meeting history for context!
+      meetings, // Pass meeting history for context!
       objective,
       aiProvider
     );
 
     return {
       headline: briefSummary.headline,
-      insights: insights.filter(i => i.priority >= 50), // Only show high-priority
+      insights: insights.filter((i) => i.priority >= 50), // Only show high-priority
       suggestedActions: briefSummary.suggestedActions,
       bottomLine: briefSummary.bottomLine,
     };
@@ -2530,7 +2615,11 @@ If no discrepancies, return: { "discrepancies": [] }`;
 
     // Get current weights from settings (or use defaults)
     const settings = settingsRepo.getSettings();
-    const currentWeights: Record<string, SignalWeight> = (settings as any).signalWeights || {};
+    const currentWeights: Record<string, SignalWeight> =
+      ((settings as unknown as Record<string, unknown>).signalWeights as Record<
+        string,
+        SignalWeight
+      >) || {};
 
     // Get or create weight entry for this category
     const existingWeight = currentWeights[insightCategory] || {
@@ -2557,7 +2646,7 @@ If no discrepancies, return: { "discrepancies": [] }`;
     settingsRepo.updateSettings({
       ...settings,
       signalWeights: currentWeights,
-    } as any);
+    } as unknown as Partial<AppSettings>);
 
     logger.info('Updated signal weight', {
       category: insightCategory,
@@ -2575,7 +2664,11 @@ If no discrepancies, return: { "discrepancies": [] }`;
     if (!settingsRepo) return {};
 
     const settings = settingsRepo.getSettings();
-    const signalWeights: Record<string, SignalWeight> = (settings as any).signalWeights || {};
+    const signalWeights: Record<string, SignalWeight> =
+      ((settings as unknown as Record<string, unknown>).signalWeights as Record<
+        string,
+        SignalWeight
+      >) || {};
 
     // Convert SignalWeight objects to simple weight values
     const weights: Record<string, number> = {};
@@ -2600,7 +2693,7 @@ If no discrepancies, return: { "discrepancies": [] }`;
     settingsRepo.updateSettings({
       ...settings,
       signalWeights: {},
-    } as any);
+    } as unknown as Partial<AppSettings>);
 
     logger.info('Reset all signal weights to defaults');
   }
@@ -2612,34 +2705,38 @@ If no discrepancies, return: { "discrepancies": [] }`;
     participant: PrepParticipant,
     insights: PrepInsight[],
     signals: SignalScore[],
-    meetings: Meeting[],  // Added: meeting history for context
+    meetings: Meeting[], // Added: meeting history for context
     objective: CustomMeetingType | null,
-    aiProvider: any
+    aiProvider: AIProvider | null
   ): Promise<{ headline: string; suggestedActions: string[]; bottomLine: string }> {
     const insightSummary = insights
       .slice(0, 5)
-      .map(i => `[${i.category}] ${i.content}`)
+      .map((i) => `[${i.category}] ${i.content}`)
       .join('\n');
 
     const signalSummary = signals
-      .filter(s => s.normalizedScore > 0.3)
-      .map(s => `${s.category}: ${s.normalizedScore.toFixed(2)}`)
+      .filter((s) => s.normalizedScore > 0.3)
+      .map((s) => `${s.category}: ${s.normalizedScore.toFixed(2)}`)
       .join(', ');
 
     // Build meeting history context - THIS IS CRITICAL
-    const meetingHistoryContext = meetings.slice(0, 5).map((m, i) => {
-      const date = new Date(m.createdAt);
-      const daysAgo = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
-      const dateStr = daysAgo === 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' : `${daysAgo} days ago`;
+    const meetingHistoryContext = meetings
+      .slice(0, 5)
+      .map((m, i) => {
+        const date = new Date(m.createdAt);
+        const daysAgo = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+        const dateStr =
+          daysAgo === 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' : `${daysAgo} days ago`;
 
-      const parts = [`Meeting ${i + 1} (${dateStr}): "${m.title}"`];
-      if (m.summary) parts.push(`Summary: ${m.summary.substring(0, 300)}`);
-      if (m.overview) parts.push(`Overview: ${m.overview.substring(0, 200)}`);
-      if (m.actionItems && m.actionItems.length > 0) {
-        parts.push(`Action items: ${m.actionItems.slice(0, 3).join('; ')}`);
-      }
-      return parts.join('\n  ');
-    }).join('\n\n');
+        const parts = [`Meeting ${i + 1} (${dateStr}): "${m.title}"`];
+        if (m.summary) parts.push(`Summary: ${m.summary.substring(0, 300)}`);
+        if (m.overview) parts.push(`Overview: ${m.overview.substring(0, 200)}`);
+        if (m.actionItems && m.actionItems.length > 0) {
+          parts.push(`Action items: ${m.actionItems.slice(0, 3).join('; ')}`);
+        }
+        return parts.join('\n  ');
+      })
+      .join('\n\n');
 
     const prompt = `Generate a 30-second brief for meeting with ${participant.name}${participant.company ? ` from ${participant.company}` : ''}.
 
@@ -2669,10 +2766,13 @@ Return JSON:
 }`;
 
     try {
-      const response = await aiProvider.chat(
-        [{ role: 'user', content: prompt }],
-        { model: 'gpt-4o', temperature: 0.4, maxTokens: 300, responseFormat: 'json' }
-      );
+      if (!aiProvider) throw new Error('AI provider not available');
+      const response = await aiProvider.chat([{ role: 'user', content: prompt }], {
+        model: 'gpt-4o',
+        temperature: 0.4,
+        maxTokens: 300,
+        responseFormat: 'json',
+      });
 
       return JSON.parse(response);
     } catch (error) {
@@ -2704,7 +2804,6 @@ Return JSON:
     'deep dive',
     'synergize',
     'paradigm shift',
-    'circle back',
   ];
 
   // ============================================================
@@ -2736,12 +2835,12 @@ Return JSON:
     const userEmail = userContext.email.toLowerCase();
 
     // Check attendeeEmails
-    if (meeting.attendeeEmails?.some(e => e.toLowerCase() === userEmail)) {
+    if (meeting.attendeeEmails?.some((e) => e.toLowerCase() === userEmail)) {
       return true;
     }
 
     // Check participants (deprecated but still used)
-    if (meeting.participants?.some(p => p.toLowerCase().includes(userEmail))) {
+    if (meeting.participants?.some((p) => p.toLowerCase().includes(userEmail))) {
       return true;
     }
 
@@ -2792,10 +2891,10 @@ Return JSON:
     ];
 
     // Check for generative intent
-    const isGenerative = generativePatterns.some(p => p.test(message));
+    const isGenerative = generativePatterns.some((p) => p.test(message));
 
     // Check for retrieval intent
-    const isRetrieval = retrievalPatterns.some(p => p.test(message));
+    const isRetrieval = retrievalPatterns.some((p) => p.test(message));
 
     // Determine query type
     let type: QueryType;
@@ -2805,7 +2904,8 @@ Return JSON:
     if (isGenerative && isRetrieval) {
       type = 'hybrid';
       confidence = 0.8;
-      reasoning = 'Query contains both generative (write/draft) and retrieval (what was/find) patterns';
+      reasoning =
+        'Query contains both generative (write/draft) and retrieval (what was/find) patterns';
     } else if (isGenerative) {
       type = 'generative';
       confidence = 0.85;
@@ -2882,7 +2982,15 @@ Return JSON:
       } else if (description.includes('month')) {
         // Expand to full month
         const monthStart = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-        const monthEnd = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0, 23, 59, 59, 999);
+        const monthEnd = new Date(
+          startDate.getFullYear(),
+          startDate.getMonth() + 1,
+          0,
+          23,
+          59,
+          59,
+          999
+        );
         return { start: monthStart, end: monthEnd, description };
       } else {
         // Single day - expand to full day
@@ -2902,22 +3010,91 @@ Return JSON:
    */
   private extractSearchTerms(message: string): string[] {
     const stopWords = new Set([
-      'search', 'find', 'look', 'for', 'up', 'the', 'a', 'an', 'with', 'about',
-      'meeting', 'meetings', 'what', 'when', 'where', 'who', 'how', 'why',
-      'did', 'was', 'were', 'is', 'are', 'has', 'have', 'had', 'do', 'does',
-      'can', 'could', 'would', 'should', 'will', 'shall', 'may', 'might',
-      'i', 'we', 'you', 'they', 'he', 'she', 'it', 'me', 'us', 'them',
-      'my', 'our', 'your', 'their', 'his', 'her', 'its',
-      'in', 'on', 'at', 'to', 'from', 'by', 'of', 'and', 'or', 'but',
-      'that', 'this', 'these', 'those', 'any', 'all', 'some', 'no',
-      'tell', 'show', 'give', 'help', 'need', 'want', 'please',
+      'search',
+      'find',
+      'look',
+      'for',
+      'up',
+      'the',
+      'a',
+      'an',
+      'with',
+      'about',
+      'meeting',
+      'meetings',
+      'what',
+      'when',
+      'where',
+      'who',
+      'how',
+      'why',
+      'did',
+      'was',
+      'were',
+      'is',
+      'are',
+      'has',
+      'have',
+      'had',
+      'do',
+      'does',
+      'can',
+      'could',
+      'would',
+      'should',
+      'will',
+      'shall',
+      'may',
+      'might',
+      'i',
+      'we',
+      'you',
+      'they',
+      'he',
+      'she',
+      'it',
+      'me',
+      'us',
+      'them',
+      'my',
+      'our',
+      'your',
+      'their',
+      'his',
+      'her',
+      'its',
+      'in',
+      'on',
+      'at',
+      'to',
+      'from',
+      'by',
+      'of',
+      'and',
+      'or',
+      'but',
+      'that',
+      'this',
+      'these',
+      'those',
+      'any',
+      'all',
+      'some',
+      'no',
+      'tell',
+      'show',
+      'give',
+      'help',
+      'need',
+      'want',
+      'please',
     ]);
 
     return message
       .toLowerCase()
       .replace(/[^\w\s]/g, ' ')
       .split(/\s+/)
-      .filter(word => word.length > 2 && !stopWords.has(word));
+      .filter((word) => word.length > 2 && !stopWords.has(word));
   }
 
   /**
@@ -2946,7 +3123,7 @@ Return JSON:
       return meetings;
     }
 
-    return meetings.filter(m => {
+    return meetings.filter((m) => {
       const meetingDate = new Date(m.createdAt);
 
       if (dateRange.start && meetingDate < dateRange.start) {
@@ -2999,8 +3176,7 @@ Return JSON:
 
     // Step 6: Build result
     const dataQuality: 'rich' | 'moderate' | 'sparse' =
-      meetings.length >= 5 ? 'rich' :
-      meetings.length >= 2 ? 'moderate' : 'sparse';
+      meetings.length >= 5 ? 'rich' : meetings.length >= 2 ? 'moderate' : 'sparse';
 
     return {
       participant: {
@@ -3016,7 +3192,9 @@ Return JSON:
         headline: this.generateConversationalHeadline(person, meetings),
         dataQuality,
         meetingCount: meetings.length,
-        lastMeetingDate: meetings[0]?.createdAt ? new Date(meetings[0].createdAt).toISOString() : undefined,
+        lastMeetingDate: meetings[0]?.createdAt
+          ? new Date(meetings[0].createdAt).toISOString()
+          : undefined,
       },
       generatedAt: new Date().toISOString(),
       markdownBrief,
@@ -3042,24 +3220,24 @@ Return JSON:
     const queryLower = query.toLowerCase().trim();
 
     // Try exact name match first
-    let match = allPeople.find((p: Person) =>
-      p.name?.toLowerCase() === queryLower ||
-      p.email.toLowerCase() === queryLower
+    let match = allPeople.find(
+      (p: Person) => p.name?.toLowerCase() === queryLower || p.email.toLowerCase() === queryLower
     );
     if (match) return match;
 
     // Try partial name match
-    match = allPeople.find((p: Person) =>
-      p.name?.toLowerCase().includes(queryLower) ||
-      p.email.toLowerCase().includes(queryLower)
+    match = allPeople.find(
+      (p: Person) =>
+        p.name?.toLowerCase().includes(queryLower) || p.email.toLowerCase().includes(queryLower)
     );
     if (match) return match;
 
     // Try first name only
     const firstName = queryLower.split(' ')[0];
-    match = allPeople.find((p: Person) =>
-      p.name?.toLowerCase().startsWith(firstName) ||
-      p.email.split('@')[0].toLowerCase().includes(firstName)
+    match = allPeople.find(
+      (p: Person) =>
+        p.name?.toLowerCase().startsWith(firstName) ||
+        p.email.split('@')[0].toLowerCase().includes(firstName)
     );
     if (match) return match;
 
@@ -3096,13 +3274,15 @@ Return JSON:
     const queryLower = query.toLowerCase();
 
     return allPeople
-      .filter((p: Person) =>
-        p.name?.toLowerCase().includes(queryLower) ||
-        p.email.toLowerCase().includes(queryLower) ||
-        p.organization?.toLowerCase().includes(queryLower)
+      .filter(
+        (p: Person) =>
+          p.name?.toLowerCase().includes(queryLower) ||
+          p.email.toLowerCase().includes(queryLower) ||
+          p.organization?.toLowerCase().includes(queryLower)
       )
-      .sort((a: Person, b: Person) =>
-        new Date(b.lastMeetingAt).getTime() - new Date(a.lastMeetingAt).getTime()
+      .sort(
+        (a: Person, b: Person) =>
+          new Date(b.lastMeetingAt).getTime() - new Date(a.lastMeetingAt).getTime()
       )
       .slice(0, 10);
   }
@@ -3134,16 +3314,18 @@ Return JSON:
     const fourWeeks = 28 * 24 * 60 * 60 * 1000;
 
     // Take all from last 2 weeks, sample from 2-4 weeks, limit older
-    const recentMeetings = filtered.filter((m: Meeting) =>
-      now - new Date(m.createdAt).getTime() < twoWeeks
+    const recentMeetings = filtered.filter(
+      (m: Meeting) => now - new Date(m.createdAt).getTime() < twoWeeks
     );
-    const olderMeetings = filtered.filter((m: Meeting) => {
-      const age = now - new Date(m.createdAt).getTime();
-      return age >= twoWeeks && age < fourWeeks;
-    }).slice(0, 3);
-    const oldestMeetings = filtered.filter((m: Meeting) =>
-      now - new Date(m.createdAt).getTime() >= fourWeeks
-    ).slice(0, 2);
+    const olderMeetings = filtered
+      .filter((m: Meeting) => {
+        const age = now - new Date(m.createdAt).getTime();
+        return age >= twoWeeks && age < fourWeeks;
+      })
+      .slice(0, 3);
+    const oldestMeetings = filtered
+      .filter((m: Meeting) => now - new Date(m.createdAt).getTime() >= fourWeeks)
+      .slice(0, 2);
 
     return [...recentMeetings, ...olderMeetings, ...oldestMeetings].slice(0, 8);
   }
@@ -3152,36 +3334,37 @@ Return JSON:
    * Build meeting context for conversational LLM prompt
    */
   private buildMeetingContextForConversationalLLM(meetings: Meeting[]): string {
-    return meetings.map((m, idx) => {
-      const date = new Date(m.createdAt);
-      const daysAgo = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
-      const dateStr = daysAgo === 0 ? 'Today' :
-                      daysAgo === 1 ? 'Yesterday' :
-                      `${daysAgo} days ago`;
+    return meetings
+      .map((m, idx) => {
+        const date = new Date(m.createdAt);
+        const daysAgo = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+        const dateStr =
+          daysAgo === 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' : `${daysAgo} days ago`;
 
-      const parts = [
-        `---`,
-        `Meeting ${idx + 1}: "${m.title}" (${dateStr}, ${date.toLocaleDateString()})`,
-      ];
+        const parts = [
+          `---`,
+          `Meeting ${idx + 1}: "${m.title}" (${dateStr}, ${date.toLocaleDateString()})`,
+        ];
 
-      if (m.summary) {
-        parts.push(`Summary: ${m.summary.substring(0, 600)}`);
-      }
+        if (m.summary) {
+          parts.push(`Summary: ${m.summary.substring(0, 600)}`);
+        }
 
-      if (m.actionItems && m.actionItems.length > 0) {
-        parts.push(`Action Items:`);
-        m.actionItems.slice(0, 5).forEach(item => {
-          parts.push(`  - ${item}`);
-        });
-      }
+        if (m.actionItems && m.actionItems.length > 0) {
+          parts.push(`Action Items:`);
+          m.actionItems.slice(0, 5).forEach((item) => {
+            parts.push(`  - ${item}`);
+          });
+        }
 
-      if (m.overview) {
-        parts.push(`Overview: ${m.overview.substring(0, 400)}`);
-      }
+        if (m.overview) {
+          parts.push(`Overview: ${m.overview.substring(0, 400)}`);
+        }
 
-      parts.push(`---`);
-      return parts.join('\n');
-    }).join('\n\n');
+        parts.push(`---`);
+        return parts.join('\n');
+      })
+      .join('\n\n');
   }
 
   /**
@@ -3190,7 +3373,7 @@ Return JSON:
   private async extractStructuredDataForConversational(
     personName: string,
     meetingContext: string,
-    aiProvider: any
+    aiProvider: AIProvider | null
   ): Promise<{
     projects: ProjectContext[];
     theyOweUs: OwnershipActions['waitingOnThem'];
@@ -3256,10 +3439,13 @@ RULES:
 - Questions should be specific follow-ups, not generic`;
 
     try {
-      const response = await aiProvider.chat(
-        [{ role: 'user', content: prompt }],
-        { model: 'gpt-4o', temperature: 0.2, maxTokens: 2500, responseFormat: 'json' }
-      );
+      if (!aiProvider) throw new Error('AI provider not available');
+      const response = await aiProvider.chat([{ role: 'user', content: prompt }], {
+        model: 'gpt-4o',
+        temperature: 0.2,
+        maxTokens: 2500,
+        responseFormat: 'json',
+      });
       return JSON.parse(response);
     } catch (error) {
       logger.error('Failed to extract structured data for conversational prep', { error });
@@ -3279,9 +3465,9 @@ RULES:
       questions: SuggestedQuestion[];
       strengths: InferredTrait[];
     },
-    aiProvider: any
+    aiProvider: AIProvider | null
   ): Promise<string> {
-    const bannedList = this.BANNED_PHRASES.map(p => `- "${p}"`).join('\n');
+    const bannedList = this.BANNED_PHRASES.map((p) => `- "${p}"`).join('\n');
 
     const prompt = `Write a conversational 30-second meeting prep brief for an upcoming meeting with ${personName}.
 
@@ -3332,10 +3518,12 @@ CRITICAL RULES:
 - Sound natural and conversational, not robotic`;
 
     try {
-      const response = await aiProvider.chat(
-        [{ role: 'user', content: prompt }],
-        { model: 'gpt-4o', temperature: 0.4, maxTokens: 1500 }
-      );
+      if (!aiProvider) throw new Error('AI provider not available');
+      const response = await aiProvider.chat([{ role: 'user', content: prompt }], {
+        model: 'gpt-4o',
+        temperature: 0.4,
+        maxTokens: 1500,
+      });
       return response;
     } catch (error) {
       logger.error('Failed to generate conversational prose brief', { error });
@@ -3377,17 +3565,18 @@ CRITICAL RULES:
    * Supports natural language queries and follow-up conversations
    * Enhanced with query classification, user context, and temporal filtering
    */
-  async generatePrepChatResponse(
+  /**
+   * Shared preparation logic for chat responses (both streaming and non-streaming).
+   * Returns either a complete early response (greeting/clarification) or the
+   * prepared context needed for LLM generation.
+   */
+  private async prepareChatContext(
     input: PrepChatInput,
     existingConversation?: PrepConversation
-  ): Promise<PrepChatResponse> {
-    const startTime = Date.now();
-
-    // Get user context for personalized responses
+  ): Promise<ChatPreparedContext> {
     const userContext = this.getUserContext();
 
-    // Handle greeting + request combinations (e.g., "Hey, find my meeting with John")
-    // Strip the greeting and process the actual request
+    // Strip greeting prefix if message continues with actual content
     let processedMessage = input.message;
     if (startsWithGreeting(input.message) && !isPureGreeting(input.message)) {
       const strippedMessage = stripGreeting(input.message);
@@ -3400,55 +3589,23 @@ CRITICAL RULES:
       }
     }
 
-    // Classify the query type for intelligent handling
     const classifiedQuery = this.classifyQueryType(processedMessage);
 
-    logger.info('Generating prep chat response', {
+    logger.info('Preparing chat context', {
       message: input.message.substring(0, 100),
       hasConversation: !!existingConversation,
-      messageCount: existingConversation?.messages.length || 0,
       queryType: classifiedQuery.type,
-      queryConfidence: classifiedQuery.confidence,
-      dateRange: classifiedQuery.dateRange?.description,
-      userName: userContext.name,
     });
 
-    // Handle greetings immediately without LLM processing
+    // Handle greetings without LLM
     if (classifiedQuery.type === 'greeting') {
-      const greetingResponseText = getGreetingResponse(input.message);
-      const conversationId = existingConversation?.id || `conv-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-
-      const userMessage: PrepChatMessage = {
-        id: `msg-${Date.now() - 1}-${Math.random().toString(36).slice(2, 9)}`,
-        role: 'user',
-        content: input.message,
-        timestamp: new Date().toISOString(),
-      };
-
-      const responseMessage: PrepChatMessage = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-        role: 'assistant',
-        content: greetingResponseText,
-        timestamp: new Date().toISOString(),
-      };
-
-      const updatedConversation: PrepConversation = {
-        id: conversationId,
-        messages: [...(existingConversation?.messages || []), userMessage, responseMessage],
-        createdAt: existingConversation?.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      logger.info('Greeting response generated', {
-        conversationId,
-        responseLength: greetingResponseText.length,
-        processingTimeMs: Date.now() - startTime,
-      });
-
       return {
-        conversationId,
-        message: responseMessage,
-        conversation: updatedConversation,
+        earlyResponse: this.buildChatResponse(
+          input.message,
+          getGreetingResponse(input.message),
+          [],
+          existingConversation
+        ),
       };
     }
 
@@ -3456,251 +3613,59 @@ CRITICAL RULES:
     if (!aiProvider) throw new Error('AI provider not available');
     if (!meetingRepo) throw new Error('Meeting repository not available');
 
-    // Fast-path: multi-person queries explicitly listing multiple emails
+    // Fast-path: multi-person queries with multiple emails
     const extractedEmails = this.extractEmailsFromMessage(processedMessage);
     if (extractedEmails.length >= 2) {
-      const participants = extractedEmails.map((email) => {
-        const person = peopleRepo?.getByEmail(email);
-        return {
-          name: person?.name || email,
-          email,
-          organization: person?.organization || null,
-          meetingCount: person?.meetingCount ?? 0,
-        };
-      });
-
-      let allMeetings = this.filterMeetingsByAnyAttendee(meetingRepo.findAll(), extractedEmails)
-        .sort((a: Meeting, b: Meeting) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, 12);
-
-      if (classifiedQuery.dateRange) {
-        const filteredMeetings = this.filterMeetingsByDateRange(allMeetings, classifiedQuery.dateRange);
-        if (filteredMeetings.length > 0) {
-          allMeetings = filteredMeetings;
-        }
-      }
-
-      let meetingsForContext = allMeetings;
-      let calendarContext = '';
-
-      const calendarEvents = await this.fetchUpcomingCalendarEvents();
-      if (calendarEvents.length > 0) {
-        const focused = this.findBestUpcomingEventByAttendees(calendarEvents, extractedEmails);
-        const focusedContext = focused
-          ? this.buildFocusedCalendarContext(focused.event, extractedEmails, focused.overlap)
-          : '';
-        const isCalendarQuery = this.detectCalendarIntent(processedMessage);
-        const fullContext = isCalendarQuery ? this.buildCalendarContext(calendarEvents) : '';
-        calendarContext = [focusedContext, fullContext].filter(Boolean).join('\n\n');
-
-        if (focused?.event?.title) {
-          const keywords = this.getTitleKeywords(focused.event.title);
-          const filteredByTitle = this.filterMeetingsByTitleKeywords(allMeetings, keywords);
-          if (filteredByTitle.length > 0) {
-            meetingsForContext = filteredByTitle;
-          } else {
-            meetingsForContext = [];
-          }
-        }
-      }
-
-      const sharedMeetings = this.findSharedMeetingsByEmails(meetingsForContext, participants);
-      const hasMeetingNotes = meetingsForContext.some(m => this.hasSubstantiveMeetingContent(m));
-      const meetingContext = this.buildMultiPersonContextForChat(
-        participants,
-        meetingsForContext,
-        sharedMeetings,
-        { hasMeetingNotes }
-      );
-      const meetingReferences = meetingsForContext.slice(0, 5).map((m, idx) => ({
-        meetingId: m.id,
-        title: m.title || `Meeting ${idx + 1}`,
-        date: new Date(m.createdAt).toLocaleDateString(),
-      }));
-
-      const userWasAttendee = meetingsForContext.some(m => this.wasUserAttendee(m, userContext));
-      const enrichedUserContext: UserContext = {
-        ...userContext,
-        wasAttendee: userWasAttendee,
-      };
-
-      const systemPrompt = this.buildChatSystemPrompt(
-        null,
-        meetingContext,
-        enrichedUserContext,
+      const ctx = await this.buildMultiPersonChatContext(
+        extractedEmails,
+        processedMessage,
         classifiedQuery,
-        undefined,
-        calendarContext
+        userContext,
+        existingConversation,
+        meetingRepo,
+        peopleRepo
       );
-
-      const conversationMessages = existingConversation?.messages || [];
-      const chatMessages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
-        { role: 'system', content: systemPrompt },
-        ...conversationMessages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-        { role: 'user', content: processedMessage },
-      ];
-
-      const temperature = this.getTemperatureForQueryType(classifiedQuery.type);
-      const response = await aiProvider.chat(chatMessages, {
-        model: 'gpt-4o',
-        temperature,
-        maxTokens: 1500,
-      });
-
-      const responseMessage: PrepChatMessage = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-        role: 'assistant',
-        content: response,
-        timestamp: new Date().toISOString(),
-        meetingReferences: meetingReferences.length > 0 ? meetingReferences : undefined,
-      };
-
-      const conversationId = existingConversation?.id || `conv-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-      const userMessage: PrepChatMessage = {
-        id: `msg-${Date.now() - 1}-${Math.random().toString(36).slice(2, 9)}`,
-        role: 'user',
-        content: input.message,
-        timestamp: new Date().toISOString(),
-      };
-
-      const updatedConversation: PrepConversation = {
-        id: conversationId,
-        messages: [...(existingConversation?.messages || []), userMessage, responseMessage],
-        createdAt: existingConversation?.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      logger.info('Prep chat response generated (multi-person)', {
-        conversationId,
-        participantCount: participants.length,
-        responseLength: response.length,
-        processingTimeMs: Date.now() - startTime,
-      });
-
-      return {
-        conversationId,
-        message: responseMessage,
-        conversation: updatedConversation,
-      };
+      return ctx;
     }
 
-    // ============================================================
-    // OPTIMIZATION: Single LLM extraction upfront (avoids 2-3 duplicate calls)
-    // ============================================================
+    // Single LLM extraction upfront
     const llmExtraction = await this.extractEntityWithLLM(processedMessage, existingConversation);
 
-    // Extract person context from message or existing conversation (pass pre-extracted entity)
     const personContext = await this.extractPersonContextFromChat(
       processedMessage,
       existingConversation,
-      llmExtraction // Pass pre-extracted entity to avoid duplicate LLM call
+      llmExtraction
     );
 
-    // Also extract raw person name from message for fallback search
     let extractedPersonName = this.extractPersonNameFromMessage(processedMessage);
-
-    // If regex extraction failed, use LLM extraction for CRM lookup
-    if (!extractedPersonName && !personContext) {
-      if (llmExtraction.entity && llmExtraction.type === 'person') {
-        extractedPersonName = llmExtraction.entity;
-        logger.info('Using LLM-extracted name for CRM lookup', { name: extractedPersonName });
-      }
+    if (
+      !extractedPersonName &&
+      !personContext &&
+      llmExtraction.entity &&
+      llmExtraction.type === 'person'
+    ) {
+      extractedPersonName = llmExtraction.entity;
+      logger.info('Using LLM-extracted name for CRM lookup', { name: extractedPersonName });
     }
 
-    // Use the single LLM extraction result for mentioned name
     const mentionedName = llmExtraction.entity;
 
-    // ============================================================
-    // DISAMBIGUATION: Check for ambiguous names (e.g., just "Sarah")
-    // ============================================================
-    const isAmbiguousName = mentionedName && !mentionedName.includes(' '); // Single word name
-    if (isAmbiguousName && !existingConversation) {
-      // Search for potential matches in both meeting history and CRM
-      const potentialMatches: Array<{ name: string; source: string; email?: string }> = [];
-
-      // Check people repository for matches
-      const { peopleRepo, hubSpotService, settingsRepo } = getContainer();
-      if (peopleRepo) {
-        const matchingPeople = peopleRepo.search(mentionedName);
-        for (const p of matchingPeople.slice(0, 3)) {
-          potentialMatches.push({ name: p.name || p.email, source: 'meeting history', email: p.email });
-        }
-      }
-
-      // Check CRM for matches by name
-      const settings = settingsRepo?.getSettings();
-      const hubspotToken = settings?.crmConnections?.hubspot as HubSpotOAuthToken | undefined;
-      if (hubSpotService && hubspotToken?.accessToken) {
-        try {
-          let token = hubspotToken;
-          if (hubSpotService.isTokenExpired(token) && token.refreshToken) {
-            token = await hubSpotService.refreshAccessToken(token.refreshToken);
-          }
-          const crmContact = await hubSpotService.searchContactByName(mentionedName, token.accessToken);
-          if (crmContact?.name) {
-            // Check if this is a different person than what we found in meetings
-            const isDuplicate = potentialMatches.some(m =>
-              m.email === crmContact.email ||
-              m.name.toLowerCase() === crmContact.name?.toLowerCase()
-            );
-            if (!isDuplicate) {
-              potentialMatches.push({ name: crmContact.name, source: 'HubSpot CRM', email: crmContact.email });
-            }
-          }
-        } catch (err) {
-          logger.warn('CRM search for disambiguation failed', { error: err });
-        }
-      }
-
-      // If multiple distinct people found, ask for clarification
-      if (potentialMatches.length > 1) {
-        const matchList = potentialMatches
-          .map(m => `• **${m.name}** (${m.source})`)
-          .join('\n');
-
-        const clarificationMessage = `I found multiple people named "${mentionedName}":\n\n${matchList}\n\nWhich ${mentionedName} are you asking about? Please specify their full name.`;
-
-        const clarificationResponse: PrepChatMessage = {
-          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-          role: 'assistant',
-          content: clarificationMessage,
-          timestamp: new Date().toISOString(),
-        };
-
-        const conversationId = `conv-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-        const now = new Date().toISOString();
-        const conversation: PrepConversation = {
-          id: conversationId,
-          createdAt: now,
-          updatedAt: now,
-          messages: [
-            { id: `msg-${Date.now()}-user`, role: 'user', content: input.message, timestamp: now },
-            clarificationResponse,
-          ],
-        };
-
-        logger.info('Requesting clarification for ambiguous name', {
-          mentionedName,
-          matchCount: potentialMatches.length,
-          matches: potentialMatches.map(m => m.name),
-        });
-
-        return {
-          conversationId,
-          message: clarificationResponse,
-          conversation,
-        };
+    // Disambiguation for single-word names
+    if (mentionedName && !mentionedName.includes(' ') && !existingConversation) {
+      const clarification = await this.checkAmbiguousName(
+        mentionedName,
+        input.message,
+        existingConversation
+      );
+      if (clarification) {
+        return { earlyResponse: clarification };
       }
     }
 
-    // ============================================================
-    // OPTIMIZATION: Parallelize CRM lookup and meeting lookups
-    // CRM lookup doesn't depend on meeting results, so start it early
-    // ============================================================
+    // Parallelize CRM lookup and meeting lookups
     const { settingsRepo, hubSpotService, salesforceService } = getContainer();
     const settings = settingsRepo?.getSettings();
 
-    // Determine CRM lookup parameters upfront
     let personEmail = personContext?.email;
     let personName = personContext?.name || extractedPersonName;
     let useNameSearch = false;
@@ -3712,25 +3677,9 @@ CRITICAL RULES:
         personName = extractedPersonName;
         personEmail = undefined;
         useNameSearch = true;
-        logger.info('User mentioned different name than context, switching to name-based CRM search', {
-          contextName: personContext.name,
-          extractedName: extractedPersonName,
-        });
       }
     }
 
-    logger.info('CRM lookup context', {
-      hasPersonContext: !!personContext,
-      personContextName: personContext?.name,
-      personContextEmail: personContext?.email,
-      extractedPersonName,
-      resolvedPersonName: personName,
-      useNameSearch,
-      hasHubSpotService: !!hubSpotService,
-      hasHubSpotToken: !!settings?.crmConnections?.hubspot,
-    });
-
-    // Start CRM lookup as a promise (runs in parallel with meeting lookups)
     const crmLookupPromise = this.fetchCRMDataForChat(
       personEmail,
       personName,
@@ -3740,27 +3689,17 @@ CRITICAL RULES:
       salesforceService
     );
 
-    // Gather meeting context if we have a person
+    // Gather meeting context
     let meetingContext = '';
     let meetingReferences: { meetingId: string; title: string; date: string }[] = [];
     let allMeetings: Meeting[] = [];
 
     if (personContext) {
       allMeetings = await this.getWeightedMeetingsForPerson(personContext);
-
-      // Apply date range filter if parsed from query
       if (classifiedQuery.dateRange) {
-        const filteredMeetings = this.filterMeetingsByDateRange(allMeetings, classifiedQuery.dateRange);
-        if (filteredMeetings.length > 0) {
-          allMeetings = filteredMeetings;
-          logger.info('Filtered meetings by date range', {
-            description: classifiedQuery.dateRange.description,
-            originalCount: allMeetings.length,
-            filteredCount: filteredMeetings.length,
-          });
-        }
+        const filtered = this.filterMeetingsByDateRange(allMeetings, classifiedQuery.dateRange);
+        if (filtered.length > 0) allMeetings = filtered;
       }
-
       meetingContext = this.buildMeetingContextForChat(allMeetings);
       meetingReferences = allMeetings.slice(0, 5).map((m, idx) => ({
         meetingId: m.id,
@@ -3769,20 +3708,21 @@ CRITICAL RULES:
       }));
     }
 
-    // Check if this is a search query
-    const isSearchQuery = this.detectSearchIntent(processedMessage);
-    if (isSearchQuery) {
+    // Search queries
+    if (this.detectSearchIntent(processedMessage)) {
       let searchResults = await this.searchMeetingsForChat(processedMessage, meetingRepo);
-
-      // Apply date range filter to search results
       if (classifiedQuery.dateRange && searchResults.length > 0) {
         searchResults = this.filterMeetingsByDateRange(searchResults, classifiedQuery.dateRange);
       }
-
       if (searchResults.length > 0) {
-        meetingContext += '\n\nSEARCH RESULTS:\n' + searchResults.map((m, idx) =>
-          `[${idx + 1}] "${m.title}" (${new Date(m.createdAt).toLocaleDateString()})`
-        ).join('\n');
+        meetingContext +=
+          '\n\nSEARCH RESULTS:\n' +
+          searchResults
+            .map(
+              (m, idx) =>
+                `[${idx + 1}] "${m.title}" (${new Date(m.createdAt).toLocaleDateString()})`
+            )
+            .join('\n');
         meetingReferences = searchResults.slice(0, 5).map((m, idx) => ({
           meetingId: m.id,
           title: m.title || `Result ${idx + 1}`,
@@ -3792,66 +3732,37 @@ CRITICAL RULES:
       }
     }
 
-    // Fallback: If no meetings found but we have a person name, search by name in all meeting content
+    // Fallback: name-based search
     if (meetingReferences.length === 0 && extractedPersonName) {
-      logger.info('No meetings found via person lookup, trying name-based search', { name: extractedPersonName });
-      let nameSearchResults = await this.searchMeetingsByPersonName(extractedPersonName, meetingRepo);
-
-      // Apply date range filter
-      if (classifiedQuery.dateRange && nameSearchResults.length > 0) {
-        nameSearchResults = this.filterMeetingsByDateRange(nameSearchResults, classifiedQuery.dateRange);
+      let nameResults = await this.searchMeetingsByPersonName(extractedPersonName, meetingRepo);
+      if (classifiedQuery.dateRange && nameResults.length > 0) {
+        nameResults = this.filterMeetingsByDateRange(nameResults, classifiedQuery.dateRange);
       }
-
-      if (nameSearchResults.length > 0) {
-        meetingContext = this.buildMeetingContextForChat(nameSearchResults);
-        meetingReferences = nameSearchResults.slice(0, 5).map((m, idx) => ({
+      if (nameResults.length > 0) {
+        meetingContext = this.buildMeetingContextForChat(nameResults);
+        meetingReferences = nameResults.slice(0, 5).map((m, idx) => ({
           meetingId: m.id,
           title: m.title || `Meeting ${idx + 1}`,
           date: new Date(m.createdAt).toLocaleDateString(),
         }));
-        allMeetings = nameSearchResults;
+        allMeetings = nameResults;
       }
     }
 
-    // Await CRM lookup result (should be done or nearly done by now)
     const crmData = await crmLookupPromise;
+    const crmContext = crmData ? this.buildCRMContextForChat(crmData) : '';
 
-    // Build CRM context string for the prompt
-    let crmContext = '';
-    if (crmData) {
-      crmContext = this.buildCRMContextForChat(crmData);
-      logger.info('CRM data included in chat context', {
-        contactName: crmData.name,
-        email: crmData.email,
-        source: crmData.source,
-        dealsCount: crmData.deals?.length || 0,
-        notesCount: crmData.notes?.length || 0,
-        emailsCount: crmData.emails?.length || 0,
-      });
-    } else {
-      logger.debug('No CRM data found for chat context', { personName, personEmail });
-    }
+    const userWasAttendee = allMeetings.some((m) => this.wasUserAttendee(m, userContext));
+    const enrichedUserContext: UserContext = { ...userContext, wasAttendee: userWasAttendee };
 
-    // Determine if user was an attendee of relevant meetings
-    const userWasAttendee = allMeetings.some(m => this.wasUserAttendee(m, userContext));
-    const enrichedUserContext: UserContext = {
-      ...userContext,
-      wasAttendee: userWasAttendee,
-    };
-
-    // Fetch calendar events if this is a calendar-related query
     let calendarContext = '';
-    const isCalendarQuery = this.detectCalendarIntent(processedMessage);
-    if (isCalendarQuery) {
-      logger.debug('Calendar intent detected, fetching upcoming events');
+    if (this.detectCalendarIntent(processedMessage)) {
       const calendarEvents = await this.fetchUpcomingCalendarEvents();
       calendarContext = this.buildCalendarContext(calendarEvents);
-      logger.debug('Calendar context built', { eventCount: calendarEvents.length });
     }
 
-    // Build system prompt with communication guidelines, user context, query type, and CRM data
     const systemPrompt = this.buildChatSystemPrompt(
-      personContext || (extractedPersonName ? { name: extractedPersonName } as Person : null),
+      personContext || (extractedPersonName ? ({ name: extractedPersonName } as Person) : null),
       meetingContext,
       enrichedUserContext,
       classifiedQuery,
@@ -3859,40 +3770,224 @@ CRITICAL RULES:
       calendarContext
     );
 
-    // Build conversation history for context
     const conversationMessages = existingConversation?.messages || [];
     const chatMessages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
       { role: 'system', content: systemPrompt },
-      ...conversationMessages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-      { role: 'user', content: processedMessage }, // Use processed message (greeting stripped)
+      ...conversationMessages.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
+      { role: 'user', content: processedMessage },
     ];
 
-    // Use temperature based on query type
     const temperature = this.getTemperatureForQueryType(classifiedQuery.type);
 
-    // Generate response
-    const response = await aiProvider.chat(chatMessages, {
-      model: 'gpt-4o',
+    return {
+      chatMessages,
       temperature,
-      maxTokens: 1500,
+      meetingReferences,
+      personContext: personContext
+        ? {
+            name: personContext.name || personContext.email,
+            email: personContext.email,
+            organization: personContext.organization || null,
+            meetingIds: meetingReferences.map((r) => r.meetingId),
+          }
+        : existingConversation?.participantContext,
+    };
+  }
+
+  /**
+   * Build multi-person chat context for queries with 2+ email addresses
+   */
+  private async buildMultiPersonChatContext(
+    extractedEmails: string[],
+    processedMessage: string,
+    classifiedQuery: ClassifiedQuery,
+    userContext: UserContext,
+    existingConversation: PrepConversation | undefined,
+    meetingRepo: MeetingRepository,
+    peopleRepo: PeopleRepository
+  ): Promise<ChatPreparedContext> {
+    const participants = extractedEmails.map((email) => {
+      const person = peopleRepo?.getByEmail(email);
+      return {
+        name: person?.name || email,
+        email,
+        organization: person?.organization || null,
+        meetingCount: person?.meetingCount ?? 0,
+      };
     });
 
-    // Build the response message
-    const responseMessage: PrepChatMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-      role: 'assistant',
-      content: response,
-      timestamp: new Date().toISOString(),
-      meetingReferences: meetingReferences.length > 0 ? meetingReferences : undefined,
-    };
+    let allMeetings = this.filterMeetingsByAnyAttendee(meetingRepo.findAll(), extractedEmails)
+      .sort(
+        (a: Meeting, b: Meeting) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+      .slice(0, 12);
 
-    // Build updated conversation
-    const conversationId = existingConversation?.id || `conv-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    if (classifiedQuery.dateRange) {
+      const filtered = this.filterMeetingsByDateRange(allMeetings, classifiedQuery.dateRange);
+      if (filtered.length > 0) allMeetings = filtered;
+    }
+
+    let meetingsForContext = allMeetings;
+    let calendarContext = '';
+
+    const calendarEvents = await this.fetchUpcomingCalendarEvents();
+    if (calendarEvents.length > 0) {
+      const focused = this.findBestUpcomingEventByAttendees(calendarEvents, extractedEmails);
+      const focusedContext = focused
+        ? this.buildFocusedCalendarContext(focused.event, extractedEmails, focused.overlap)
+        : '';
+      const isCalendarQuery = this.detectCalendarIntent(processedMessage);
+      const fullContext = isCalendarQuery ? this.buildCalendarContext(calendarEvents) : '';
+      calendarContext = [focusedContext, fullContext].filter(Boolean).join('\n\n');
+
+      if (focused?.event?.title) {
+        const keywords = this.getTitleKeywords(focused.event.title);
+        const filteredByTitle = this.filterMeetingsByTitleKeywords(allMeetings, keywords);
+        meetingsForContext = filteredByTitle.length > 0 ? filteredByTitle : [];
+      }
+    }
+
+    const sharedMeetings = this.findSharedMeetingsByEmails(meetingsForContext, participants);
+    const hasMeetingNotes = meetingsForContext.some((m) => this.hasSubstantiveMeetingContent(m));
+    const meetingContext = this.buildMultiPersonContextForChat(
+      participants,
+      meetingsForContext,
+      sharedMeetings,
+      { hasMeetingNotes }
+    );
+    const meetingReferences = meetingsForContext.slice(0, 5).map((m, idx) => ({
+      meetingId: m.id,
+      title: m.title || `Meeting ${idx + 1}`,
+      date: new Date(m.createdAt).toLocaleDateString(),
+    }));
+
+    const userWasAttendee = meetingsForContext.some((m) => this.wasUserAttendee(m, userContext));
+    const enrichedUserContext: UserContext = { ...userContext, wasAttendee: userWasAttendee };
+
+    const systemPrompt = this.buildChatSystemPrompt(
+      null,
+      meetingContext,
+      enrichedUserContext,
+      classifiedQuery,
+      undefined,
+      calendarContext
+    );
+
+    const conversationMessages = existingConversation?.messages || [];
+    const chatMessages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
+      { role: 'system', content: systemPrompt },
+      ...conversationMessages.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
+      { role: 'user', content: processedMessage },
+    ];
+
+    return {
+      chatMessages,
+      temperature: this.getTemperatureForQueryType(classifiedQuery.type),
+      meetingReferences,
+    };
+  }
+
+  /**
+   * Check for ambiguous single-word names and return clarification response if needed
+   */
+  private async checkAmbiguousName(
+    mentionedName: string,
+    originalMessage: string,
+    existingConversation?: PrepConversation
+  ): Promise<PrepChatResponse | null> {
+    const potentialMatches: Array<{ name: string; source: string; email?: string }> = [];
+
+    const { peopleRepo, hubSpotService, settingsRepo } = getContainer();
+    if (peopleRepo) {
+      const matchingPeople = peopleRepo.search(mentionedName);
+      for (const p of matchingPeople.slice(0, 3)) {
+        potentialMatches.push({
+          name: p.name || p.email,
+          source: 'meeting history',
+          email: p.email,
+        });
+      }
+    }
+
+    const settings = settingsRepo?.getSettings();
+    const hubspotToken = settings?.crmConnections?.hubspot as HubSpotOAuthToken | undefined;
+    if (hubSpotService && hubspotToken?.accessToken) {
+      try {
+        let token = hubspotToken;
+        if (hubSpotService.isTokenExpired(token) && token.refreshToken) {
+          token = await hubSpotService.refreshAccessToken(token.refreshToken);
+        }
+        const crmContact = await hubSpotService.searchContactByName(
+          mentionedName,
+          token.accessToken
+        );
+        if (crmContact?.name) {
+          const isDuplicate = potentialMatches.some(
+            (m) =>
+              m.email === crmContact.email ||
+              m.name.toLowerCase() === crmContact.name?.toLowerCase()
+          );
+          if (!isDuplicate) {
+            potentialMatches.push({
+              name: crmContact.name,
+              source: 'HubSpot CRM',
+              email: crmContact.email,
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn('CRM search for disambiguation failed', { error: err });
+      }
+    }
+
+    if (potentialMatches.length > 1) {
+      const matchList = potentialMatches.map((m) => `- **${m.name}** (${m.source})`).join('\n');
+      const clarificationMessage = `I found multiple people named "${mentionedName}":\n\n${matchList}\n\nWhich ${mentionedName} are you asking about? Please specify their full name.`;
+
+      return this.buildChatResponse(
+        originalMessage,
+        clarificationMessage,
+        [],
+        existingConversation
+      );
+    }
+
+    return null;
+  }
+
+  /**
+   * Build a PrepChatResponse from response content and metadata
+   */
+  private buildChatResponse(
+    originalMessage: string,
+    responseContent: string,
+    meetingReferences: { meetingId: string; title: string; date: string }[],
+    existingConversation?: PrepConversation,
+    participantContext?: PrepConversation['participantContext']
+  ): PrepChatResponse {
+    const conversationId =
+      existingConversation?.id || `conv-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
     const userMessage: PrepChatMessage = {
       id: `msg-${Date.now() - 1}-${Math.random().toString(36).slice(2, 9)}`,
       role: 'user',
-      content: input.message,
+      content: originalMessage,
       timestamp: new Date().toISOString(),
+    };
+
+    const responseMessage: PrepChatMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      role: 'assistant',
+      content: responseContent,
+      timestamp: new Date().toISOString(),
+      meetingReferences: meetingReferences.length > 0 ? meetingReferences : undefined,
     };
 
     const updatedConversation: PrepConversation = {
@@ -3900,499 +3995,123 @@ CRITICAL RULES:
       messages: [...(existingConversation?.messages || []), userMessage, responseMessage],
       createdAt: existingConversation?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      participantContext: personContext ? {
-        name: personContext.name || personContext.email,
-        email: personContext.email,
-        organization: personContext.organization || null,
-        meetingIds: meetingReferences.map(r => r.meetingId),
-      } : existingConversation?.participantContext,
+      participantContext: participantContext || existingConversation?.participantContext,
     };
 
+    return { conversationId, message: responseMessage, conversation: updatedConversation };
+  }
+
+  /**
+   * Generate a chat response for the prep omnibar
+   */
+  async generatePrepChatResponse(
+    input: PrepChatInput,
+    existingConversation?: PrepConversation
+  ): Promise<PrepChatResponse> {
+    const startTime = Date.now();
+    const prepared = await this.prepareChatContext(input, existingConversation);
+
+    // Early responses (greetings, clarifications) don't need LLM
+    if (prepared.earlyResponse) {
+      return prepared.earlyResponse;
+    }
+
+    const { aiProvider } = getContainer();
+    if (!aiProvider) throw new Error('AI provider not available');
+
+    if (!prepared.chatMessages) throw new Error('Chat messages not prepared');
+    const response = await aiProvider.chat(prepared.chatMessages, {
+      model: 'gpt-4o',
+      temperature: prepared.temperature ?? 0.7,
+      maxTokens: 1500,
+    });
+
+    const result = this.buildChatResponse(
+      input.message,
+      response,
+      prepared.meetingReferences ?? [],
+      existingConversation,
+      prepared.personContext
+    );
+
     logger.info('Prep chat response generated', {
-      conversationId,
+      conversationId: result.conversationId,
       responseLength: response.length,
       processingTimeMs: Date.now() - startTime,
     });
 
-    return {
-      conversationId,
-      message: responseMessage,
-      conversation: updatedConversation,
-    };
+    return result;
   }
 
   /**
-   * Generate a streaming chat response for the prep omnibar
-   * Streams the LLM response as it generates for lower perceived latency
+   * Generate a streaming chat response for the prep omnibar.
+   * Uses the same preparation logic as generatePrepChatResponse but streams the LLM output.
    */
   async generatePrepChatResponseStreaming(
     input: PrepChatInput,
     existingConversation: PrepConversation | undefined,
     onChunk: (chunk: string) => void,
-    onStart: (metadata: { conversationId: string; meetingReferences: { meetingId: string; title: string; date: string }[] }) => void,
+    onStart: (metadata: {
+      conversationId: string;
+      meetingReferences: { meetingId: string; title: string; date: string }[];
+    }) => void,
     onEnd: (response: PrepChatResponse) => void,
     onError: (error: Error) => void
   ): Promise<void> {
     const startTime = Date.now();
 
     try {
-      // Get user context for personalized responses
-      const userContext = this.getUserContext();
+      const prepared = await this.prepareChatContext(input, existingConversation);
 
-      // Handle greeting + request combinations (e.g., "Hey, find my meeting with John")
-      // Strip the greeting and process the actual request
-      let processedMessage = input.message;
-      if (startsWithGreeting(input.message) && !isPureGreeting(input.message)) {
-        const strippedMessage = stripGreeting(input.message);
-        if (strippedMessage && strippedMessage !== input.message) {
-          processedMessage = strippedMessage;
-          logger.info('Stripped greeting from message (streaming)', {
-            original: input.message,
-            processed: processedMessage,
-          });
-        }
-      }
+      // Early responses (greetings, clarifications) - simulate streaming
+      if (prepared.earlyResponse) {
+        const { conversationId, message, conversation } = prepared.earlyResponse;
+        onStart({ conversationId, meetingReferences: [] });
 
-      // Classify the query type for intelligent handling
-      const classifiedQuery = this.classifyQueryType(processedMessage);
-
-      logger.info('Generating streaming prep chat response', {
-        message: input.message.substring(0, 100),
-        hasConversation: !!existingConversation,
-        queryType: classifiedQuery.type,
-      });
-
-      // Handle greetings immediately without LLM processing
-      if (classifiedQuery.type === 'greeting') {
-        const greetingResponseText = getGreetingResponse(input.message);
-        const conversationId = existingConversation?.id || `conv-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-
-        // Call onStart
-        onStart({
-          conversationId,
-          meetingReferences: [],
-        });
-
-        // Stream the greeting response (simulate streaming for consistency)
-        const words = greetingResponseText.split(' ');
+        const words = message.content.split(' ');
         for (const word of words) {
           onChunk(word + ' ');
-          // Small delay to simulate streaming
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
         }
 
-        const userMessage: PrepChatMessage = {
-          id: `msg-${Date.now() - 1}-${Math.random().toString(36).slice(2, 9)}`,
-          role: 'user',
-          content: input.message,
-          timestamp: new Date().toISOString(),
-        };
-
-        const responseMessage: PrepChatMessage = {
-          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-          role: 'assistant',
-          content: greetingResponseText,
-          timestamp: new Date().toISOString(),
-        };
-
-        const updatedConversation: PrepConversation = {
-          id: conversationId,
-          messages: [...(existingConversation?.messages || []), userMessage, responseMessage],
-          createdAt: existingConversation?.createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        // Call onEnd
-        onEnd({
-          conversationId,
-          message: responseMessage,
-          conversation: updatedConversation,
-        });
-
-        logger.info('Streaming greeting response completed', {
-          conversationId,
-          processingTimeMs: Date.now() - startTime,
-        });
-
+        onEnd({ conversationId, message, conversation });
         return;
       }
 
-      const { aiProvider, meetingRepo, peopleRepo } = getContainer();
+      const { aiProvider } = getContainer();
       if (!aiProvider) throw new Error('AI provider not available');
-      if (!meetingRepo) throw new Error('Meeting repository not available');
 
-      // Fast-path: multi-person queries explicitly listing multiple emails
-      const extractedEmails = this.extractEmailsFromMessage(processedMessage);
-      if (extractedEmails.length >= 2) {
-        const participants = extractedEmails.map((email) => {
-          const person = peopleRepo?.getByEmail(email);
-          return {
-            name: person?.name || email,
-            email,
-            organization: person?.organization || null,
-            meetingCount: person?.meetingCount ?? 0,
-          };
-        });
+      if (!prepared.chatMessages) throw new Error('Chat messages not prepared');
+      const conversationId =
+        existingConversation?.id || `conv-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const meetingRefs = prepared.meetingReferences ?? [];
+      onStart({ conversationId, meetingReferences: meetingRefs });
 
-        let allMeetings = this.filterMeetingsByAnyAttendee(meetingRepo.findAll(), extractedEmails)
-          .sort((a: Meeting, b: Meeting) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 12);
-
-        if (classifiedQuery.dateRange) {
-          const filteredMeetings = this.filterMeetingsByDateRange(allMeetings, classifiedQuery.dateRange);
-          if (filteredMeetings.length > 0) allMeetings = filteredMeetings;
-        }
-
-        let meetingsForContext = allMeetings;
-        let calendarContext = '';
-
-        const calendarEvents = await this.fetchUpcomingCalendarEvents();
-        if (calendarEvents.length > 0) {
-          const focused = this.findBestUpcomingEventByAttendees(calendarEvents, extractedEmails);
-          const focusedContext = focused
-            ? this.buildFocusedCalendarContext(focused.event, extractedEmails, focused.overlap)
-            : '';
-          const isCalendarQuery = this.detectCalendarIntent(processedMessage);
-          const fullContext = isCalendarQuery ? this.buildCalendarContext(calendarEvents) : '';
-          calendarContext = [focusedContext, fullContext].filter(Boolean).join('\n\n');
-
-          if (focused?.event?.title) {
-            const keywords = this.getTitleKeywords(focused.event.title);
-            const filteredByTitle = this.filterMeetingsByTitleKeywords(allMeetings, keywords);
-            if (filteredByTitle.length > 0) {
-              meetingsForContext = filteredByTitle;
-            } else {
-              meetingsForContext = [];
-            }
-          }
-        }
-
-        const sharedMeetings = this.findSharedMeetingsByEmails(meetingsForContext, participants);
-        const hasMeetingNotes = meetingsForContext.some(m => this.hasSubstantiveMeetingContent(m));
-        const meetingContext = this.buildMultiPersonContextForChat(
-          participants,
-          meetingsForContext,
-          sharedMeetings,
-          { hasMeetingNotes }
-        );
-        const meetingReferences = meetingsForContext.slice(0, 5).map((m, idx) => ({
-          meetingId: m.id,
-          title: m.title || `Meeting ${idx + 1}`,
-          date: new Date(m.createdAt).toLocaleDateString(),
-        }));
-
-        const userWasAttendee = meetingsForContext.some(m => this.wasUserAttendee(m, userContext));
-        const enrichedUserContext: UserContext = { ...userContext, wasAttendee: userWasAttendee };
-
-        const systemPrompt = this.buildChatSystemPrompt(
-          null,
-          meetingContext,
-          enrichedUserContext,
-          classifiedQuery,
-          undefined,
-          calendarContext
-        );
-
-        const conversationMessages = existingConversation?.messages || [];
-        const chatMessages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
-          { role: 'system', content: systemPrompt },
-          ...conversationMessages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-          { role: 'user', content: processedMessage },
-        ];
-
-        const temperature = this.getTemperatureForQueryType(classifiedQuery.type);
-        const conversationId = existingConversation?.id || `conv-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-
-        onStart({ conversationId, meetingReferences });
-
-        let fullResponse = '';
-        for await (const chunk of aiProvider.chatStream(chatMessages, {
-          model: 'gpt-4o',
-          temperature,
-          maxTokens: 1500,
-        })) {
-          fullResponse += chunk;
-          onChunk(chunk);
-        }
-
-        const responseMessage: PrepChatMessage = {
-          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-          role: 'assistant',
-          content: fullResponse,
-          timestamp: new Date().toISOString(),
-          meetingReferences: meetingReferences.length > 0 ? meetingReferences : undefined,
-        };
-
-        const userMessage: PrepChatMessage = {
-          id: `msg-${Date.now() - 1}-${Math.random().toString(36).slice(2, 9)}`,
-          role: 'user',
-          content: input.message,
-          timestamp: new Date().toISOString(),
-        };
-
-        const updatedConversation: PrepConversation = {
-          id: conversationId,
-          messages: [...(existingConversation?.messages || []), userMessage, responseMessage],
-          createdAt: existingConversation?.createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        onEnd({ conversationId, message: responseMessage, conversation: updatedConversation });
-        return;
-      }
-
-      // Single LLM extraction upfront
-      const llmExtraction = await this.extractEntityWithLLM(processedMessage, existingConversation);
-
-      // Extract person context from message or existing conversation
-      const personContext = await this.extractPersonContextFromChat(
-        processedMessage,
-        existingConversation,
-        llmExtraction
-      );
-
-      // Extract raw person name from message for fallback search
-      let extractedPersonName = this.extractPersonNameFromMessage(processedMessage);
-      if (!extractedPersonName && !personContext) {
-        if (llmExtraction.entity && llmExtraction.type === 'person') {
-          extractedPersonName = llmExtraction.entity;
-        }
-      }
-
-      const mentionedName = llmExtraction.entity;
-
-      // Check for disambiguation (single word name)
-      const isAmbiguousName = mentionedName && !mentionedName.includes(' ');
-      if (isAmbiguousName && !existingConversation) {
-        const potentialMatches: Array<{ name: string; source: string; email?: string }> = [];
-        const { peopleRepo, hubSpotService, settingsRepo } = getContainer();
-
-        if (peopleRepo) {
-          const matchingPeople = peopleRepo.search(mentionedName);
-          for (const p of matchingPeople.slice(0, 3)) {
-            potentialMatches.push({ name: p.name || p.email, source: 'meeting history', email: p.email });
-          }
-        }
-
-        const settings = settingsRepo?.getSettings();
-        const hubspotToken = settings?.crmConnections?.hubspot as HubSpotOAuthToken | undefined;
-        if (hubSpotService && hubspotToken?.accessToken) {
-          try {
-            let token = hubspotToken;
-            if (hubSpotService.isTokenExpired(token) && token.refreshToken) {
-              token = await hubSpotService.refreshAccessToken(token.refreshToken);
-            }
-            const crmContact = await hubSpotService.searchContactByName(mentionedName, token.accessToken);
-            if (crmContact?.name) {
-              const isDuplicate = potentialMatches.some(m =>
-                m.email === crmContact.email || m.name.toLowerCase() === crmContact.name?.toLowerCase()
-              );
-              if (!isDuplicate) {
-                potentialMatches.push({ name: crmContact.name, source: 'HubSpot CRM', email: crmContact.email });
-              }
-            }
-          } catch (err) {
-            logger.warn('CRM search for disambiguation failed', { error: err });
-          }
-        }
-
-        // If multiple distinct people found, return clarification (no streaming needed)
-        if (potentialMatches.length > 1) {
-          const matchList = potentialMatches.map(m => `• **${m.name}** (${m.source})`).join('\n');
-          const clarificationMessage = `I found multiple people named "${mentionedName}":\n\n${matchList}\n\nWhich ${mentionedName} are you asking about? Please specify their full name.`;
-
-          const clarificationResponse: PrepChatMessage = {
-            id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-            role: 'assistant',
-            content: clarificationMessage,
-            timestamp: new Date().toISOString(),
-          };
-
-          const conversationId = `conv-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-          const now = new Date().toISOString();
-          const conversation: PrepConversation = {
-            id: conversationId,
-            createdAt: now,
-            updatedAt: now,
-            messages: [
-              { id: `msg-${Date.now()}-user`, role: 'user', content: input.message, timestamp: now },
-              clarificationResponse,
-            ],
-          };
-
-          onStart({ conversationId, meetingReferences: [] });
-          onChunk(clarificationMessage);
-          onEnd({ conversationId, message: clarificationResponse, conversation });
-          return;
-        }
-      }
-
-      // Start CRM and meeting lookups in parallel
-      const { settingsRepo, hubSpotService, salesforceService } = getContainer();
-      const settings = settingsRepo?.getSettings();
-
-      let personEmail = personContext?.email;
-      let personName = personContext?.name || extractedPersonName;
-      let useNameSearch = false;
-
-      if (extractedPersonName && personContext?.name) {
-        const extractedLower = extractedPersonName.toLowerCase();
-        const contextLower = personContext.name.toLowerCase();
-        if (!contextLower.includes(extractedLower) && !extractedLower.includes(contextLower)) {
-          personName = extractedPersonName;
-          personEmail = undefined;
-          useNameSearch = true;
-        }
-      }
-
-      const crmLookupPromise = this.fetchCRMDataForChat(
-        personEmail, personName, useNameSearch, settings, hubSpotService, salesforceService
-      );
-
-      // Gather meeting context
-      let meetingContext = '';
-      let meetingReferences: { meetingId: string; title: string; date: string }[] = [];
-      let allMeetings: Meeting[] = [];
-
-      if (personContext) {
-        allMeetings = await this.getWeightedMeetingsForPerson(personContext);
-        if (classifiedQuery.dateRange) {
-          const filteredMeetings = this.filterMeetingsByDateRange(allMeetings, classifiedQuery.dateRange);
-          if (filteredMeetings.length > 0) allMeetings = filteredMeetings;
-        }
-        meetingContext = this.buildMeetingContextForChat(allMeetings);
-        meetingReferences = allMeetings.slice(0, 5).map((m, idx) => ({
-          meetingId: m.id,
-          title: m.title || `Meeting ${idx + 1}`,
-          date: new Date(m.createdAt).toLocaleDateString(),
-        }));
-      }
-
-      const isSearchQuery = this.detectSearchIntent(processedMessage);
-      if (isSearchQuery) {
-        let searchResults = await this.searchMeetingsForChat(processedMessage, meetingRepo);
-        if (classifiedQuery.dateRange && searchResults.length > 0) {
-          searchResults = this.filterMeetingsByDateRange(searchResults, classifiedQuery.dateRange);
-        }
-        if (searchResults.length > 0) {
-          meetingContext += '\n\nSEARCH RESULTS:\n' + searchResults.map((m, idx) =>
-            `[${idx + 1}] "${m.title}" (${new Date(m.createdAt).toLocaleDateString()})`
-          ).join('\n');
-          meetingReferences = searchResults.slice(0, 5).map((m, idx) => ({
-            meetingId: m.id,
-            title: m.title || `Result ${idx + 1}`,
-            date: new Date(m.createdAt).toLocaleDateString(),
-          }));
-          allMeetings = searchResults;
-        }
-      }
-
-      if (meetingReferences.length === 0 && extractedPersonName) {
-        let nameSearchResults = await this.searchMeetingsByPersonName(extractedPersonName, meetingRepo);
-        if (classifiedQuery.dateRange && nameSearchResults.length > 0) {
-          nameSearchResults = this.filterMeetingsByDateRange(nameSearchResults, classifiedQuery.dateRange);
-        }
-        if (nameSearchResults.length > 0) {
-          meetingContext = this.buildMeetingContextForChat(nameSearchResults);
-          meetingReferences = nameSearchResults.slice(0, 5).map((m, idx) => ({
-            meetingId: m.id,
-            title: m.title || `Meeting ${idx + 1}`,
-            date: new Date(m.createdAt).toLocaleDateString(),
-          }));
-          allMeetings = nameSearchResults;
-        }
-      }
-
-      // Await CRM data
-      const crmData = await crmLookupPromise;
-      let crmContext = '';
-      if (crmData) {
-        crmContext = this.buildCRMContextForChat(crmData);
-      }
-
-      // Fetch calendar events if this is a calendar-related query
-      let calendarContext = '';
-      const isCalendarQuery = this.detectCalendarIntent(processedMessage);
-      if (isCalendarQuery) {
-        logger.debug('Calendar intent detected, fetching upcoming events');
-        const calendarEvents = await this.fetchUpcomingCalendarEvents();
-        calendarContext = this.buildCalendarContext(calendarEvents);
-        logger.debug('Calendar context built', { eventCount: calendarEvents.length });
-      }
-
-      // Build system prompt
-      const userWasAttendee = allMeetings.some(m => this.wasUserAttendee(m, userContext));
-      const enrichedUserContext: UserContext = { ...userContext, wasAttendee: userWasAttendee };
-
-      const systemPrompt = this.buildChatSystemPrompt(
-        personContext || (extractedPersonName ? { name: extractedPersonName } as Person : null),
-        meetingContext,
-        enrichedUserContext,
-        classifiedQuery,
-        crmContext,
-        calendarContext
-      );
-
-      const conversationMessages = existingConversation?.messages || [];
-      const chatMessages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
-        { role: 'system', content: systemPrompt },
-        ...conversationMessages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-        { role: 'user', content: processedMessage }, // Use processed message (greeting stripped)
-      ];
-
-      const temperature = this.getTemperatureForQueryType(classifiedQuery.type);
-      const conversationId = existingConversation?.id || `conv-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-
-      // Send start event with metadata
-      onStart({ conversationId, meetingReferences });
-
-      // Stream the response
       let fullResponse = '';
-      for await (const chunk of aiProvider.chatStream(chatMessages, {
+      for await (const chunk of aiProvider.chatStream(prepared.chatMessages, {
         model: 'gpt-4o',
-        temperature,
+        temperature: prepared.temperature ?? 0.7,
         maxTokens: 1500,
       })) {
         fullResponse += chunk;
         onChunk(chunk);
       }
 
-      // Build final response
-      const responseMessage: PrepChatMessage = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-        role: 'assistant',
-        content: fullResponse,
-        timestamp: new Date().toISOString(),
-        meetingReferences: meetingReferences.length > 0 ? meetingReferences : undefined,
-      };
-
-      const userMessage: PrepChatMessage = {
-        id: `msg-${Date.now() - 1}-${Math.random().toString(36).slice(2, 9)}`,
-        role: 'user',
-        content: input.message,
-        timestamp: new Date().toISOString(),
-      };
-
-      const updatedConversation: PrepConversation = {
-        id: conversationId,
-        messages: [...(existingConversation?.messages || []), userMessage, responseMessage],
-        createdAt: existingConversation?.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        participantContext: personContext ? {
-          name: personContext.name || personContext.email,
-          email: personContext.email,
-          organization: personContext.organization || null,
-          meetingIds: meetingReferences.map(r => r.meetingId),
-        } : existingConversation?.participantContext,
-      };
+      const result = this.buildChatResponse(
+        input.message,
+        fullResponse,
+        meetingRefs,
+        existingConversation,
+        prepared.personContext
+      );
 
       logger.info('Streaming prep chat response completed', {
-        conversationId,
+        conversationId: result.conversationId,
         responseLength: fullResponse.length,
         processingTimeMs: Date.now() - startTime,
       });
 
-      onEnd({ conversationId, message: responseMessage, conversation: updatedConversation });
+      onEnd(result);
     } catch (error) {
       logger.error('Streaming prep chat failed', { error });
       onError(error instanceof Error ? error : new Error(String(error)));
@@ -4411,7 +4130,7 @@ CRITICAL RULES:
     crmContext?: string,
     calendarContext?: string
   ): string {
-    const bannedList = this.BANNED_PHRASES.map(p => `"${p}"`).join(', ');
+    const bannedList = this.BANNED_PHRASES.map((p) => `"${p}"`).join(', ');
 
     // Build user identity section
     let userIdentitySection = '';
@@ -4421,9 +4140,10 @@ CRITICAL RULES:
       if (userContext.position) parts.push(`**Role:** ${userContext.position}`);
       if (userContext.company) parts.push(`**Company:** ${userContext.company}`);
       if (userContext.wasAttendee !== undefined) {
-        parts.push(userContext.wasAttendee
-          ? '**Attendance:** User was present in the referenced meetings - can provide brief summaries'
-          : '**Attendance:** User was NOT present in these meetings - provide more context and detail'
+        parts.push(
+          userContext.wasAttendee
+            ? '**Attendance:** User was present in the referenced meetings - can provide brief summaries'
+            : '**Attendance:** User was NOT present in these meetings - provide more context and detail'
         );
       }
       userIdentitySection = `## WHO IS ASKING
@@ -4563,7 +4283,10 @@ If there's no meeting data for a person, check if CRM data is available and use 
    * Includes name, email, and organization when available
    */
   private buildPersonContextSection(person: Person): string {
-    const parts = [`## PERSON CONTEXT`, `The user is asking about: **${person.name || person.email}**`];
+    const parts = [
+      `## PERSON CONTEXT`,
+      `The user is asking about: **${person.name || person.email}**`,
+    ];
 
     if (person.email) {
       parts.push(`**Email:** ${person.email}`);
@@ -4576,11 +4299,15 @@ If there's no meeting data for a person, check if CRM data is available and use 
       parts.push(`**Organization:** Not available in contacts`);
     }
     if (person.meetingCount > 0) {
-      parts.push(`**Meeting history:** ${person.meetingCount} meeting${person.meetingCount > 1 ? 's' : ''}`);
+      parts.push(
+        `**Meeting history:** ${person.meetingCount} meeting${person.meetingCount > 1 ? 's' : ''}`
+      );
     }
 
     parts.push('');
-    parts.push('IMPORTANT: If the user asks for contact information (email, organization), provide it directly from the data above. If a field shows "Not available", tell them it\'s not in your contacts database.');
+    parts.push(
+      'IMPORTANT: If the user asks for contact information (email, organization), provide it directly from the data above. If a field shows "Not available", tell them it\'s not in your contacts database.'
+    );
 
     return parts.join('\n') + '\n';
   }
@@ -4593,7 +4320,9 @@ If there's no meeting data for a person, check if CRM data is available and use 
     const sections: string[] = [];
 
     // Contact info
-    sections.push(`**Contact:** ${crmData.name || crmData.email} (${crmData.source === 'hubspot' ? 'HubSpot' : 'Salesforce'})`);
+    sections.push(
+      `**Contact:** ${crmData.name || crmData.email} (${crmData.source === 'hubspot' ? 'HubSpot' : 'Salesforce'})`
+    );
     if (crmData.email) {
       sections.push(`**Email:** ${crmData.email}`);
     }
@@ -4641,10 +4370,14 @@ If there's no meeting data for a person, check if CRM data is available and use 
 
     // Last activity
     if (crmData.lastActivityDate) {
-      sections.push(`\n**Last CRM Activity:** ${new Date(crmData.lastActivityDate).toLocaleDateString()}`);
+      sections.push(
+        `\n**Last CRM Activity:** ${new Date(crmData.lastActivityDate).toLocaleDateString()}`
+      );
     }
 
-    sections.push('\nIMPORTANT: Use this CRM data to provide context about the relationship, deal status, and any notes that might be relevant to the user\'s question.');
+    sections.push(
+      "\nIMPORTANT: Use this CRM data to provide context about the relationship, deal status, and any notes that might be relevant to the user's question."
+    );
 
     return sections.join('\n');
   }
@@ -4662,7 +4395,8 @@ If there's no meeting data for a person, check if CRM data is available and use 
     preExtractedEntity?: ExtractedEntity
   ): Promise<Person | null> {
     // Use pre-extracted entity if provided, otherwise extract (for backwards compatibility)
-    const extracted = preExtractedEntity || await this.extractEntityWithLLM(message, existingConversation);
+    const extracted =
+      preExtractedEntity || (await this.extractEntityWithLLM(message, existingConversation));
 
     // First check existing conversation context for continuity
     if (existingConversation?.participantContext?.email) {
@@ -4680,9 +4414,11 @@ If there's no meeting data for a person, check if CRM data is available and use 
         const personNameLower = (person.name || '').toLowerCase();
         const personEmailLower = person.email.toLowerCase();
 
-        if (personNameLower.includes(entityLower) ||
-            entityLower.includes(personNameLower.split(' ')[0]) ||
-            personEmailLower.includes(entityLower)) {
+        if (
+          personNameLower.includes(entityLower) ||
+          entityLower.includes(personNameLower.split(' ')[0]) ||
+          personEmailLower.includes(entityLower)
+        ) {
           return person;
         }
       }
@@ -4748,17 +4484,6 @@ If there's no meeting data for a person, check if CRM data is available and use 
   }
 
   /**
-   * Get the extracted entity for use in response generation
-   * Exposes the LLM extraction result for richer context
-   */
-  async getExtractedEntityForChat(
-    message: string,
-    existingConversation?: PrepConversation
-  ): Promise<ExtractedEntity> {
-    return this.extractEntityWithLLM(message, existingConversation);
-  }
-
-  /**
    * Detect if the message is a search query
    */
   private detectSearchIntent(message: string): boolean {
@@ -4770,19 +4495,35 @@ If there's no meeting data for a person, check if CRM data is available and use 
       /when\s+did\s+(?:we|i)/i,
       /what\s+did\s+(?:we|i)\s+(?:discuss|talk|say)/i,
     ];
-    return searchPatterns.some(p => p.test(message));
+    return searchPatterns.some((p) => p.test(message));
   }
 
   /**
    * Search meetings based on chat message
    */
-  private async searchMeetingsForChat(message: string, meetingRepo: any): Promise<Meeting[]> {
+  private async searchMeetingsForChat(
+    message: string,
+    meetingRepo: MeetingRepository
+  ): Promise<Meeting[]> {
     // Extract search terms
-    const stopWords = ['search', 'find', 'look', 'for', 'up', 'the', 'a', 'an', 'with', 'about', 'meeting', 'meetings'];
+    const stopWords = [
+      'search',
+      'find',
+      'look',
+      'for',
+      'up',
+      'the',
+      'a',
+      'an',
+      'with',
+      'about',
+      'meeting',
+      'meetings',
+    ];
     const terms = message
       .toLowerCase()
       .split(/\s+/)
-      .filter(word => !stopWords.includes(word) && word.length > 2);
+      .filter((word) => !stopWords.includes(word) && word.length > 2);
 
     const allMeetings = meetingRepo.findAll();
 
@@ -4792,9 +4533,10 @@ If there's no meeting data for a person, check if CRM data is available and use 
 
       // Build searchable text including noteEntries
       const noteEntriesText = Array.isArray(m.noteEntries)
-        ? m.noteEntries.map((entry: any) => entry.content || '').join(' ')
+        ? m.noteEntries.map((entry: NoteEntry) => entry.content || '').join(' ')
         : '';
-      const searchableText = `${m.title || ''} ${m.summary || ''} ${m.notes || ''} ${noteEntriesText} ${m.notesMarkdown || ''}`.toLowerCase();
+      const searchableText =
+        `${m.title || ''} ${m.summary || ''} ${String(m.notes || '')} ${noteEntriesText} ${m.notesMarkdown || ''}`.toLowerCase();
 
       for (const term of terms) {
         if (searchableText.includes(term)) {
@@ -4830,7 +4572,7 @@ If there's no meeting data for a person, check if CRM data is available and use 
       /meeting\s+conflicts/i,
       /back\s+to\s+back\s+meetings/i,
     ];
-    return calendarPatterns.some(p => p.test(message));
+    return calendarPatterns.some((p) => p.test(message));
   }
 
   /**
@@ -4865,7 +4607,7 @@ If there's no meeting data for a person, check if CRM data is available and use 
     const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     // Filter to next 7 days
-    const upcomingEvents = events.filter(e => {
+    const upcomingEvents = events.filter((e) => {
       const eventStart = new Date(e.start);
       return eventStart >= now && eventStart <= sevenDaysFromNow;
     });
@@ -4877,44 +4619,46 @@ If there's no meeting data for a person, check if CRM data is available and use 
     // Sort by start time
     upcomingEvents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
-    const formattedEvents = upcomingEvents.map((event, idx) => {
-      const start = new Date(event.start);
-      const end = new Date(event.end);
+    const formattedEvents = upcomingEvents
+      .map((event, idx) => {
+        const start = new Date(event.start);
+        const end = new Date(event.end);
 
-      // Format day and time
-      const dayOfWeek = start.toLocaleDateString('en-US', { weekday: 'long' });
-      const dateStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const timeStr = `${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} - ${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+        // Format day and time
+        const dayOfWeek = start.toLocaleDateString('en-US', { weekday: 'long' });
+        const dateStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const timeStr = `${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} - ${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
 
-      // Calculate duration
-      const durationMs = end.getTime() - start.getTime();
-      const durationMin = Math.round(durationMs / (1000 * 60));
+        // Calculate duration
+        const durationMs = end.getTime() - start.getTime();
+        const durationMin = Math.round(durationMs / (1000 * 60));
 
-      const parts = [
-        `[${idx + 1}] **${event.title || 'Untitled Event'}**`,
-        `   ${dayOfWeek}, ${dateStr} at ${timeStr} (${durationMin} min)`,
-      ];
+        const parts = [
+          `[${idx + 1}] **${event.title || 'Untitled Event'}**`,
+          `   ${dayOfWeek}, ${dateStr} at ${timeStr} (${durationMin} min)`,
+        ];
 
-      // Add attendee count if available
-      if (event.attendees && event.attendees.length > 0) {
-        const attendeeCount = event.attendees.length;
-        // Note: CalendarEvent doesn't have organizer info in the type definition
-        parts.push(`   Attendees: ${attendeeCount}`);
-      }
+        // Add attendee count if available
+        if (event.attendees && event.attendees.length > 0) {
+          const attendeeCount = event.attendees.length;
+          // Note: CalendarEvent doesn't have organizer info in the type definition
+          parts.push(`   Attendees: ${attendeeCount}`);
+        }
 
-      // Add location if available
-      if (event.location) {
-        parts.push(`   Location: ${event.location}`);
-      }
+        // Add location if available
+        if (event.location) {
+          parts.push(`   Location: ${event.location}`);
+        }
 
-      // Add description snippet if available
-      if (event.description && event.description.length > 0) {
-        const snippet = event.description.substring(0, 100);
-        parts.push(`   Description: ${snippet}${event.description.length > 100 ? '...' : ''}`);
-      }
+        // Add description snippet if available
+        if (event.description && event.description.length > 0) {
+          const snippet = event.description.substring(0, 100);
+          parts.push(`   Description: ${snippet}${event.description.length > 100 ? '...' : ''}`);
+        }
 
-      return parts.join('\n');
-    }).join('\n\n');
+        return parts.join('\n');
+      })
+      .join('\n\n');
 
     return `UPCOMING CALENDAR EVENTS (Next 7 Days):\nToday is ${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}\n\n${formattedEvents}`;
   }
@@ -4927,48 +4671,54 @@ If there's no meeting data for a person, check if CRM data is available and use 
       return 'No past meetings found with this person.';
     }
 
-    return meetings.map((m, idx) => {
-      const date = new Date(m.createdAt);
-      const daysAgo = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
-      const dateStr = daysAgo === 0 ? 'Today' :
-                      daysAgo === 1 ? 'Yesterday' :
-                      daysAgo < 7 ? `${daysAgo} days ago` :
-                      date.toLocaleDateString();
+    return meetings
+      .map((m, idx) => {
+        const date = new Date(m.createdAt);
+        const daysAgo = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+        const dateStr =
+          daysAgo === 0
+            ? 'Today'
+            : daysAgo === 1
+              ? 'Yesterday'
+              : daysAgo < 7
+                ? `${daysAgo} days ago`
+                : date.toLocaleDateString();
 
-      const parts = [
-        `[${idx + 1}] "${m.title || 'Untitled Meeting'}" (${dateStr})`,
-      ];
+        const parts = [`[${idx + 1}] "${m.title || 'Untitled Meeting'}" (${dateStr})`];
 
-      if (m.summary) {
-        parts.push(`Summary: ${m.summary.substring(0, 200)}${m.summary.length > 200 ? '...' : ''}`);
-      }
+        if (m.summary) {
+          parts.push(
+            `Summary: ${m.summary.substring(0, 200)}${m.summary.length > 200 ? '...' : ''}`
+          );
+        }
 
-      if (m.actionItems && m.actionItems.length > 0) {
-        parts.push(`Action Items: ${m.actionItems.slice(0, 3).join('; ')}`);
-      }
+        if (m.actionItems && m.actionItems.length > 0) {
+          parts.push(`Action Items: ${m.actionItems.slice(0, 3).join('; ')}`);
+        }
 
-      // Include relevant notes content - check noteEntries first (where manual notes are stored)
-      let notesContent = '';
-      if (Array.isArray(m.noteEntries) && m.noteEntries.length > 0) {
-        // Combine all note entries
-        notesContent = m.noteEntries
-          .map((entry: any) => entry.content || '')
-          .filter((c: string) => c.length > 0)
-          .join('\n');
-      } else if (m.notesMarkdown && typeof m.notesMarkdown === 'string') {
-        notesContent = m.notesMarkdown;
-      } else if (m.notes && typeof m.notes === 'string') {
-        notesContent = m.notes;
-      }
+        // Include relevant notes content - check noteEntries first (where manual notes are stored)
+        let notesContent = '';
+        if (Array.isArray(m.noteEntries) && m.noteEntries.length > 0) {
+          // Combine all note entries
+          notesContent = m.noteEntries
+            .map((entry: NoteEntry) => entry.content || '')
+            .filter((c: string) => c.length > 0)
+            .join('\n');
+        } else if (m.notesMarkdown && typeof m.notesMarkdown === 'string') {
+          notesContent = m.notesMarkdown;
+        } else if (m.notes && typeof m.notes === 'string') {
+          notesContent = m.notes;
+        }
 
-      if (notesContent.length > 0) {
-        // Include more context - up to 800 chars for better AI understanding
-        const notesPreview = notesContent.substring(0, 800).replace(/\n{3,}/g, '\n\n');
-        parts.push(`Notes:\n${notesPreview}${notesContent.length > 800 ? '...' : ''}`);
-      }
+        if (notesContent.length > 0) {
+          // Include more context - up to 800 chars for better AI understanding
+          const notesPreview = notesContent.substring(0, 800).replace(/\n{3,}/g, '\n\n');
+          parts.push(`Notes:\n${notesPreview}${notesContent.length > 800 ? '...' : ''}`);
+        }
 
-      return parts.join('\n');
-    }).join('\n\n');
+        return parts.join('\n');
+      })
+      .join('\n\n');
   }
 
   /**
@@ -5001,7 +4751,20 @@ If there's no meeting data for a person, check if CRM data is available and use 
       if (match && match[1]) {
         const name = match[1].trim();
         // Skip common words that aren't names
-        const skipWords = ['the', 'a', 'an', 'this', 'that', 'my', 'our', 'your', 'their', 'me', 'you', 'them'];
+        const skipWords = [
+          'the',
+          'a',
+          'an',
+          'this',
+          'that',
+          'my',
+          'our',
+          'your',
+          'their',
+          'me',
+          'you',
+          'them',
+        ];
         if (skipWords.includes(name.toLowerCase())) {
           continue;
         }
@@ -5042,9 +4805,10 @@ If there's no meeting data for a person, check if CRM data is available and use 
 
     if (meeting.participants) {
       try {
-        const participants = typeof meeting.participants === 'string'
-          ? JSON.parse(meeting.participants)
-          : meeting.participants;
+        const participants =
+          typeof meeting.participants === 'string'
+            ? JSON.parse(meeting.participants)
+            : meeting.participants;
         if (Array.isArray(participants)) {
           for (const p of participants) {
             if (typeof p === 'string') {
@@ -5059,48 +4823,52 @@ If there's no meeting data for a person, check if CRM data is available and use 
       }
     }
 
-    const normalized = emails
-      .map((e) => e.toLowerCase())
-      .filter((e) => e.includes('@'));
+    const normalized = emails.map((e) => e.toLowerCase()).filter((e) => e.includes('@'));
     return Array.from(new Set(normalized));
   }
 
   private filterMeetingsByAnyAttendee(meetings: Meeting[], attendeeEmails: string[]): Meeting[] {
-    const emailSet = new Set(attendeeEmails.map(e => e.toLowerCase()));
+    const emailSet = new Set(attendeeEmails.map((e) => e.toLowerCase()));
     return meetings.filter((m) => {
       const attendees = this.getMeetingAttendeeEmails(m);
-      return attendees.some(e => emailSet.has(e));
+      return attendees.some((e) => emailSet.has(e));
     });
   }
 
   private buildMultiPersonContextForChat(
-    participants: Array<{ name: string; email: string; organization?: string | null; meetingCount?: number | null }>,
+    participants: Array<{
+      name: string;
+      email: string;
+      organization?: string | null;
+      meetingCount?: number | null;
+    }>,
     meetings: Meeting[],
     sharedMeetings: Array<{ title: string; date: string; participantsPresent: string[] }>,
     contextFlags?: { hasMeetingNotes: boolean }
   ): string {
-    const participantLines = participants.map((p) => {
-      const org = p.organization ? ` (${p.organization})` : '';
-      return `- ${p.name} <${p.email}>${org}`;
-    }).join('\n');
+    const participantLines = participants
+      .map((p) => {
+        const org = p.organization ? ` (${p.organization})` : '';
+        return `- ${p.name} <${p.email}>${org}`;
+      })
+      .join('\n');
 
-    const known = participants.filter(p => (p.meetingCount ?? 0) >= 2);
-    const partial = participants.filter(p => (p.meetingCount ?? 0) === 1);
-    const unknown = participants.filter(p => (p.meetingCount ?? 0) === 0);
+    const known = participants.filter((p) => (p.meetingCount ?? 0) >= 2);
+    const partial = participants.filter((p) => (p.meetingCount ?? 0) === 1);
+    const unknown = participants.filter((p) => (p.meetingCount ?? 0) === 0);
 
-    const knownLine = known.length > 0
-      ? known.map(p => `${p.name} (${p.meetingCount})`).join(', ')
-      : 'None';
-    const partialLine = partial.length > 0
-      ? partial.map(p => `${p.name} (${p.meetingCount})`).join(', ')
-      : 'None';
-    const unknownLine = unknown.length > 0
-      ? unknown.map(p => p.name).join(', ')
-      : 'None';
+    const knownLine =
+      known.length > 0 ? known.map((p) => `${p.name} (${p.meetingCount})`).join(', ') : 'None';
+    const partialLine =
+      partial.length > 0 ? partial.map((p) => `${p.name} (${p.meetingCount})`).join(', ') : 'None';
+    const unknownLine = unknown.length > 0 ? unknown.map((p) => p.name).join(', ') : 'None';
 
-    const sharedLines = sharedMeetings.length > 0
-      ? sharedMeetings.map(m => `- "${m.title}" (${m.date}) - ${m.participantsPresent.join(', ')}`).join('\n')
-      : 'No shared meetings found.';
+    const sharedLines =
+      sharedMeetings.length > 0
+        ? sharedMeetings
+            .map((m) => `- "${m.title}" (${m.date}) - ${m.participantsPresent.join(', ')}`)
+            .join('\n')
+        : 'No shared meetings found.';
 
     return [
       `REQUESTED PARTICIPANTS:`,
@@ -5119,16 +4887,19 @@ If there's no meeting data for a person, check if CRM data is available and use 
       sharedLines,
       ``,
       `MEETING HISTORY:`,
-      meetings.length > 0 ? this.buildMeetingContextForChat(meetings) : 'No past meetings found for these participants.',
+      meetings.length > 0
+        ? this.buildMeetingContextForChat(meetings)
+        : 'No past meetings found for these participants.',
     ].join('\n');
   }
 
   private getCalendarAttendeeEmails(event: CalendarEvent): string[] {
     const attendees = event.attendees || [];
-    const emails = attendees.map((a: any) => {
-      if (typeof a === 'string') return a;
-      return a?.email;
-    }).filter((e: any) => typeof e === 'string');
+    const emails = attendees
+      .map((a) => {
+        return a?.email;
+      })
+      .filter((e): e is string => typeof e === 'string');
 
     return Array.from(new Set(emails.map((e: string) => e.toLowerCase())));
   }
@@ -5147,34 +4918,54 @@ If there's no meeting data for a person, check if CRM data is available and use 
 
   private getTitleKeywords(title: string): string[] {
     const stop = new Set([
-      'the', 'and', 'with', 'from', 'about', 'update', 'sync', 'meeting', 'call',
-      'standup', 'stand-up', 'weekly', 'monthly', 'project', 'review', 'discussion',
-      'check', 'checkin', 'check-in', 'prep', 'planning', 'retrospective', 'retro',
+      'the',
+      'and',
+      'with',
+      'from',
+      'about',
+      'update',
+      'sync',
+      'meeting',
+      'call',
+      'standup',
+      'stand-up',
+      'weekly',
+      'monthly',
+      'project',
+      'review',
+      'discussion',
+      'check',
+      'checkin',
+      'check-in',
+      'prep',
+      'planning',
+      'retrospective',
+      'retro',
     ]);
     return title
       .toLowerCase()
       .split(/[^a-z0-9]+/)
-      .filter(w => w.length > 3 && !stop.has(w));
+      .filter((w) => w.length > 3 && !stop.has(w));
   }
 
   private filterMeetingsByTitleKeywords(meetings: Meeting[], keywords: string[]): Meeting[] {
     if (keywords.length === 0) return meetings;
     return meetings.filter((m) => {
       const text = `${m.title || ''} ${m.summary || ''}`.toLowerCase();
-      return keywords.some(k => text.includes(k));
+      return keywords.some((k) => text.includes(k));
     });
   }
 
   private findBestUpcomingEventByAttendees(
     events: CalendarEvent[],
-    attendeeEmails: string[],
+    attendeeEmails: string[]
   ): { event: CalendarEvent; overlap: number } | null {
-    const target = new Set(attendeeEmails.map(e => e.toLowerCase()));
+    const target = new Set(attendeeEmails.map((e) => e.toLowerCase()));
     let best: { event: CalendarEvent; overlap: number } | null = null;
 
     for (const event of events) {
       const attendees = this.getCalendarAttendeeEmails(event);
-      const overlap = attendees.filter(e => target.has(e)).length;
+      const overlap = attendees.filter((e) => target.has(e)).length;
       if (overlap === 0) continue;
 
       if (!best || overlap > best.overlap) {
@@ -5198,23 +4989,29 @@ If there's no meeting data for a person, check if CRM data is available and use 
   ): string {
     const start = new Date(event.start);
     const end = new Date(event.end);
-    const dateStr = start.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const dateStr = start.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    });
     const timeStr = `${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} - ${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
     const durationMin = Math.round((end.getTime() - start.getTime()) / (1000 * 60));
 
-    const attendees = attendeeEmails.map(e => e.toLowerCase());
+    const attendees = attendeeEmails.map((e) => e.toLowerCase());
     return [
       `FOCUSED UPCOMING MEETING:`,
       `Title: ${event.title || 'Untitled Event'}`,
       `When: ${dateStr} at ${timeStr} (${durationMin} min)`,
       event.location ? `Location: ${event.location}` : '',
       `Matched Attendees: ${overlapCount}/${attendees.length}`,
-    ].filter(Boolean).join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
   }
 
   private findSharedMeetingsByEmails(
     meetings: Meeting[],
-    participants: Array<{ name: string; email: string }>,
+    participants: Array<{ name: string; email: string }>
   ): Array<{ title: string; date: string; participantsPresent: string[] }> {
     const results: Array<{ title: string; date: string; participantsPresent: string[] }> = [];
     const participantMap = new Map<string, string>();
@@ -5225,7 +5022,7 @@ If there's no meeting data for a person, check if CRM data is available and use 
     for (const meeting of meetings) {
       const attendees = this.getMeetingAttendeeEmails(meeting);
       const present = attendees
-        .map(e => participantMap.get(e))
+        .map((e) => participantMap.get(e))
         .filter((name): name is string => Boolean(name));
 
       if (present.length >= 2) {
@@ -5243,10 +5040,13 @@ If there's no meeting data for a person, check if CRM data is available and use 
   /**
    * Search meetings by person name across all meeting content (title, notes, summary, transcript)
    */
-  private async searchMeetingsByPersonName(personName: string, meetingRepo: any): Promise<Meeting[]> {
+  private async searchMeetingsByPersonName(
+    personName: string,
+    meetingRepo: MeetingRepository
+  ): Promise<Meeting[]> {
     const allMeetings = meetingRepo.findAll();
     const nameLower = personName.toLowerCase();
-    const nameParts = nameLower.split(/\s+/).filter(p => p.length > 1);
+    const nameParts = nameLower.split(/\s+/).filter((p) => p.length > 1);
 
     // Score meetings by how well they match the person name
     const scored = allMeetings.map((m: Meeting) => {
@@ -5259,21 +5059,28 @@ If there's no meeting data for a person, check if CRM data is available and use 
         typeof m.notes === 'string' ? m.notes : '',
         // Include noteEntries content (where manual notes are stored)
         Array.isArray(m.noteEntries)
-          ? m.noteEntries.map((entry: any) => entry.content || '').join(' ')
+          ? m.noteEntries.map((entry: NoteEntry) => entry.content || '').join(' ')
           : '',
         // Include notesMarkdown if available
         m.notesMarkdown || '',
         // Include transcript text if available
         Array.isArray(m.transcript)
-          ? m.transcript.map((s: any) => s.text || '').join(' ')
+          ? m.transcript.map((s: TranscriptSegment) => s.text || '').join(' ')
           : '',
         // Include attendee emails
         Array.isArray(m.attendeeEmails) ? m.attendeeEmails.join(' ') : '',
         // Include people array
         Array.isArray(m.people)
-          ? m.people.map((p: any) => `${p.name || ''} ${p.email || ''}`).join(' ')
+          ? m.people
+              .map((p: unknown) => {
+                const person = p as Record<string, unknown>;
+                return `${person.name || ''} ${person.email || ''}`;
+              })
+              .join(' ')
           : '',
-      ].join(' ').toLowerCase();
+      ]
+        .join(' ')
+        .toLowerCase();
 
       // Check for full name match
       if (searchableText.includes(nameLower)) {
@@ -5305,6 +5112,14 @@ If there's no meeting data for a person, check if CRM data is available and use 
       .slice(0, 8)
       .map((s: { meeting: Meeting }) => s.meeting);
   }
+}
+
+interface ChatPreparedContext {
+  earlyResponse?: PrepChatResponse;
+  chatMessages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+  temperature?: number;
+  meetingReferences?: { meetingId: string; title: string; date: string }[];
+  personContext?: PrepConversation['participantContext'];
 }
 
 interface ParticipantContext {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Users, ChevronRight, Mail, Linkedin, X } from 'lucide-react';
 import type { Person } from '@shared/types';
 
@@ -19,13 +19,15 @@ export default function AttendeesList({ attendeeEmails, organizationName }: Atte
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
       if (
-        popoverRef.current && !popoverRef.current.contains(target) &&
-        buttonRef.current && !buttonRef.current.contains(target)
+        popoverRef.current &&
+        !popoverRef.current.contains(target) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(target)
       ) {
         setIsOpen(false);
       }
     };
-    
+
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -33,14 +35,7 @@ export default function AttendeesList({ attendeeEmails, organizationName }: Atte
     return undefined;
   }, [isOpen]);
 
-  // Load attendees when popover opens
-  useEffect(() => {
-    if (isOpen && attendeeEmails.length > 0 && attendees.length === 0) {
-      loadAttendees();
-    }
-  }, [isOpen]);
-
-  const loadAttendees = async () => {
+  const loadAttendees = useCallback(async () => {
     setIsLoading(true);
     try {
       const attendeesList: Person[] = [];
@@ -81,13 +76,20 @@ export default function AttendeesList({ attendeeEmails, organizationName }: Atte
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [attendeeEmails]);
+
+  // Load attendees when popover opens
+  useEffect(() => {
+    if (isOpen && attendeeEmails.length > 0 && attendees.length === 0) {
+      loadAttendees();
+    }
+  }, [isOpen, attendeeEmails.length, attendees.length, loadAttendees]);
 
   const getInitials = (person: Person) => {
     if (person.name) {
       return person.name
         .split(' ')
-        .map(n => n[0])
+        .map((n) => n[0])
         .join('')
         .toUpperCase()
         .slice(0, 2);
@@ -167,9 +169,14 @@ export default function AttendeesList({ attendeeEmails, organizationName }: Atte
             ) : (
               <div className="divide-y divide-slate-800">
                 {attendees.map((person) => (
-                  <div key={person.email} className="p-4 hover:bg-input/50 transition flex items-center justify-between group">
+                  <div
+                    key={person.email}
+                    className="p-4 hover:bg-input/50 transition flex items-center justify-between group"
+                  >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className={`w-10 h-10 rounded-full ${getAvatarColor(person.email)} flex items-center justify-center text-white font-semibold text-sm flex-shrink-0`}>
+                      <div
+                        className={`w-10 h-10 rounded-full ${getAvatarColor(person.email)} flex items-center justify-center text-white font-semibold text-sm flex-shrink-0`}
+                      >
                         {getInitials(person)}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -180,7 +187,9 @@ export default function AttendeesList({ attendeeEmails, organizationName }: Atte
                           <p className="text-xs text-slate-400 truncate">{person.email}</p>
                         )}
                         {person.organization && (
-                          <p className="text-xs text-slate-500 truncate mt-0.5">{person.organization}</p>
+                          <p className="text-xs text-slate-500 truncate mt-0.5">
+                            {person.organization}
+                          </p>
                         )}
                       </div>
                     </div>

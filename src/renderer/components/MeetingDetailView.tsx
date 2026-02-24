@@ -1,8 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { Calendar as CalendarIcon, Users, Loader2, Plus, Check, X } from 'lucide-react';
-import { formatDuration, formatTimestamp, getSpeakerLabel } from '../lib/formatters';
-import { formatMeetingDate } from '../lib/formatters';
+import {
+  formatDuration,
+  formatTimestamp,
+  getSpeakerLabel,
+  formatMeetingDate,
+} from '../lib/formatters';
 import AttendeesList from './AttendeesList';
 import { StructuredNotesView } from './StructuredNotesView';
 import { NotesWithDeepDive } from './NotesWithDeepDive';
@@ -18,7 +22,11 @@ interface MeetingDetailViewProps {
   liveTranscript?: TranscriptSegment[];
 }
 
-export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTranscript }: MeetingDetailViewProps) {
+export default function MeetingDetailView({
+  meeting,
+  isNewlyCompleted,
+  liveTranscript,
+}: MeetingDetailViewProps) {
   const { setSelectedMeeting, meetings, setMeetings } = useAppStore();
 
   // Title editing
@@ -57,7 +65,7 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
   // Load manual notes
   useEffect(() => {
     const manualNoteEntries = meeting.noteEntries
-      ?.filter(entry => entry.type === 'manual')
+      ?.filter((entry) => entry.type === 'manual')
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     if (manualNoteEntries && manualNoteEntries.length > 0) {
@@ -70,7 +78,7 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
       setShowManualNotesInput(!meeting.notesMarkdown && !meeting.summary);
     }
     notesInitialLoadRef.current = true;
-  }, [meeting.id]);
+  }, [meeting.id, meeting.noteEntries, meeting.notesMarkdown, meeting.summary]);
 
   // Title font size for newly completed view
   const updateTitleFontSize = useCallback(() => {
@@ -82,7 +90,9 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
     const text = titleDraft?.trim() || 'Untitled Meeting';
     const inputEl = titleInputRef.current;
     const computed = inputEl ? window.getComputedStyle(inputEl) : null;
-    const fontFamily = computed?.fontFamily || 'Outfit, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
+    const fontFamily =
+      computed?.fontFamily ||
+      'Outfit, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
     const fontWeight = computed?.fontWeight || '700';
     const maxSize = 48;
     const minSize = 24;
@@ -91,13 +101,16 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
     if (!ctx) return;
     ctx.font = `${fontWeight} ${maxSize}px ${fontFamily}`;
     const textWidth = ctx.measureText(text).width;
-    const nextSize = textWidth > availableWidth
-      ? Math.max(minSize, Math.floor((availableWidth / textWidth) * maxSize))
-      : maxSize;
+    const nextSize =
+      textWidth > availableWidth
+        ? Math.max(minSize, Math.floor((availableWidth / textWidth) * maxSize))
+        : maxSize;
     setTitleFontSize(nextSize);
   }, [titleDraft, isNewlyCompleted]);
 
-  useEffect(() => { updateTitleFontSize(); }, [updateTitleFontSize]);
+  useEffect(() => {
+    updateTitleFontSize();
+  }, [updateTitleFontSize]);
   useEffect(() => {
     const container = titleContainerRef.current;
     if (!container || !isNewlyCompleted || typeof ResizeObserver === 'undefined') return;
@@ -124,21 +137,24 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
   };
 
   // Autosave manual notes
-  const saveManualNotes = useCallback(async (content: string) => {
-    if (!meeting?.id || !content.trim()) return;
-    setIsNoteSaving(true);
-    try {
-      await window.kakarot.meetings.saveManualNotes(meeting.id, content);
-      setNoteLastSaved(new Date());
-      const updatedMeeting = await window.kakarot.meetings.get(meeting.id);
-      if (updatedMeeting) setSelectedMeeting(updatedMeeting);
-    } catch (error) {
-      console.error('Failed to save manual notes:', error);
-      toast.error('Failed to save notes');
-    } finally {
-      setIsNoteSaving(false);
-    }
-  }, [meeting?.id, setSelectedMeeting]);
+  const saveManualNotes = useCallback(
+    async (content: string) => {
+      if (!meeting?.id || !content.trim()) return;
+      setIsNoteSaving(true);
+      try {
+        await window.kakarot.meetings.saveManualNotes(meeting.id, content);
+        setNoteLastSaved(new Date());
+        const updatedMeeting = await window.kakarot.meetings.get(meeting.id);
+        if (updatedMeeting) setSelectedMeeting(updatedMeeting);
+      } catch (error) {
+        console.error('Failed to save manual notes:', error);
+        toast.error('Failed to save notes');
+      } finally {
+        setIsNoteSaving(false);
+      }
+    },
+    [meeting?.id, setSelectedMeeting]
+  );
 
   useEffect(() => {
     if (saveNoteTimerRef.current) clearTimeout(saveNoteTimerRef.current);
@@ -146,7 +162,9 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
     if (manualNotes.trim()) {
       saveNoteTimerRef.current = setTimeout(() => saveManualNotes(manualNotes), 1000);
     }
-    return () => { if (saveNoteTimerRef.current) clearTimeout(saveNoteTimerRef.current); };
+    return () => {
+      if (saveNoteTimerRef.current) clearTimeout(saveNoteTimerRef.current);
+    };
   }, [manualNotes, saveManualNotes]);
 
   // Attendee management
@@ -170,7 +188,7 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
       await window.kakarot.meetings.updateAttendees(meeting.id, attendeeEmailsArray);
       const updated = { ...meeting, attendeeEmails: attendeeEmailsArray };
       setSelectedMeeting(updated);
-      setMeetings(meetings.map(m => m.id === meeting.id ? updated : m));
+      setMeetings(meetings.map((m) => (m.id === meeting.id ? updated : m)));
       setShowAddAttendeesPopover(false);
       toast.success('Attendees updated');
     } catch (error) {
@@ -183,11 +201,24 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
   const displayAttendees = meeting.attendeeEmails || meeting.participants || [];
   const transcript = liveTranscript || meeting.transcript;
 
+  const openAttendeesModal = () => {
+    setShowAttendeeModal(true);
+    setShowAddAttendeesPopover(true);
+    loadContactsForPopover();
+  };
+
+  const closeAttendeesModal = () => {
+    setShowAttendeeModal(false);
+    setShowAddAttendeesPopover(false);
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Header */}
       <div className="flex-shrink-0 p-6 border-b border-edge bg-card">
-        <div className={`flex items-start justify-between gap-4 min-w-0 ${isNewlyCompleted ? 'mx-auto w-full max-w-3xl' : ''}`}>
+        <div
+          className={`flex items-start justify-between gap-4 min-w-0 ${isNewlyCompleted ? 'mx-auto w-full max-w-3xl' : ''}`}
+        >
           <div className="flex-1 space-y-3 min-w-0">
             {isNewlyCompleted ? (
               <div className="flex items-center gap-3 min-w-0" ref={titleContainerRef}>
@@ -196,7 +227,9 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
                   value={titleDraft}
                   onChange={(e) => setTitleDraft(e.target.value)}
                   onBlur={handleTitleSave}
-                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                  }}
                   style={{ fontSize: `${titleFontSize}px` }}
                   className="flex-1 min-w-0 w-full font-bold text-white leading-tight bg-transparent border-b border-transparent focus:border-cream focus:outline-none"
                   placeholder="Untitled Meeting"
@@ -210,7 +243,10 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
                 onBlur={handleTitleSave}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleTitleSave();
-                  if (e.key === 'Escape') { setIsEditingTitle(false); setTitleDraft(meeting.title); }
+                  if (e.key === 'Escape') {
+                    setIsEditingTitle(false);
+                    setTitleDraft(meeting.title);
+                  }
                 }}
                 autoFocus
                 className="w-full bg-transparent border-b border-edge focus:border-accent-hover focus:outline-none text-xl font-semibold text-white break-words"
@@ -231,25 +267,25 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
                 <div className="text-sm text-slate-200">{formatMeetingDate(displayDate)}</div>
               </div>
 
-              {displayAttendees.length > 0 ? (
-                isNewlyCompleted ? (
-                  <div className="overflow-visible">
-                    <AttendeesList attendeeEmails={displayAttendees} />
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => { setShowAttendeeModal(true); setShowAddAttendeesPopover(true); loadContactsForPopover(); }}
-                    className="flex flex-none items-center gap-2 rounded-lg border border-edge bg-card px-3 py-1.5 hover:bg-input transition-colors cursor-pointer"
-                  >
-                    <Users className="w-4 h-4 text-slate-400" />
-                    <div className="text-sm text-slate-200">
-                      {displayAttendees.length} Attendee{displayAttendees.length > 1 ? 's' : ''}
-                    </div>
-                  </button>
-                )
-              ) : (
+              {displayAttendees.length > 0 && isNewlyCompleted && (
+                <div className="overflow-visible">
+                  <AttendeesList attendeeEmails={displayAttendees} />
+                </div>
+              )}
+              {displayAttendees.length > 0 && !isNewlyCompleted && (
                 <button
-                  onClick={() => { setShowAttendeeModal(true); setShowAddAttendeesPopover(true); loadContactsForPopover(); }}
+                  onClick={openAttendeesModal}
+                  className="flex flex-none items-center gap-2 rounded-lg border border-edge bg-card px-3 py-1.5 hover:bg-input transition-colors cursor-pointer"
+                >
+                  <Users className="w-4 h-4 text-slate-400" />
+                  <div className="text-sm text-slate-200">
+                    {displayAttendees.length} Attendee{displayAttendees.length > 1 ? 's' : ''}
+                  </div>
+                </button>
+              )}
+              {displayAttendees.length === 0 && (
+                <button
+                  onClick={openAttendeesModal}
                   className="flex flex-none items-center gap-2 rounded-lg border border-edge bg-card hover:bg-input text-slate-100 px-3 py-1.5 text-sm transition-colors"
                 >
                   <Plus className="w-4 h-4" />
@@ -279,20 +315,31 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto bg-surface animate-view-enter">
-        <div className={`${isNewlyCompleted ? 'mx-auto w-full max-w-3xl px-6 pb-32 pt-4' : 'p-6'} space-y-6`}>
+        <div
+          className={`${isNewlyCompleted ? 'mx-auto w-full max-w-3xl px-6 pb-32 pt-4' : 'p-6'} space-y-6`}
+        >
           {/* Overview */}
           {meeting.overview && (
             <div className="bg-card rounded-xl p-4 border border-edge">
-              {!isNewlyCompleted && <h2 className="text-sm font-medium text-slate-200 mb-2">Overview</h2>}
-              <p className={`${isNewlyCompleted ? 'text-base' : 'text-sm'} leading-relaxed text-slate-100`}>{meeting.overview}</p>
+              {!isNewlyCompleted && (
+                <h2 className="text-sm font-medium text-slate-200 mb-2">Overview</h2>
+              )}
+              <p
+                className={`${isNewlyCompleted ? 'text-base' : 'text-sm'} leading-relaxed text-slate-100`}
+              >
+                {meeting.overview}
+              </p>
             </div>
           )}
 
           {/* Structured notes or markdown notes */}
-          {meeting.notes && typeof meeting.notes === 'object' &&
-           (meeting.notes as GeneratedStructuredNotes).topics?.length > 0 ? (
+          {meeting.notes &&
+          typeof meeting.notes === 'object' &&
+          (meeting.notes as GeneratedStructuredNotes).topics?.length > 0 ? (
             <div className="bg-card rounded-xl p-4 border border-edge relative overflow-visible">
-              {!isNewlyCompleted && <h2 className="text-sm font-medium text-slate-200 mb-3">Notes</h2>}
+              {!isNewlyCompleted && (
+                <h2 className="text-sm font-medium text-slate-200 mb-3">Notes</h2>
+              )}
               <StructuredNotesView
                 notes={meeting.notes as GeneratedStructuredNotes}
                 meetingId={meeting.id}
@@ -300,12 +347,11 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
             </div>
           ) : meeting.notesMarkdown ? (
             <div className="bg-card rounded-xl p-4 border border-edge relative overflow-visible">
-              {!isNewlyCompleted && <h2 className="text-sm font-medium text-slate-200 mb-3">Generated Notes</h2>}
+              {!isNewlyCompleted && (
+                <h2 className="text-sm font-medium text-slate-200 mb-3">Generated Notes</h2>
+              )}
               <div className="text-lg text-slate-100">
-                <NotesWithDeepDive
-                  notesMarkdown={meeting.notesMarkdown}
-                  meetingId={meeting.id}
-                />
+                <NotesWithDeepDive notesMarkdown={meeting.notesMarkdown} meetingId={meeting.id} />
               </div>
             </div>
           ) : null}
@@ -327,7 +373,8 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
                   {isNoteSaving && <span className="text-amber-400">Saving...</span>}
                   {!isNoteSaving && noteLastSaved && (
                     <span className="text-emerald-400">
-                      Saved {noteLastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      Saved{' '}
+                      {noteLastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   )}
                 </div>
@@ -347,7 +394,10 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
               <h2 className="text-sm font-medium text-slate-200 mb-3">Transcript</h2>
               <div className="space-y-3">
                 {transcript.map((segment) => (
-                  <div key={segment.id} className={`flex ${segment.source === 'mic' ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    key={segment.id}
+                    className={`flex ${segment.source === 'mic' ? 'justify-end' : 'justify-start'}`}
+                  >
                     <div
                       className={`max-w-[80%] rounded-2xl px-4 py-3 group ${
                         segment.source === 'mic'
@@ -384,7 +434,10 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
           <div className="mx-4 p-4 bg-input rounded-xl border border-edge shadow-soft-card">
             <div className="flex items-start justify-between gap-2">
               <p className="flex-1 text-sm text-slate-200 whitespace-pre-wrap">{aiResponse}</p>
-              <button onClick={() => setAiResponse('')} className="flex-shrink-0 text-slate-500 hover:text-slate-400">
+              <button
+                onClick={() => setAiResponse('')}
+                className="flex-shrink-0 text-slate-500 hover:text-slate-400"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -396,19 +449,28 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
       {showAttendeeModal && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-backdrop-in"
-          onClick={() => { setShowAttendeeModal(false); setShowAddAttendeesPopover(false); }}
+          onClick={closeAttendeesModal}
         >
-          <div className="bg-card rounded-xl border border-edge p-6 max-w-md w-full mx-4 shadow-xl animate-modal-in" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="bg-card rounded-xl border border-edge p-6 max-w-md w-full mx-4 shadow-xl animate-modal-in"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-white">Attendees</h3>
-              <button onClick={() => { setShowAttendeeModal(false); setShowAddAttendeesPopover(false); }} className="text-slate-400 hover:text-white transition-colors">
+              <button
+                onClick={closeAttendeesModal}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {meeting.attendeeEmails && meeting.attendeeEmails.length > 0 ? (
                 meeting.attendeeEmails.map((email, idx) => (
-                  <div key={idx} className="flex items-center gap-3 p-3 rounded-lg bg-input border border-edge">
+                  <div
+                    key={idx}
+                    className="flex items-center gap-3 p-3 rounded-lg bg-input border border-edge"
+                  >
                     <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-white text-sm font-medium">
                       {email.charAt(0).toUpperCase()}
                     </div>
@@ -423,7 +485,10 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
             <div className="mt-4 pt-4 border-t border-edge">
               {!showAddAttendeesPopover ? (
                 <button
-                  onClick={() => { setShowAddAttendeesPopover(true); loadContactsForPopover(); }}
+                  onClick={() => {
+                    setShowAddAttendeesPopover(true);
+                    loadContactsForPopover();
+                  }}
                   className="w-full flex items-center justify-center gap-2 rounded-lg border border-edge bg-input hover:bg-edge text-slate-100 px-3 py-2 text-sm transition-colors"
                 >
                   <Plus className="w-4 h-4" />
@@ -433,7 +498,10 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-semibold text-white">Tag People in Note</h4>
-                    <button onClick={() => setShowAddAttendeesPopover(false)} className="p-1 text-slate-400 hover:text-white transition">
+                    <button
+                      onClick={() => setShowAddAttendeesPopover(false)}
+                      className="p-1 text-slate-400 hover:text-white transition"
+                    >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
@@ -449,38 +517,59 @@ export default function MeetingDetailView({ meeting, isNewlyCompleted, liveTrans
                       <p className="text-sm text-slate-400 text-center py-4">Loading contacts...</p>
                     ) : (
                       contactList
-                        .filter(person =>
-                          person.name?.toLowerCase().includes(contactSearchQuery.toLowerCase()) ||
-                          person.email.toLowerCase().includes(contactSearchQuery.toLowerCase())
+                        .filter(
+                          (person) =>
+                            person.name?.toLowerCase().includes(contactSearchQuery.toLowerCase()) ||
+                            person.email.toLowerCase().includes(contactSearchQuery.toLowerCase())
                         )
                         .map((person) => (
                           <button
                             key={person.email}
                             onClick={() => {
                               const next = new Set(selectedContacts);
-                              if (next.has(person.email)) { next.delete(person.email); } else { next.add(person.email); }
+                              if (next.has(person.email)) {
+                                next.delete(person.email);
+                              } else {
+                                next.add(person.email);
+                              }
                               setSelectedContacts(next);
                             }}
                             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-input hover:bg-edge transition-colors text-left"
                           >
-                            <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-                              selectedContacts.has(person.email) ? 'bg-accent border-accent' : 'border-slate-500'
-                            }`}>
-                              {selectedContacts.has(person.email) && <Check className="w-3 h-3 text-white" />}
+                            <div
+                              className={`w-4 h-4 rounded border flex items-center justify-center ${
+                                selectedContacts.has(person.email)
+                                  ? 'bg-accent border-accent'
+                                  : 'border-slate-500'
+                              }`}
+                            >
+                              {selectedContacts.has(person.email) && (
+                                <Check className="w-3 h-3 text-white" />
+                              )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm text-white truncate">{person.name || person.email}</p>
-                              {person.name && <p className="text-xs text-slate-400 truncate">{person.email}</p>}
+                              <p className="text-sm text-white truncate">
+                                {person.name || person.email}
+                              </p>
+                              {person.name && (
+                                <p className="text-xs text-slate-400 truncate">{person.email}</p>
+                              )}
                             </div>
                           </button>
                         ))
                     )}
                   </div>
                   <div className="flex gap-2 pt-2">
-                    <button onClick={() => setShowAddAttendeesPopover(false)} className="flex-1 px-3 py-2 rounded-lg bg-input hover:bg-edge text-white text-sm transition-colors">
+                    <button
+                      onClick={() => setShowAddAttendeesPopover(false)}
+                      className="flex-1 px-3 py-2 rounded-lg bg-input hover:bg-edge text-white text-sm transition-colors"
+                    >
                       Cancel
                     </button>
-                    <button onClick={handleAddAttendees} className="flex-1 px-3 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors">
+                    <button
+                      onClick={handleAddAttendees}
+                      className="flex-1 px-3 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
+                    >
                       Update
                     </button>
                   </div>

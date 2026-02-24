@@ -1,3 +1,5 @@
+import type { CalendarAttendee } from '../types';
+
 export function formatTimestamp(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   const minutes = Math.floor(seconds / 60);
@@ -33,7 +35,9 @@ export function getSpeakerLabel(source: 'mic' | 'system'): string {
 }
 
 export function formatDateShort(date: Date): string {
-  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
+  return new Date(date)
+    .toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    .toUpperCase();
 }
 
 export function formatTimeShort(date: Date): string {
@@ -55,8 +59,11 @@ export function formatDateTimeContext(date: Date): string {
   if (isToday(d)) {
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
-         d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return (
+    d.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
+    ' ' +
+    d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  );
 }
 
 const AVATAR_COLORS = [
@@ -79,7 +86,7 @@ export function getInitials(identifier: string, name?: string): string {
   if (name) {
     return name
       .split(' ')
-      .map(n => n[0])
+      .map((n) => n[0])
       .join('')
       .toUpperCase()
       .slice(0, 2);
@@ -89,12 +96,12 @@ export function getInitials(identifier: string, name?: string): string {
 
 export function formatRelativeTime(timestampMs: number): string {
   const totalSeconds = Math.max(0, Math.floor(timestampMs / 1000));
-  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+  const minutes = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, '0');
   const seconds = (totalSeconds % 60).toString().padStart(2, '0');
   return `${minutes}:${seconds}`;
 }
-
-import type { CalendarAttendee } from '../types';
 
 export type AttendeeInput = string | CalendarAttendee;
 

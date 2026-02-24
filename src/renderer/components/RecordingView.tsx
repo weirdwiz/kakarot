@@ -26,11 +26,18 @@ export default function RecordingView({ onSelectTab: _onSelectTab }: RecordingVi
     setCurrentMeetingId,
   } = useAppStore();
 
-  const { startCapture, stopCapture, pause: pauseCapture, resume: resumeCapture } = useAudioCapture();
+  const {
+    startCapture,
+    stopCapture,
+    pause: pauseCapture,
+    resume: resumeCapture,
+  } = useAudioCapture();
 
   const [upcomingMeetingId, setUpcomingMeetingId] = React.useState<string | null>(null);
   type MeetingPhase = 'idle' | 'recording' | 'processing';
-  const [phase, setPhase] = React.useState<MeetingPhase>(recordingState === 'recording' || recordingState === 'paused' ? 'recording' : 'idle');
+  const [phase, setPhase] = React.useState<MeetingPhase>(
+    recordingState === 'recording' || recordingState === 'paused' ? 'recording' : 'idle'
+  );
   const [titleInput, setTitleInput] = React.useState('');
   const [notes, setNotes] = React.useState('');
   const [isSavingTitle, setIsSavingTitle] = React.useState(false);
@@ -83,7 +90,8 @@ export default function RecordingView({ onSelectTab: _onSelectTab }: RecordingVi
   React.useEffect(() => {
     if (isIdle && calendarPreview && !recordingContext && !upcomingMeetingId) {
       const meeting = calendarPreview;
-      window.kakarot.settings.get()
+      window.kakarot.settings
+        .get()
         .then((settings) => {
           const mappings = (settings as AppSettings).calendarEventMappings || {};
           const existing = mappings[meeting.id];
@@ -91,12 +99,18 @@ export default function RecordingView({ onSelectTab: _onSelectTab }: RecordingVi
             setUpcomingMeetingId(existing.notesId);
             return null;
           }
-          const attendeeEmails = meeting.attendees?.map((a) => typeof a === 'string' ? a : a.email) || [];
-          return window.kakarot.meetings.createDismissed(meeting.title, attendeeEmails)
+          const attendeeEmails =
+            meeting.attendees?.map((a) => (typeof a === 'string' ? a : a.email)) || [];
+          return window.kakarot.meetings
+            .createDismissed(meeting.title, attendeeEmails)
             .then(async (meetingId: string) => {
               setUpcomingMeetingId(meetingId);
               try {
-                await window.kakarot.calendar.linkNotes(meeting.id, meetingId, meeting.provider as 'google' | 'outlook' | 'icloud');
+                await window.kakarot.calendar.linkNotes(
+                  meeting.id,
+                  meetingId,
+                  meeting.provider as 'google' | 'outlook' | 'icloud'
+                );
               } catch (linkErr) {
                 console.warn('[RecordingView] Failed to link notes:', linkErr);
               }
@@ -117,93 +131,84 @@ export default function RecordingView({ onSelectTab: _onSelectTab }: RecordingVi
       const id = currentMeetingId || upcomingMeetingId;
       saveTimerRef.current = setTimeout(async () => {
         try {
-          await window.kakarot.meetings.saveManualNotes(id!, notes);
+          if (id) await window.kakarot.meetings.saveManualNotes(id, notes);
         } catch (error) {
           console.error('Failed to autosave notes:', error);
         }
       }, 1000);
     }
-    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
   }, [notes, currentMeetingId, upcomingMeetingId]);
 
   // Notes completion handler
   React.useEffect(() => {
-    const unsubscribe = window.kakarot.recording.onNotesComplete?.((data: { meetingId: string; title: string; overview: string }) => {
-      console.log('[RecordingView] Notes completed:', data);
-      window.kakarot.meetings.get(data.meetingId)
-        .then((meeting) => {
-          if (meeting) {
-            const hasNotes = Boolean((meeting as any).notes || (meeting as any).notesMarkdown || (meeting as any).overview);
-            if (hasNotes) {
-              setLastCompletedNoteId(data.meetingId);
-              setSelectedMeeting(meeting);
-              navigate('meeting-detail', { meetingId: data.meetingId, replace: true });
-            } else {
-              setSelectedMeeting(meeting);
-              navigate('meeting-detail', { meetingId: data.meetingId, replace: true });
-              setRecordingContext(null);
-            }
-          }
-        })
-        .catch((err) => {
-          console.error('[RecordingView] Failed to load meeting after notes completion:', err);
-          setRecordingContext(null);
-          toast.error('Failed to load completed meeting');
-        });
-
-      // Check CRM settings
-      window.kakarot.settings.get()
-        .then((settings) => {
-          const s = settings as AppSettings;
-          if (s.crmConnections) {
-            const connectedProvider = (Object.keys(s.crmConnections) as Array<'salesforce' | 'hubspot'>).find(
-              (provider) => s.crmConnections?.[provider]?.accessToken
-            );
-            if (connectedProvider) {
-              if (s.crmNotesBehavior === 'always') {
-                window.kakarot.crm.pushNotes(data.meetingId).catch((err) => {
-                  console.error('[RecordingView] CRM push failed:', err);
-                  toast.error('Failed to push notes to CRM');
-                });
-              } else if (s.crmNotesBehavior === 'ask') {
-                setPendingCRMMeetingId(data.meetingId);
-                setCRMProvider(connectedProvider);
-                setShowCRMPrompt(true);
+    const unsubscribe = window.kakarot.recording.onNotesComplete?.(
+      (data: { meetingId: string; title: string; overview: string }) => {
+        window.kakarot.meetings
+          .get(data.meetingId)
+          .then((meeting) => {
+            if (meeting) {
+              const hasNotes = Boolean(meeting.notes || meeting.notesMarkdown || meeting.overview);
+              if (hasNotes) {
+                setLastCompletedNoteId(data.meetingId);
+                setSelectedMeeting(meeting);
+                navigate('meeting-detail', { meetingId: data.meetingId, replace: true });
+              } else {
+                setSelectedMeeting(meeting);
+                navigate('meeting-detail', { meetingId: data.meetingId, replace: true });
+                setRecordingContext(null);
               }
             }
-          }
-        })
-        .catch(console.error);
-    });
-    return () => { if (unsubscribe) unsubscribe(); };
+          })
+          .catch((err) => {
+            console.error('[RecordingView] Failed to load meeting after notes completion:', err);
+            setRecordingContext(null);
+            toast.error('Failed to load completed meeting');
+          });
+
+        // Check CRM settings
+        window.kakarot.settings
+          .get()
+          .then((settings) => {
+            const s = settings as AppSettings;
+            if (s.crmConnections) {
+              const connectedProvider = (
+                Object.keys(s.crmConnections) as Array<'salesforce' | 'hubspot'>
+              ).find((provider) => s.crmConnections?.[provider]?.accessToken);
+              if (connectedProvider) {
+                if (s.crmNotesBehavior === 'always') {
+                  window.kakarot.crm.pushNotes(data.meetingId).catch((err) => {
+                    console.error('[RecordingView] CRM push failed:', err);
+                    toast.error('Failed to push notes to CRM');
+                  });
+                } else if (s.crmNotesBehavior === 'ask') {
+                  setPendingCRMMeetingId(data.meetingId);
+                  setCRMProvider(connectedProvider);
+                  setShowCRMPrompt(true);
+                }
+              }
+            }
+          })
+          .catch(console.error);
+      }
+    );
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [setLastCompletedNoteId, navigate, setSelectedMeeting, setRecordingContext]);
 
   // Auto-stop handler
   React.useEffect(() => {
     const unsubscribe = window.kakarot.recording.onAutoStop?.(() => {
-      console.log('[RecordingView] Auto stop triggered');
       setPhase('processing');
       stopCapture().catch(console.warn);
     });
-    return () => { if (unsubscribe) unsubscribe(); };
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [stopCapture]);
-
-  // Notification start recording handler
-  React.useEffect(() => {
-    const unsubscribe = window.kakarot.recording.onNotificationStartRecording?.((context) => {
-      const calendarEvent: CalendarEvent = {
-        id: context.calendarEventId,
-        title: context.calendarEventTitle,
-        attendees: context.calendarEventAttendees || [],
-        start: new Date(context.calendarEventStart),
-        end: new Date(context.calendarEventEnd),
-        location: '',
-        provider: context.calendarProvider as 'google' | 'outlook' | 'icloud',
-      };
-      handleStartRecording(calendarEvent);
-    });
-    return () => { if (unsubscribe) unsubscribe(); };
-  }, []);
 
   // --- Recording lifecycle handlers ---
 
@@ -224,14 +229,16 @@ export default function RecordingView({ onSelectTab: _onSelectTab }: RecordingVi
     setTitleInput(titleToUse);
 
     try {
-      const calendarContextData = contextToUse ? {
-        calendarEventId: contextToUse.id,
-        calendarEventTitle: contextToUse.title,
-        calendarEventAttendees: contextToUse.attendees,
-        calendarEventStart: contextToUse.start.toISOString(),
-        calendarEventEnd: contextToUse.end.toISOString(),
-        calendarProvider: contextToUse.provider,
-      } : undefined;
+      const calendarContextData = contextToUse
+        ? {
+            calendarEventId: contextToUse.id,
+            calendarEventTitle: contextToUse.title,
+            calendarEventAttendees: contextToUse.attendees,
+            calendarEventStart: contextToUse.start.toISOString(),
+            calendarEventEnd: contextToUse.end.toISOString(),
+            calendarProvider: contextToUse.provider,
+          }
+        : undefined;
 
       const meetingId = await window.kakarot.recording.start(calendarContextData);
       setCurrentMeetingId(meetingId);
@@ -300,6 +307,29 @@ export default function RecordingView({ onSelectTab: _onSelectTab }: RecordingVi
     }
   };
 
+  // Notification start recording handler
+  const handleStartRecordingRef = React.useRef(handleStartRecording);
+  React.useEffect(() => {
+    handleStartRecordingRef.current = handleStartRecording;
+  });
+  React.useEffect(() => {
+    const unsubscribe = window.kakarot.recording.onNotificationStartRecording?.((context) => {
+      const calendarEvent: CalendarEvent = {
+        id: context.calendarEventId,
+        title: context.calendarEventTitle,
+        attendees: context.calendarEventAttendees || [],
+        start: new Date(context.calendarEventStart),
+        end: new Date(context.calendarEventEnd),
+        location: '',
+        provider: context.calendarProvider as 'google' | 'outlook' | 'icloud',
+      };
+      handleStartRecordingRef.current(calendarEvent);
+    });
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
   // --- Render ---
 
   // Manual notes view for upcoming meetings (no recording)
@@ -328,8 +358,16 @@ export default function RecordingView({ onSelectTab: _onSelectTab }: RecordingVi
           <CRMPromptModal
             meetingId={pendingCRMMeetingId}
             provider={crmProvider}
-            onConfirm={() => { setShowCRMPrompt(false); setPendingCRMMeetingId(null); setCRMProvider(null); }}
-            onDismiss={() => { setShowCRMPrompt(false); setPendingCRMMeetingId(null); setCRMProvider(null); }}
+            onConfirm={() => {
+              setShowCRMPrompt(false);
+              setPendingCRMMeetingId(null);
+              setCRMProvider(null);
+            }}
+            onDismiss={() => {
+              setShowCRMPrompt(false);
+              setPendingCRMMeetingId(null);
+              setCRMProvider(null);
+            }}
           />
         )}
       </>
@@ -345,8 +383,16 @@ export default function RecordingView({ onSelectTab: _onSelectTab }: RecordingVi
           <CRMPromptModal
             meetingId={pendingCRMMeetingId}
             provider={crmProvider}
-            onConfirm={() => { setShowCRMPrompt(false); setPendingCRMMeetingId(null); setCRMProvider(null); }}
-            onDismiss={() => { setShowCRMPrompt(false); setPendingCRMMeetingId(null); setCRMProvider(null); }}
+            onConfirm={() => {
+              setShowCRMPrompt(false);
+              setPendingCRMMeetingId(null);
+              setCRMProvider(null);
+            }}
+            onDismiss={() => {
+              setShowCRMPrompt(false);
+              setPendingCRMMeetingId(null);
+              setCRMProvider(null);
+            }}
           />
         )}
       </>
