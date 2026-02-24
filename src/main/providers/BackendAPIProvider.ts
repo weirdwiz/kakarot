@@ -2,7 +2,8 @@ import { createLogger } from '../core/logger';
 
 const logger = createLogger('BackendAPI');
 
-export const BACKEND_BASE_URL = process.env.BACKEND_BASE_URL || 'https://treeto-api-539354053948.asia-south1.run.app';
+export const BACKEND_BASE_URL =
+  process.env.BACKEND_BASE_URL || 'https://treeto-api-539354053948.asia-south1.run.app';
 
 export interface BackendConfig {
   features: {
@@ -104,6 +105,7 @@ export class BackendAPIProvider {
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: AbortSignal.timeout(5000),
       });
 
       if (!response.ok) {
@@ -112,12 +114,11 @@ export class BackendAPIProvider {
         throw new Error(`Config fetch failed: ${response.status} ${errorText}`);
       }
 
-      const config = await response.json() as BackendConfig;
+      const config = (await response.json()) as BackendConfig;
       logger.info('Config fetched successfully', { features: config.features });
       return config;
     } catch (error) {
       logger.error('Config fetch error', error as Error);
-      // Return default config if fetch fails
       return {
         features: {
           transcription: false,
@@ -150,7 +151,7 @@ export class BackendAPIProvider {
         throw new Error(`Chat API error: ${response.status} ${errorText}`);
       }
 
-      const result = await response.json() as ChatResponse;
+      const result = (await response.json()) as ChatResponse;
       logger.debug('Chat response received', {
         promptTokens: result.usage?.prompt_tokens,
         outputTokens: result.usage?.completion_tokens,
@@ -190,7 +191,7 @@ export class BackendAPIProvider {
         throw new Error(`Transcribe API error: ${response.status} ${errorText}`);
       }
 
-      const result = await response.json() as TranscribeResponse;
+      const result = (await response.json()) as TranscribeResponse;
       logger.debug('Transcribe response received', {
         transcriptLength: result.transcript.length,
         wordCount: result.words?.length,
@@ -235,7 +236,7 @@ export class BackendAPIProvider {
         throw new Error(`Embedding API error: ${response.status} ${errorText}`);
       }
 
-      const result = await response.json() as EmbeddingResponse;
+      const result = (await response.json()) as EmbeddingResponse;
       logger.debug('Embedding response received', {
         embeddingCount: result.data.length,
         dimensions: result.data[0]?.embedding.length,

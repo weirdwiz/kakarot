@@ -1,6 +1,6 @@
 import { config } from 'dotenv';
 import { resolve } from 'path';
-import { app, BrowserWindow, systemPreferences, globalShortcut, ipcMain } from 'electron';
+import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron';
 import { createMainWindow } from './windows/mainWindow';
 import { createCalloutWindow } from './windows/calloutWindow';
 import { IndicatorWindow } from './windows/IndicatorWindow';
@@ -51,9 +51,12 @@ let mainWindow: BrowserWindow | null = null;
 let calloutWindow: BrowserWindow | null = null;
 let indicatorWindow: IndicatorWindow | null = null;
 let recordingState: RecordingState = 'idle';
-let indicatorDragState:
-  | { startMouseX: number; startMouseY: number; startX: number; startY: number }
-  | null = null;
+let indicatorDragState: {
+  startMouseX: number;
+  startMouseY: number;
+  startX: number;
+  startY: number;
+} | null = null;
 
 const CALENDAR_CONTACTS_SYNC_INTERVAL = 5 * 24 * 60 * 60 * 1000;
 
@@ -62,7 +65,8 @@ async function checkAndRunCalendarContactsSync(): Promise<void> {
     const container = getContainer();
     const settings = container.settingsRepo.getSettings();
 
-    const hasCalendar = settings.calendarConnections?.google || settings.calendarConnections?.outlook;
+    const hasCalendar =
+      settings.calendarConnections?.google || settings.calendarConnections?.outlook;
     if (!hasCalendar) return;
 
     const lastSync = settings.lastCalendarContactsSync || 0;
@@ -76,8 +80,11 @@ async function checkAndRunCalendarContactsSync(): Promise<void> {
     const sixMonthsAgo = new Date(now.getTime() - 6 * 30 * 24 * 60 * 60 * 1000);
     const sixMonthsFromNow = new Date(now.getTime() + 6 * 30 * 24 * 60 * 60 * 1000);
 
-    const events = await container.calendarService.fetchEventsInRange(sixMonthsAgo, sixMonthsFromNow);
-    
+    const events = await container.calendarService.fetchEventsInRange(
+      sixMonthsAgo,
+      sixMonthsFromNow
+    );
+
     const attendeeMap = new Map<string, { email: string; name?: string }>();
     for (const event of events) {
       if (event.attendees) {
@@ -93,7 +100,8 @@ async function checkAndRunCalendarContactsSync(): Promise<void> {
     }
 
     const uniqueAttendees = Array.from(attendeeMap.values());
-    const peopleApiFetcher = (email: string) => container.calendarService.fetchPersonNameFromGoogle(email);
+    const peopleApiFetcher = (email: string) =>
+      container.calendarService.fetchPersonNameFromGoogle(email);
 
     for (const attendee of uniqueAttendees) {
       await container.peopleRepo.upsertFromCalendarAttendee(
@@ -117,36 +125,80 @@ declare global {
 global.mainWindow = null;
 
 async function createWindows() {
-  if (process.platform === 'darwin') {
-    const currentStatus = systemPreferences.getMediaAccessStatus('microphone');
-    if (currentStatus !== 'granted') {
-      await systemPreferences.askForMediaAccess('microphone');
+  initializeFileLogging(app.getPath('userData'));
+
+  // Phase 1: show window immediately so the user sees something
+  mainWindow = createMainWindow();
+  calloutWindow = createCalloutWindow();
+  indicatorWindow = new IndicatorWindow();
+  global.mainWindow = mainWindow;
+
+  // Register indicator IPC handlers early (don't need container)
+  ipcMain.on(IPC_CHANNELS.INDICATOR_CLICKED, () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.show();
+      mainWindow.focus();
     }
+    indicatorWindow?.hide();
+  });
+
+  ipcMain.on(
+    IPC_CHANNELS.INDICATOR_DRAG_START,
+    (_event, payload: { screenX: number; screenY: number }) => {
+      if (!indicatorWindow) return;
+      const position = indicatorWindow.getPosition();
+      if (!position) return;
+      indicatorDragState = {
+        startMouseX: payload.screenX,
+        startMouseY: payload.screenY,
+        startX: position[0],
+        startY: position[1],
+      };
+    }
+  );
+
+  ipcMain.on(
+    IPC_CHANNELS.INDICATOR_DRAG_MOVE,
+    (_event, payload: { screenX: number; screenY: number }) => {
+      if (!indicatorWindow || !indicatorDragState) return;
+      const dx = payload.screenX - indicatorDragState.startMouseX;
+      const dy = payload.screenY - indicatorDragState.startMouseY;
+      indicatorWindow.setPosition(
+        Math.round(indicatorDragState.startX + dx),
+        Math.round(indicatorDragState.startY + dy)
+      );
+    }
+  );
+
+  ipcMain.on(IPC_CHANNELS.INDICATOR_DRAG_END, () => {
+    indicatorDragState = null;
+  });
+
+  if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+    startPerformanceLogging(60000);
+    const resetShortcut = process.platform === 'darwin' ? 'Cmd+Shift+O' : 'Ctrl+Shift+O';
+    globalShortcut.register(resetShortcut, () => {
+      mainWindow?.webContents.send('dev:reset-onboarding');
+    });
   }
 
-  initializeFileLogging(app.getPath('userData'));
+  // Phase 2: initialize backend services (window is already visible)
   await initializeDatabase();
   await initializeContainer();
 
-  // Check if a previous recording was interrupted by a crash
+  const container = getContainer();
+
   const crashState = checkForCrashRecovery();
   if (crashState) {
     logger.warn('Previous recording was interrupted', {
       meetingId: crashState.meetingId,
       title: crashState.title,
     });
-    // The meeting data is already persisted in SQLite via saveDatabase() calls
-    // during recording. Clear the recovery marker -- the meeting is recoverable
-    // from the history view.
     clearRecoveryState();
   }
-
-  mainWindow = createMainWindow();
-  calloutWindow = createCalloutWindow();
-  indicatorWindow = new IndicatorWindow();
-  global.mainWindow = mainWindow;
-
-  const container = getContainer();
 
   const updateIndicatorVisibility = () => {
     if (!mainWindow || !indicatorWindow) return;
@@ -161,7 +213,6 @@ async function createWindows() {
     }
   };
 
-  // Register existing handlers
   registerAllHandlers(mainWindow, calloutWindow, {
     indicatorWindow,
     onRecordingStateChange: (state) => {
@@ -170,12 +221,9 @@ async function createWindows() {
       updateIndicatorVisibility();
     },
   });
-  
-  // Register NEW Slack Handlers
   registerSlackHandlers();
 
   let meetingNotificationsStarted = false;
-
   container.meetingNotificationService.start();
   meetingNotificationsStarted = true;
 
@@ -186,47 +234,11 @@ async function createWindows() {
   mainWindow.on('show', updateIndicatorVisibility);
   mainWindow.on('hide', updateIndicatorVisibility);
 
-  ipcMain.on(IPC_CHANNELS.INDICATOR_CLICKED, () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) {
-        mainWindow.restore();
-      }
-      mainWindow.show();
-      mainWindow.focus();
-    }
-    indicatorWindow?.hide();
-  });
-
-  ipcMain.on(IPC_CHANNELS.INDICATOR_DRAG_START, (_event, payload: { screenX: number; screenY: number }) => {
-    if (!indicatorWindow) return;
-    const position = indicatorWindow.getPosition();
-    if (!position) return;
-    indicatorDragState = {
-      startMouseX: payload.screenX,
-      startMouseY: payload.screenY,
-      startX: position[0],
-      startY: position[1],
-    };
-  });
-
-  ipcMain.on(IPC_CHANNELS.INDICATOR_DRAG_MOVE, (_event, payload: { screenX: number; screenY: number }) => {
-    if (!indicatorWindow || !indicatorDragState) return;
-    const dx = payload.screenX - indicatorDragState.startMouseX;
-    const dy = payload.screenY - indicatorDragState.startMouseY;
-    indicatorWindow.setPosition(
-      Math.round(indicatorDragState.startX + dx),
-      Math.round(indicatorDragState.startY + dy)
-    );
-  });
-
-  ipcMain.on(IPC_CHANNELS.INDICATOR_DRAG_END, () => {
-    indicatorDragState = null;
-  });
-
   mainWindow.webContents.on('ipc-message', (_event, channel) => {
     if (channel === IPC_CHANNELS.SETTINGS_UPDATE) {
       const updatedSettings = container.settingsRepo.getSettings();
-      const hasCalendarNow = updatedSettings.calendarConnections?.google || updatedSettings.calendarConnections?.outlook;
+      const hasCalendarNow =
+        updatedSettings.calendarConnections?.google || updatedSettings.calendarConnections?.outlook;
       if (hasCalendarNow && !meetingNotificationsStarted) {
         container.meetingNotificationService.start();
         meetingNotificationsStarted = true;
@@ -235,15 +247,17 @@ async function createWindows() {
     }
   });
 
-  checkAndRunCalendarContactsSync();
+  // Signal renderer that backend is ready for IPC calls.
+  // If the page hasn't loaded yet, wait for it first.
+  if (mainWindow.webContents.isLoading()) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      mainWindow?.webContents.send(IPC_CHANNELS.APP_BACKEND_READY);
+    });
+  } else {
+    mainWindow.webContents.send(IPC_CHANNELS.APP_BACKEND_READY);
+  }
 
   if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
-    startPerformanceLogging(60000);
-    const resetShortcut = process.platform === 'darwin' ? 'Cmd+Shift+O' : 'Ctrl+Shift+O';
-    globalShortcut.register(resetShortcut, () => {
-      mainWindow?.webContents.send('dev:reset-onboarding');
-    });
-
     if (FEATURE_FLAGS.enableCallouts) {
       const calloutShortcut = process.platform === 'darwin' ? 'Cmd+Option+T' : 'Ctrl+Alt+T';
       globalShortcut.register(calloutShortcut, () => {
@@ -262,6 +276,9 @@ async function createWindows() {
       });
     }
   }
+
+  // Non-critical background work
+  checkAndRunCalendarContactsSync();
 
   logger.info('Application initialized');
 }

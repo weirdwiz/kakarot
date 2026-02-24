@@ -1,4 +1,4 @@
-import { app, ipcMain, BrowserWindow } from 'electron';
+import { app, ipcMain, BrowserWindow, systemPreferences } from 'electron';
 import { IPC_CHANNELS } from '@shared/ipcChannels';
 import { getContainer } from '../core/container';
 import { createLogger } from '../core/logger';
@@ -391,6 +391,17 @@ export function registerRecordingHandlers(
       }
     ) => {
       logger.info('Recording start requested', { hasCalendarContext: !!calendarContext });
+
+      if (process.platform === 'darwin') {
+        const micStatus = systemPreferences.getMediaAccessStatus('microphone');
+        if (micStatus !== 'granted') {
+          const granted = await systemPreferences.askForMediaAccess('microphone');
+          if (!granted) {
+            throw new Error('Microphone permission denied');
+          }
+        }
+      }
+
       const { meetingRepo } = getContainer();
       if (calendarContext) {
         activeCalendarContext = calendarContext;

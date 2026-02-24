@@ -65,12 +65,12 @@ export const IPC_CHANNELS = {
 
   // Meeting Prep
   PREP_GENERATE_BRIEFING: 'prep:generateBriefing',
-  PREP_GENERATE_ENHANCED_BRIEFING: 'prep:generateEnhancedBriefing',  // New enhanced prep
+  PREP_GENERATE_ENHANCED_BRIEFING: 'prep:generateEnhancedBriefing', // New enhanced prep
   PREP_GET_TASK_COMMITMENTS: 'prep:getTaskCommitments',
   PREP_TOGGLE_TASK_COMMITMENT: 'prep:toggleTaskCommitment',
-  PREP_TOGGLE_ACTION_ITEM: 'prep:toggleActionItem',  // For new action items
+  PREP_TOGGLE_ACTION_ITEM: 'prep:toggleActionItem', // For new action items
   PREP_FETCH_COMPANY_INFO: 'prep:fetchCompanyInfo',
-  PREP_FETCH_CRM_SNAPSHOT: 'prep:fetchCRMSnapshot',  // Fetch CRM deal data
+  PREP_FETCH_CRM_SNAPSHOT: 'prep:fetchCRMSnapshot', // Fetch CRM deal data
   // Dynamic prep (signal-driven, role-agnostic)
   PREP_GENERATE_DYNAMIC: 'prep:generateDynamic',
   PREP_INFER_OBJECTIVE: 'prep:inferObjective',
@@ -137,6 +137,9 @@ export const IPC_CHANNELS = {
 
   // Dialog
   DIALOG_SELECT_FOLDER: 'dialog:selectFolder',
+
+  // App lifecycle
+  APP_BACKEND_READY: 'app:backend-ready',
 
   // Indicator
   INDICATOR_AUDIO_AMPLITUDE: 'audio-amplitude',

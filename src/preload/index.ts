@@ -356,6 +356,15 @@ contextBridge.exposeInMainWorld('kakarot', {
       ipcRenderer.invoke(IPC_CHANNELS.SLACK_SEND_NOTE, { accessToken: token, channelId, text }),
   },
 
+  // App lifecycle
+  lifecycle: {
+    onBackendReady: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on(IPC_CHANNELS.APP_BACKEND_READY, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.APP_BACKEND_READY, handler);
+    },
+  },
+
   // Dev utilities
   dev: {
     onResetOnboarding: (callback: () => void) => {
@@ -588,6 +597,9 @@ interface KakarotAPI {
     connect: () => Promise<SlackOAuthResult>;
     getChannels: (token: string) => Promise<SlackChannel[]>;
     sendNote: (token: string, channelId: string, text: string) => Promise<void>;
+  };
+  lifecycle: {
+    onBackendReady: (callback: () => void) => () => void;
   };
   dev: {
     onResetOnboarding: (callback: () => void) => () => void;

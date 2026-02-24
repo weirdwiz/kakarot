@@ -74,6 +74,7 @@ export default function App() {
   const loadFromSettings = useOnboardingStore((state) => state.loadFromSettings);
   const [pillarTab, setPillarTab] = useState<'notes' | 'prep'>('notes');
   const [cachedCalendarEvents, setCachedCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [backendReady, setBackendReady] = useState(false);
 
   const classifyCalendarEvents = useCallback(
     (events: CalendarEvent[], dismissedIds: Set<string>) => {
@@ -183,7 +184,6 @@ export default function App() {
 
   useEffect(() => {
     loadFromSettings();
-    window.kakarot.settings.get().then(setSettings);
     const unsubDevReset = window.kakarot.dev.onResetOnboarding(() => {
       resetOnboarding();
     });
@@ -207,12 +207,21 @@ export default function App() {
     handleAudioLevels,
     setPartialSegment,
     addTranscriptSegment,
-    setSettings,
     resetOnboarding,
     loadFromSettings,
   ]);
 
   useEffect(() => {
+    const unsub = window.kakarot.lifecycle.onBackendReady(() => {
+      setBackendReady(true);
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    if (!backendReady) return;
+
+    window.kakarot.settings.get().then(setSettings);
     loadDashboardData();
     const intervalId = setInterval(loadDashboardData, 30_000);
     const unsubNotesComplete = window.kakarot.recording.onNotesComplete?.(() => {
@@ -227,7 +236,7 @@ export default function App() {
       if (unsubNotesComplete) unsubNotesComplete();
       if (unsubSettingsChange) unsubSettingsChange();
     };
-  }, [loadDashboardData, setSettings]);
+  }, [backendReady, loadDashboardData, setSettings]);
 
   const prevRecordingStateRef = React.useRef(recordingState);
   useEffect(() => {
