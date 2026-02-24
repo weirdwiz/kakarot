@@ -1,52 +1,193 @@
 import { createClient, LiveTranscriptionEvents, LiveClient } from '@deepgram/sdk';
 import { v4 as uuidv4 } from 'uuid';
+import { inspect } from 'util';
 import { BaseDualStreamProvider } from './BaseDualStreamProvider';
 import { createLogger } from '../../core/logger';
 
 const logger = createLogger('Deepgram');
 
+// Log SDK version at load time
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pkg = require('@deepgram/sdk/package.json');
+  logger.info('Deepgram SDK loaded', {
+    version: pkg.version,
+    supportsJWT: pkg.version >= '3.4.0',
+  });
+} catch {
+  logger.warn('Could not determine Deepgram SDK version');
+}
+
+export interface DeepgramProviderOptions {
+  /** API key (uses Token auth scheme) - legacy, less secure */
+  apiKey?: string;
+  /** JWT token (uses Bearer auth scheme) - preferred, more secure */
+  token?: string;
+}
+
 export class DeepgramProvider extends BaseDualStreamProvider {
   readonly name = 'Deepgram';
 
-  private apiKey: string;
+  private credential: string;
+  private useToken: boolean;
   private micConnection: LiveClient | null = null;
   private systemConnection: LiveClient | null = null;
+  private resampleLogCount: number = 0;
 
-  constructor(apiKey: string) {
+  /**
+   * Create a Deepgram provider.
+   * @param options - Either { token } for JWT auth (preferred) or { apiKey } for key auth
+   */
+  constructor(options: DeepgramProviderOptions | string) {
     super();
-    logger.debug('Initializing', { keyPresent: !!apiKey });
-    this.apiKey = apiKey;
+
+    // Support legacy string constructor for backwards compatibility
+    if (typeof options === 'string') {
+      this.credential = options;
+      this.useToken = false;
+      logger.debug('Initializing with API key (legacy)', { keyPresent: !!options });
+    } else if (options.token) {
+      this.credential = options.token;
+      this.useToken = true;
+      logger.debug('Initializing with JWT token (secure)', { tokenPresent: true });
+    } else if (options.apiKey) {
+      this.credential = options.apiKey;
+      this.useToken = false;
+      logger.debug('Initializing with API key', { keyPresent: !!options.apiKey });
+    } else {
+      this.credential = '';
+      this.useToken = false;
+      logger.warn('No credential provided');
+    }
+  }
+
+  /**
+   * Validate credential and log connection details before attempting connection
+   */
+  private validateAndLogConnectionDetails(): void {
+    logger.info('🔍 Pre-connection validation', {
+      credentialLength: this.credential.length,
+      credentialPrefix: this.credential.substring(0, 30) + '...',
+      credentialSuffix: '...' + this.credential.substring(this.credential.length - 10),
+      authMethod: this.useToken ? 'Bearer (JWT)' : 'Token (API Key)',
+    });
+
+    // Validate JWT token structure (should have 3 parts separated by dots)
+    if (this.useToken) {
+      const parts = this.credential.split('.');
+      logger.info('JWT token structure', {
+        parts: parts.length,
+        headerLength: parts[0]?.length || 0,
+        payloadLength: parts[1]?.length || 0,
+        signatureLength: parts[2]?.length || 0,
+        isValidStructure: parts.length === 3,
+      });
+
+      if (parts.length !== 3) {
+        logger.error('❌ Invalid JWT token structure - should have 3 parts');
+        throw new Error('Invalid JWT token format');
+      }
+
+      // Try to decode and log the payload (without sensitive data)
+      try {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+        const now = Math.floor(Date.now() / 1000);
+        logger.info('JWT payload info', {
+          exp: payload.exp,
+          expiresAt: payload.exp ? new Date(payload.exp * 1000).toISOString() : 'unknown',
+          isExpired: payload.exp ? payload.exp < now : 'unknown',
+          scopes: payload.scopes || payload.scope,
+        });
+
+        if (payload.exp && payload.exp < now) {
+          logger.error('❌ JWT token has expired');
+          throw new Error('JWT token has expired');
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message === 'JWT token has expired') {
+          throw error;
+        }
+        logger.warn('Could not decode JWT payload', { error });
+      }
+    }
   }
 
   async connect(): Promise<void> {
-    logger.info('Connecting');
+    logger.info('Connecting to Deepgram WebSocket (low-latency streaming)', {
+      authMethod: this.useToken ? 'JWT token (Bearer)' : 'API key (Token)',
+    });
     this.startTime = Date.now();
 
-    const client = createClient(this.apiKey);
+    // Validate credential before connecting
+    this.validateAndLogConnectionDetails();
 
+    // Create client with explicit auth configuration for JWT tokens
+    const client = this.useToken
+      ? createClient(this.credential, {
+          global: {
+            headers: {
+              Authorization: `Bearer ${this.credential}`,
+            },
+          },
+        })
+      : createClient(this.credential);
+
+    logger.info('Deepgram client created', {
+      authMethod: this.useToken ? 'Bearer (explicit header)' : 'Token (default)',
+    });
+
+    // ✅ OPTIMIZED CONFIGURATION FOR LONGER, MORE ACCURATE TRANSCRIPTS
     const liveOptions = {
-      model: 'nova-3',
+      model: 'nova-2-general',      // Optimized for real-time streaming
       language: 'en',
-      smart_format: true,
-      interim_results: true,
-      encoding: 'linear16',
-      sample_rate: 48000,
-      channels: 1,
-      diarize: false,
-      endpointing: 100,
+      smart_format: true,           // Automatic punctuation and capitalization
+      interim_results: true,        // Enable partial transcripts for real-time feedback
+      encoding: 'linear16',         // PCM 16-bit format
+      sample_rate: 16000,           // 16kHz (downsampled from 48kHz for efficiency)
+      channels: 1,                  // Mono audio
+      diarize: false,               // Speaker diarization disabled (can add latency)
+      
+      // 🔧 KEY CHANGES: These settings prevent fragmentation and allow longer sentences
+      endpointing: 1500,            // INCREASED to 1.5s - tolerate longer natural pauses mid-sentence
+      utterance_end_ms: 3500,       // INCREASED to 3.5s - only finalize after clear end of speech
+      vad_events: true,             // Voice Activity Detection
+      
+      // 🆕 ADDITIONAL SETTINGS for better accuracy
+      punctuate: true,              // Enable punctuation (redundant with smart_format but explicit)
+      profanity_filter: false,      // Don't censor words
+      redact: false,                // Don't redact sensitive info
+      
+      // 🆕 INTERIM RESULTS CONFIGURATION
+      // This controls how often you get partial results
+      // Lower values = more updates but potentially more fragmented
+      // Higher values = fewer updates but more complete phrases
+      // Omitting this lets Deepgram use optimal defaults
     };
 
+    logger.info('✅ Using optimized Deepgram configuration for longer transcripts', {
+      endpointing: `${liveOptions.endpointing}ms (tolerates natural pauses)`,
+      utterance_end_ms: `${liveOptions.utterance_end_ms}ms (waits for clear speech end)`,
+      model: liveOptions.model,
+    });
+
+    // Create dual connections for mic and system audio
     this.micConnection = client.listen.live(liveOptions);
     this.systemConnection = client.listen.live(liveOptions);
 
+    // Setup handlers for both connections in parallel
     const micPromise = this.setupConnectionHandlers(this.micConnection, 'mic');
     const systemPromise = this.setupConnectionHandlers(this.systemConnection, 'system');
 
     try {
       await Promise.all([micPromise, systemPromise]);
-      logger.info('Connected to both connections');
+      logger.info('✅ Connected to both Deepgram streams (mic + system)');
     } catch (error) {
-      logger.error('Failed to connect', error as Error);
+      const err = error as Error;
+      logger.error('❌ Failed to connect to Deepgram', {
+        errorName: err?.name,
+        errorMessage: err?.message,
+        errorStack: err?.stack,
+      });
       throw error;
     }
   }
@@ -56,8 +197,28 @@ export class DeepgramProvider extends BaseDualStreamProvider {
     source: 'mic' | 'system'
   ): Promise<void> {
     return new Promise((resolve, reject) => {
+      let resolved = false;
+
+      // Add 10-second timeout to detect connection hangs
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          const timeoutError = new Error(`Connection timeout after 10s for ${source}`);
+          logger.error('⏰ Connection timeout', {
+            source,
+            timeoutMs: 10000,
+            message: timeoutError.message,
+          });
+          reject(timeoutError);
+        }
+      }, 10000);
+
       connection.on(LiveTranscriptionEvents.Open, () => {
-        logger.debug('Connection opened', { source });
+        resolved = true;
+        clearTimeout(timeout);
+        logger.info('✅ WebSocket connection established', {
+          source,
+          timestamp: new Date().toISOString(),
+        });
         this.setConnectionState(source, true);
         resolve();
       });
@@ -69,8 +230,16 @@ export class DeepgramProvider extends BaseDualStreamProvider {
         if (!transcript?.transcript || transcript.transcript.trim() === '') return;
 
         const isFinal = data.is_final === true;
+        
+        // 📊 Log transcript lengths to monitor improvement
         if (isFinal) {
-          logger.debug('Final transcript', { source, text: transcript.transcript.slice(0, 30) });
+          const wordCount = transcript.transcript.split(/\s+/).length;
+          logger.debug('Final transcript received', { 
+            source, 
+            preview: transcript.transcript.slice(0, 50) + '...',
+            wordCount,
+            characterCount: transcript.transcript.length
+          });
         }
 
         const segment = this.createSegment(
@@ -83,13 +252,45 @@ export class DeepgramProvider extends BaseDualStreamProvider {
       });
 
       connection.on(LiveTranscriptionEvents.Error, (error) => {
-        logger.error('Connection error', error as Error, { source });
+        resolved = true;
+        clearTimeout(timeout);
+
+        // Comprehensive error logging
+        const err = error as Record<string, unknown>;
+        logger.error('❌ Deepgram connection error (detailed)', {
+          source,
+          errorType: typeof error,
+          errorConstructor: error?.constructor?.name,
+          message: err?.message || 'No message',
+          code: err?.code || 'No code',
+          reason: err?.reason || 'No reason',
+          statusCode: err?.statusCode || err?.status || 'No status',
+          stack: err?.stack || 'No stack',
+          stringified: JSON.stringify(error, Object.getOwnPropertyNames(error as object)),
+          inspected: inspect(error, { depth: 5 }),
+        });
         reject(error);
       });
 
-      connection.on(LiveTranscriptionEvents.Close, () => {
-        logger.warn('Connection closed', { source });
+      connection.on(LiveTranscriptionEvents.Close, (event) => {
+        resolved = true;
+        clearTimeout(timeout);
+        const closeEvent = event as { code?: number; reason?: string; wasClean?: boolean };
+        logger.warn('🔌 Connection closed', {
+          source,
+          code: closeEvent.code,
+          reason: closeEvent.reason,
+          wasClean: closeEvent.wasClean,
+          timestamp: new Date().toISOString(),
+        });
         this.setConnectionState(source, false);
+      });
+
+      // Handle VAD events (optional - for logging voice activity)
+      connection.on(LiveTranscriptionEvents.Metadata, (data) => {
+        if (data.type === 'SpeechStarted') {
+          logger.debug('🎤 Speech detected', { source });
+        }
       });
     });
   }
@@ -118,16 +319,49 @@ export class DeepgramProvider extends BaseDualStreamProvider {
     );
   }
 
+  /**
+   * Resample audio from 48kHz to 16kHz using simple decimation
+   * Reduces data by 3x, lowering latency and bandwidth
+   * Note: This is a simple decimation (taking every 3rd sample)
+   * For production, consider using a proper resampling library for better quality
+   */
+  private resample48kTo16k(audioData: ArrayBuffer): ArrayBuffer {
+    const input = new Int16Array(audioData);
+    // 48kHz → 16kHz: take every 3rd sample
+    const output = new Int16Array(Math.floor(input.length / 3));
+
+    for (let i = 0; i < output.length; i++) {
+      output[i] = input[i * 3];
+    }
+
+    // Log resampling stats periodically (first call, then every 100 calls)
+    this.resampleLogCount++;
+    if (this.resampleLogCount === 1 || this.resampleLogCount % 100 === 0) {
+      logger.debug('Audio resampling stats', {
+        inputSamples: input.length,
+        outputSamples: output.length,
+        inputBytes: audioData.byteLength,
+        outputBytes: output.buffer.byteLength,
+        ratio: (input.length / output.length).toFixed(2),
+        callCount: this.resampleLogCount,
+      });
+    }
+
+    return output.buffer;
+  }
+
   protected sendToMic(audioData: ArrayBuffer): void {
-    this.micConnection?.send(audioData);
+    const resampled = this.resample48kTo16k(audioData);
+    this.micConnection?.send(resampled);
   }
 
   protected sendToSystem(audioData: ArrayBuffer): void {
-    this.systemConnection?.send(audioData);
+    const resampled = this.resample48kTo16k(audioData);
+    this.systemConnection?.send(resampled);
   }
 
   async disconnect(): Promise<void> {
-    logger.info('Disconnecting');
+    logger.info('Disconnecting from Deepgram');
 
     if (this.micConnection) {
       this.micConnection.requestClose();
@@ -140,6 +374,6 @@ export class DeepgramProvider extends BaseDualStreamProvider {
     }
 
     this.resetState();
-    logger.info('Disconnected');
+    logger.info('✅ Disconnected from Deepgram');
   }
 }

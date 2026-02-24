@@ -1,24 +1,31 @@
-import React, { useState } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { useState } from 'react';
+import { AlertCircle, ChevronLeft } from 'lucide-react';
+
+type AuthProvider = 'google' | 'microsoft' | 'apple';
 
 interface SignInStepProps {
   onSuccess: (data: {
     name: string;
     email: string;
     avatar?: string;
-    provider: 'google' | 'microsoft' | 'apple';
+    provider: AuthProvider;
   }) => void;
+  onBack?: () => void;
 }
 
-export default function SignInStep({ onSuccess }: SignInStepProps) {
+export default function SignInStep({ onSuccess, onBack }: SignInStepProps) {
   const [isConnecting, setIsConnecting] = useState(false);
-  const [connectingProvider, setConnectingProvider] = useState<'google' | 'microsoft' | 'apple' | null>(null);
+  const [connectingProvider, setConnectingProvider] = useState<AuthProvider | null>(null);
   const [error, setError] = useState('');
+  const [missingScopes, setMissingScopes] = useState<string[] | null>(null);
+  const [missingProvider, setMissingProvider] = useState<AuthProvider | null>(null);
 
-  const handleConnect = async (provider: 'google' | 'microsoft' | 'apple') => {
+  async function handleConnect(provider: AuthProvider): Promise<void> {
     setIsConnecting(true);
     setConnectingProvider(provider);
     setError('');
+    setMissingScopes(null);
+    setMissingProvider(null);
 
     try {
       if (provider === 'google' || provider === 'microsoft') {
@@ -49,10 +56,17 @@ export default function SignInStep({ onSuccess }: SignInStepProps) {
         });
       }
     } catch (err) {
-      // Provide user-friendly error messages
       let errorMessage = 'Connection failed. Please try again.';
       
       if (err instanceof Error) {
+        if (err.message.startsWith('MISSING_SCOPES:')) {
+          const scopes = err.message.replace('MISSING_SCOPES:', '').trim();
+          setMissingScopes(scopes ? scopes.split(' ') : []);
+          setMissingProvider(provider);
+          setIsConnecting(false);
+          setConnectingProvider(null);
+          return;
+        }
         if (err.message.includes('CLIENT_ID') || err.message.includes('CLIENT_SECRET')) {
           errorMessage = `${provider === 'microsoft' ? 'Microsoft' : 'Google'} Calendar is not configured yet. Please contact support.`;
         } else if (err.message.includes('OAuth callback')) {
@@ -68,13 +82,34 @@ export default function SignInStep({ onSuccess }: SignInStepProps) {
       setIsConnecting(false);
       setConnectingProvider(null);
     }
-  };
+  }
 
   return (
     <div className="space-y-6">
+      {missingScopes && (
+        <div className="space-y-6">
+          <div className="text-center space-y-2">
+            <h2 className="text-2xl font-sans font-bold text-[#F0EBE3]">Calendar Access Required</h2>
+            <p className="text-[#5C5750]">
+              To create meeting notes, Treeto requires access to your Calendar. You missed this permission during sign-in.
+            </p>
+          </div>
+
+          <button
+            onClick={() => handleConnect(missingProvider || 'google')}
+            disabled={isConnecting}
+            className="w-full flex items-center justify-center gap-3 py-3 px-6 bg-[#1E1E1E] hover:bg-[#2A2A2A] text-[#F0EBE3] border border-[#2A2A2A] rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isConnecting ? <span className="animate-pulse">Reconnecting...</span> : 'Grant Permission Again'}
+          </button>
+        </div>
+      )}
+
+      {!missingScopes && (
+      <>
       <div className="text-center space-y-2">
-        <h2 className="text-2xl font-semibold text-white">Sign in to get started</h2>
-        <p className="text-gray-400">
+        <h2 className="text-2xl font-sans font-bold text-[#F0EBE3]">Sign in to get started</h2>
+        <p className="text-[#5C5750]">
           Sign in to sync your calendar and upcoming meetings
         </p>
       </div>
@@ -83,7 +118,7 @@ export default function SignInStep({ onSuccess }: SignInStepProps) {
         <button
           onClick={() => handleConnect('google')}
           disabled={isConnecting}
-          className="w-full flex items-center justify-center gap-3 py-3 px-6 bg-white hover:bg-gray-100 text-gray-900 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full flex items-center justify-center gap-3 py-3 px-6 bg-[#1E1E1E] hover:bg-[#2A2A2A] text-[#F0EBE3] border border-[#2A2A2A] rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path
@@ -104,9 +139,7 @@ export default function SignInStep({ onSuccess }: SignInStepProps) {
             />
           </svg>
           {connectingProvider === 'google' ? (
-            <span className="flex items-center gap-2">
-              <span className="animate-pulse">Connecting...</span>
-            </span>
+            <span className="animate-pulse">Connecting...</span>
           ) : (
             'Continue with Google'
           )}
@@ -115,7 +148,7 @@ export default function SignInStep({ onSuccess }: SignInStepProps) {
         <button
           onClick={() => handleConnect('microsoft')}
           disabled={isConnecting}
-          className="w-full flex items-center justify-center gap-3 py-3 px-6 bg-white hover:bg-gray-100 text-gray-900 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full flex items-center justify-center gap-3 py-3 px-6 bg-[#1E1E1E] hover:bg-[#2A2A2A] text-[#F0EBE3] border border-[#2A2A2A] rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg className="w-5 h-5" viewBox="0 0 23 23">
             <path fill="#f35325" d="M0 0h11v11H0z" />
@@ -124,28 +157,9 @@ export default function SignInStep({ onSuccess }: SignInStepProps) {
             <path fill="#ffba08" d="M12 12h11v11H12z" />
           </svg>
           {connectingProvider === 'microsoft' ? (
-            <span className="flex items-center gap-2">
-              <span className="animate-pulse">Connecting...</span>
-            </span>
+            <span className="animate-pulse">Connecting...</span>
           ) : (
             'Continue with Microsoft'
-          )}
-        </button>
-
-        <button
-          onClick={() => handleConnect('apple')}
-          disabled={isConnecting}
-          className="w-full flex items-center justify-center gap-3 py-3 px-6 bg-white hover:bg-gray-100 text-gray-900 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
-          </svg>
-          {connectingProvider === 'apple' ? (
-            <span className="flex items-center gap-2">
-              <span className="animate-pulse">Connecting...</span>
-            </span>
-          ) : (
-            'Continue with Apple'
           )}
         </button>
       </div>
@@ -169,6 +183,20 @@ export default function SignInStep({ onSuccess }: SignInStepProps) {
             Try Again
           </button>
         </div>
+      )}
+
+      {onBack && (
+        <div className="pt-4 border-t border-[#2A2A2A]">
+          <button
+            onClick={onBack}
+            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-white/5 hover:bg-white/10 text-gray-300 rounded-lg font-medium transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
+          </button>
+        </div>
+      )}
+      </>
       )}
     </div>
   );
