@@ -312,7 +312,6 @@ export default function App() {
         </main>
       </div>
       <ToastContainer />
-      <ThemeToggle />
     </div>
   );
 }
