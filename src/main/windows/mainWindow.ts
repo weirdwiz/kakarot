@@ -1,8 +1,14 @@
-import { app, BrowserWindow, session, shell } from 'electron';
+import { app, BrowserWindow, screen, session, shell } from 'electron';
 import { join } from 'path';
 import { createLogger } from '../core/logger';
 
 const logger = createLogger('MainWindow');
+
+let forceQuit = false;
+
+export function setForceQuit(): void {
+  forceQuit = true;
+}
 
 function setProductionCSP(): void {
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -28,9 +34,18 @@ export function createMainWindow(): BrowserWindow {
     setProductionCSP();
   }
 
+  // Center on the primary display so the window is always visible,
+  // even if a previous session used a now-disconnected monitor.
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+  const windowWidth = 1200;
+  const windowHeight = 800;
+
   const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: windowWidth,
+    height: windowHeight,
+    x: Math.round((screenWidth - windowWidth) / 2),
+    y: Math.round((screenHeight - windowHeight) / 2),
     minWidth: 800,
     minHeight: 600,
     webPreferences: {
@@ -45,6 +60,16 @@ export function createMainWindow(): BrowserWindow {
     show: true,
     backgroundColor: '#090909',
   });
+
+  // macOS: hide instead of destroy on close, so dock click can re-show
+  if (process.platform === 'darwin') {
+    mainWindow.on('close', (event) => {
+      if (!forceQuit) {
+        event.preventDefault();
+        mainWindow.hide();
+      }
+    });
+  }
 
   mainWindow.on('unresponsive', () => {
     logger.warn('Window became unresponsive');

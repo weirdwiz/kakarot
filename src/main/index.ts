@@ -1,7 +1,7 @@
 import { config } from 'dotenv';
 import { resolve } from 'path';
 import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron';
-import { createMainWindow } from './windows/mainWindow';
+import { createMainWindow, setForceQuit } from './windows/mainWindow';
 import { createCalloutWindow } from './windows/calloutWindow';
 import { IndicatorWindow } from './windows/IndicatorWindow';
 import { initializeDatabase, closeDatabase } from './data/database';
@@ -301,10 +301,15 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindows();
+  if (mainWindow) {
+    mainWindow.show();
+  } else {
+    createWindows();
+  }
 });
 
 app.on('before-quit', () => {
+  setForceQuit();
   stopPerformanceLogging();
   destroyContainer();
   closeDatabase();
