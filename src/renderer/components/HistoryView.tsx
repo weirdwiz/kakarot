@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { Search, Trash2, Folder, Users, MessageCircle, Send, X } from 'lucide-react';
+import { Search, Trash2, Folder, Users, MessageCircle, Send, X, Mic } from 'lucide-react';
 import { formatDuration, getAvatarColor, getInitials } from '../lib/formatters';
 import { MeetingListSkeleton } from './Skeleton';
+import { toast } from '../stores/toastStore';
 import { ConfirmDialog } from './ConfirmDialog';
 import MeetingDetailView from './MeetingDetailView';
 import { FixedSizeList as List, type ListChildComponentProps } from 'react-window';
@@ -53,33 +54,33 @@ const MeetingRow = ({ index, style, data }: ListChildComponentProps<MeetingRowDa
     <div
       style={style}
       onClick={() => data.onSelect(meeting.id)}
-      className={`p-4 border-b border-[#2A2A2A] cursor-pointer transition-colors ${
-        isSelected ? 'bg-[#2A2A2A] border-l-2 border-l-[#3d96cb]' : 'hover:bg-[#1E1E1E]'
+      className={`group p-4 border-b border-edge cursor-pointer transition-colors ${
+        isSelected ? 'bg-edge border-l-2 border-l-accent-hover' : 'hover:bg-input'
       }`}
     >
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-slate-100 truncate">
+          <h3 className="text-sm font-medium text-cream truncate">
             {meeting.title}
           </h3>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-muted mt-1">
             {meeting.durationLabel}
           </p>
           {meeting.attendeeEmails.length > 0 && (
             <div className="flex items-center gap-1 mt-2">
-              <Users className="w-3 h-3 text-slate-500" />
+              <Users className="w-3 h-3 text-dim" />
               <div className="flex -space-x-1">
                 {meeting.avatars.map((avatar, idx) => (
                   <div
                     key={idx}
-                    className={`w-5 h-5 rounded-full ${avatar.color} flex items-center justify-center text-white text-[10px] font-medium border border-slate-900`}
+                    className={`w-5 h-5 rounded-full ${avatar.color} flex items-center justify-center text-white text-[10px] font-medium border border-surface`}
                     title={avatar.email}
                   >
                     {avatar.initials}
                   </div>
                 ))}
                 {meeting.extraCount > 0 && (
-                  <div className="w-5 h-5 rounded-full bg-[#2A2A2A] flex items-center justify-center text-slate-200 text-[9px] font-medium border border-slate-900">
+                  <div className="w-5 h-5 rounded-full bg-edge flex items-center justify-center text-muted text-[9px] font-medium border border-surface">
                     +{meeting.extraCount}
                   </div>
                 )}
@@ -89,7 +90,7 @@ const MeetingRow = ({ index, style, data }: ListChildComponentProps<MeetingRowDa
         </div>
         <button
           onClick={(e) => data.onDelete(meeting.id, e)}
-          className="text-slate-500 hover:text-red-400 p-1"
+          className="text-dim hover:text-status-error p-1 transition-colors opacity-0 group-hover:opacity-100"
         >
           <Trash2 className="w-4 h-4" />
         </button>
@@ -118,7 +119,7 @@ export default function HistoryView() {
   const [chatMessages, setChatMessages] = useState<Array<{role: 'user' | 'assistant', content: string}>>([]);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
-  const chatInputRef = { current: null as HTMLInputElement | null };
+  const chatInputRef = useRef<HTMLInputElement>(null);
 
   const loadMeetings = useCallback(async () => {
     setIsLoading(true);
@@ -184,12 +185,17 @@ export default function HistoryView() {
 
   const confirmDeleteMeeting = async () => {
     if (!deleteConfirm.meetingId) return;
-    await window.kakarot.meetings.delete(deleteConfirm.meetingId);
-    if (selectedMeeting?.id === deleteConfirm.meetingId) {
-      setSelectedMeeting(null);
+    try {
+      await window.kakarot.meetings.delete(deleteConfirm.meetingId);
+      if (selectedMeeting?.id === deleteConfirm.meetingId) {
+        setSelectedMeeting(null);
+      }
+      loadMeetings();
+    } catch (err) {
+      console.error('Failed to delete meeting:', err);
+      toast.error('Failed to delete meeting');
     }
     setDeleteConfirm({ isOpen: false, meetingId: null });
-    loadMeetings();
   };
 
   useEffect(() => {
@@ -214,10 +220,10 @@ export default function HistoryView() {
   }), [meetings]);
 
   return (
-    <div className="h-full flex bg-[#0C0C0C] text-slate-100 rounded-2xl border border-[#2A2A2A] shadow-[0_8px_30px_rgba(0,0,0,0.35)] overflow-hidden">
+    <div className="h-full flex bg-surface text-cream rounded-lg border border-edge shadow-overlay overflow-hidden">
       {/* Meeting list sidebar */}
-      <div className="w-72 lg:w-96 border-r border-[#2A2A2A] flex flex-col bg-[#161616] overflow-hidden flex-shrink-0">
-        <div className="p-4 border-b border-[#2A2A2A]">
+      <div className="w-72 lg:w-96 border-r border-edge flex flex-col bg-card overflow-hidden flex-shrink-0">
+        <div className="p-4 border-b border-edge">
           <div className="relative">
             <input
               type="text"
@@ -225,9 +231,9 @@ export default function HistoryView() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              className="w-full bg-[#1E1E1E] border border-[#2A2A2A] text-slate-100 rounded-lg px-4 py-2.5 pl-10 text-sm focus:outline-none focus:ring-1 focus:ring-[#4ea8dd]/30 focus:border-[#4ea8dd]/20 placeholder:text-slate-500"
+              className="w-full bg-input border border-edge text-cream rounded-md px-4 py-2.5 pl-10 text-sm focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/30 placeholder:text-dim"
             />
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-dim" />
           </div>
         </div>
 
@@ -235,7 +241,15 @@ export default function HistoryView() {
           {isLoading ? (
             <MeetingListSkeleton count={6} />
           ) : meetings.length === 0 ? (
-            <div className="p-4 text-center text-slate-500">No meetings yet</div>
+            <div className="flex flex-col items-center justify-center h-full text-center py-16 px-6">
+              <div className="w-12 h-12 rounded-full bg-edge flex items-center justify-center mb-4">
+                <Mic className="w-6 h-6 text-dim" />
+              </div>
+              <p className="text-sm font-medium text-cream mb-1">No meetings yet</p>
+              <p className="text-xs text-dim max-w-[200px]">
+                Start your first recording from the home screen to see it here.
+              </p>
+            </div>
           ) : (
             <List
               height={listSize.height || 1}
@@ -258,94 +272,94 @@ export default function HistoryView() {
       </div>
 
       {/* Meeting detail -- now uses MeetingDetailView */}
-      <div className="flex-1 flex flex-col bg-[#0C0C0C] relative z-10 min-w-0">
+      <div className="flex-1 flex flex-col bg-surface relative min-w-0">
         {selectedMeeting ? (
           <MeetingDetailView meeting={selectedMeeting} />
         ) : (
-          <div className="flex-1 flex items-center justify-center text-slate-500">
+          <div className="flex-1 flex items-center justify-center text-dim">
             <div className="text-center">
               <Folder className="w-16 h-16 mx-auto mb-4 opacity-50" />
               <p className="text-sm">Select a meeting to view details</p>
             </div>
           </div>
         )}
-      </div>
 
-      {/* Floating Chat Pill */}
-      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50">
-        <button
-          onClick={() => setShowChatPopover(!showChatPopover)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#4ea8dd] hover:bg-[#3d96cb] text-[#0C0C0C] rounded-full shadow-soft transition-all duration-200 hover:shadow-soft active:scale-[0.96]"
-        >
-          <MessageCircle className="w-4 h-4" />
-          <span className="text-sm font-medium">Ask Me Anything</span>
-        </button>
-      </div>
+        {/* Floating Chat Button */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20">
+          <button
+            onClick={() => setShowChatPopover(!showChatPopover)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-hover text-surface rounded-lg shadow-elevated transition-colors active:scale-[0.96]"
+          >
+            <MessageCircle className="w-4 h-4" />
+            <span className="text-sm font-medium">Ask about meetings</span>
+          </button>
+        </div>
 
-      {/* Chat Popover */}
-      {showChatPopover && (
-        <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 w-96 max-h-96 bg-[#161616] border border-[#2A2A2A] rounded-xl shadow-2xl z-50 flex flex-col animate-popover-in-up">
-          <div className="flex items-center justify-between p-4 border-b border-[#2A2A2A]">
-            <h3 className="text-sm font-semibold text-white">AI Assistant</h3>
-            <button onClick={() => setShowChatPopover(false)} className="text-slate-400 hover:text-white transition-colors">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-64">
-            {chatMessages.length === 0 ? (
-              <div className="text-center text-slate-400 text-sm py-4">
-                Ask me anything about your meetings!
-              </div>
-            ) : (
-              chatMessages.map((message, index) => (
-                <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                      message.role === 'user'
-                        ? 'bg-[#4ea8dd]/20 text-[#F0EBE3] border border-[#4ea8dd]/15'
-                        : 'bg-[#1E1E1E] text-[#9C9690] border border-[#2A2A2A]'
-                    }`}
-                  >
-                    {message.content}
-                  </div>
-                </div>
-              ))
-            )}
-            {isChatLoading && (
-              <div className="flex justify-start">
-                <div className="bg-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-slate-200">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse"></div>
-                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0.1s' }}></div>
-                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="p-4 border-t border-[#2A2A2A]">
-            <div className="flex gap-2">
-              <input
-                ref={(el) => { chatInputRef.current = el; }}
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyPress={handleChatKeyPress}
-                placeholder="Ask about your meetings..."
-                className="flex-1 bg-[#1E1E1E] border border-[#2A2A2A] text-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4ea8dd]/50 placeholder:text-slate-500"
-                disabled={isChatLoading}
-              />
-              <button
-                onClick={handleSendMessage}
-                disabled={!chatInput.trim() || isChatLoading}
-                className="px-3 py-2 bg-[#4ea8dd] hover:bg-[#3d96cb] disabled:bg-[#2A2A2A] disabled:cursor-not-allowed text-[#0C0C0C] rounded-lg transition-colors"
-              >
-                <Send className="w-4 h-4" />
+        {/* Chat Popover */}
+        {showChatPopover && (
+          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 w-96 max-h-96 bg-card border border-edge rounded-lg shadow-overlay z-20 flex flex-col animate-popover-in-up">
+            <div className="flex items-center justify-between p-4 border-b border-edge">
+              <h3 className="text-sm font-medium text-cream">AI Assistant</h3>
+              <button onClick={() => setShowChatPopover(false)} className="text-muted hover:text-cream transition-colors">
+                <X className="w-4 h-4" />
               </button>
             </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-64">
+              {chatMessages.length === 0 ? (
+                <div className="text-center text-muted text-sm py-4">
+                  Ask me anything about your meetings
+                </div>
+              ) : (
+                chatMessages.map((message, index) => (
+                  <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div
+                      className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                        message.role === 'user'
+                          ? 'bg-accent/15 text-cream border border-accent/10'
+                          : 'bg-input text-muted border border-edge'
+                      }`}
+                    >
+                      {message.content}
+                    </div>
+                  </div>
+                ))
+              )}
+              {isChatLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-edge rounded-lg px-3 py-2 text-sm text-muted">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 bg-muted rounded-full animate-pulse"></div>
+                      <div className="w-1.5 h-1.5 bg-muted rounded-full animate-pulse" style={{ animationDelay: '0.1s' }}></div>
+                      <div className="w-1.5 h-1.5 bg-muted rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-edge">
+              <div className="flex gap-2">
+                <input
+                  ref={chatInputRef}
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={handleChatKeyPress}
+                  placeholder="Ask about your meetings..."
+                  className="flex-1 bg-input border border-edge text-cream rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent/30 placeholder:text-dim"
+                  disabled={isChatLoading}
+                />
+                <button
+                  onClick={handleSendMessage}
+                  disabled={!chatInput.trim() || isChatLoading}
+                  className="px-3 py-2 bg-accent hover:bg-accent-hover disabled:bg-edge disabled:cursor-not-allowed text-surface rounded-md transition-colors"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <ConfirmDialog
         isOpen={deleteConfirm.isOpen}

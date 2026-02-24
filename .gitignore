@@ -4,6 +4,10 @@ node_modules/
 # Build outputs
 dist/
 release/
+out/
+public/
+remotion/
+build/.env.production
 
 # Environment
 .env
@@ -28,3 +32,7 @@ npm-debug.log*
 
 # TypeScript
 *.tsbuildinfo
+resources/.env.production
+.env
+.env.*
+!.env.example
