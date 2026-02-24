@@ -1,7 +1,8 @@
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { app } from 'electron';
 import { join } from 'path';
-import { existsSync, mkdirSync, writeFileSync, readFileSync, writeFile } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, writeFile } from 'fs';
+import { readFile } from 'fs/promises';
 import { createLogger } from '../core/logger';
 import { EXPORT_CONFIG } from '../config/constants';
 
@@ -24,7 +25,7 @@ export async function initializeDatabase(): Promise<void> {
   const SQL = await initSqlJs();
 
   if (existsSync(dbPath)) {
-    const fileBuffer = readFileSync(dbPath);
+    const fileBuffer = await readFile(dbPath);
     db = new SQL.Database(fileBuffer);
     logger.info('Loaded existing database', { path: dbPath });
   } else {

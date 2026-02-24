@@ -124,10 +124,10 @@ declare global {
 }
 global.mainWindow = null;
 
-async function createWindows() {
+function createWindows() {
   initializeFileLogging(app.getPath('userData'));
 
-  // Phase 1: show window immediately so the user sees something
+  // Phase 1: create and show window immediately -- no async work here
   mainWindow = createMainWindow();
   calloutWindow = createCalloutWindow();
   indicatorWindow = new IndicatorWindow();
@@ -185,9 +185,22 @@ async function createWindows() {
     });
   }
 
-  // Phase 2: initialize backend services (window is already visible)
-  await initializeDatabase();
-  await initializeContainer();
+  // Phase 2: initialize backend services asynchronously.
+  // This runs detached so createWindows() returns immediately,
+  // letting the event loop process ready-to-show and paint the window.
+  void initializeBackend();
+}
+
+async function initializeBackend(): Promise<void> {
+  try {
+    await initializeDatabase();
+    await initializeContainer();
+  } catch (error) {
+    logger.error('Failed to initialize backend', error as Error);
+    return;
+  }
+
+  if (!mainWindow || !calloutWindow) return;
 
   const container = getContainer();
 
@@ -277,10 +290,8 @@ async function createWindows() {
     }
   }
 
-  // Non-critical background work
   checkAndRunCalendarContactsSync();
-
-  logger.info('Application initialized');
+  logger.info('Backend initialized');
 }
 
 app.whenReady().then(createWindows);

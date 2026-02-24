@@ -42,20 +42,9 @@ export function createMainWindow(): BrowserWindow {
     titleBarStyle: 'hiddenInset',
     // Fine-tune macOS traffic light position (approx. 0.1–0.2 cm left shift)
     trafficLightPosition: { x: 16, y: 14 },
-    show: false,
+    show: true,
+    backgroundColor: '#090909',
   });
-
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-  });
-
-  // Fallback in case ready-to-show doesn't fire
-  setTimeout(() => {
-    if (!mainWindow.isVisible()) {
-      logger.warn('ready-to-show timeout, forcing window show');
-      mainWindow.show();
-    }
-  }, 3000);
 
   mainWindow.on('unresponsive', () => {
     logger.warn('Window became unresponsive');
