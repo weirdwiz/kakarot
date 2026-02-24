@@ -223,7 +223,7 @@ async function createWindows() {
     indicatorDragState = null;
   });
 
-  mainWindow.webContents.on('ipc-message', (event, channel) => {
+  mainWindow.webContents.on('ipc-message', (_event, channel) => {
     if (channel === IPC_CHANNELS.SETTINGS_UPDATE) {
       const updatedSettings = container.settingsRepo.getSettings();
       const hasCalendarNow = updatedSettings.calendarConnections?.google || updatedSettings.calendarConnections?.outlook;

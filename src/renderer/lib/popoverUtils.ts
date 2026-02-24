@@ -150,6 +150,7 @@ export function usePopoverPosition(
         window.removeEventListener('scroll', calculatePosition, true);
       };
     }
+    return undefined;
   }, [isOpen, triggerRef, popoverWidth, popoverHeight, preferredPosition]);
 
   return position;

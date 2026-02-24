@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Search, X, Loader2, Quote, Lightbulb, MessageCircle } from 'lucide-react';
 import type { TranscriptSegment, TranscriptDeepDiveResult } from '@shared/types';
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Mic, Monitor, Check, AlertCircle } from 'lucide-react';
 
 interface AudioPermissionsStepProps {

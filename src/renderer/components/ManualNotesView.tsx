@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import type { CalendarAttendee } from '../../shared/types';
 import { useAppStore } from '../stores/appStore';
 import { Clock, BookOpen, ChevronDown, X, Video, Calendar as CalendarIcon } from 'lucide-react';
 import googleMeetPng from '../assets/google-meet.png';
@@ -246,6 +247,7 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
+    return undefined;
   }, [showTimePopover]);
 
   const duration = meeting ? Math.round((meeting.end.getTime() - meeting.start.getTime()) / (1000 * 60)) : 0;
@@ -397,7 +399,7 @@ export default function ManualNotesView({ meetingId, onSelectTab, onSaveNotes, o
                   <button
                     onClick={() => {
                       // Build attendee names for the prep query
-                      const attendeeNames = meeting?.attendees
+                      const attendeeNames = (meeting?.attendees as (string | CalendarAttendee)[] | undefined)
                         ?.map((a) => {
                           if (typeof a === 'string') {
                             // If it's just an email, extract name from email

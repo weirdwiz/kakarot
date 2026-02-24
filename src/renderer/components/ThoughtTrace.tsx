@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ChevronRight, Brain } from 'lucide-react';
 
 interface ThoughtTraceProps {

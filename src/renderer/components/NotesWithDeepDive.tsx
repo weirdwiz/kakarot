@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Search, X, Loader2, Quote, Lightbulb } from 'lucide-react';
 import type { EnhancedDeepDiveResult } from '@shared/types';
 import { usePopoverPosition } from '../lib/popoverUtils';

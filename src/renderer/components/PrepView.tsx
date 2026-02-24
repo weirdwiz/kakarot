@@ -15,7 +15,6 @@ import {
   Target,
   ListChecks,
   Plus,
-  Info,
   Building2,
   Linkedin,
   ExternalLink,
@@ -121,7 +120,7 @@ const emptyFormData: MeetingObjectiveFormData = {
 const generateId = () => `custom-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default function PrepView({ onSelectTab }: PrepViewProps) {
+export default function PrepView({ onSelectTab: _onSelectTab }: PrepViewProps) {
   const { settings, setSettings, initialPrepQuery, setInitialPrepQuery } = useAppStore();
   const [people, setPeople] = useState<Person[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -142,13 +141,13 @@ export default function PrepView({ onSelectTab }: PrepViewProps) {
 
   // Quick prep mode state (Granola-style)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [prepMode, setPrepMode] = useState<'quick' | 'advanced'>('quick');
+  const [prepMode, _setPrepMode] = useState<'quick' | 'advanced'>('quick');
   const [quickPrepQuery, setQuickPrepQuery] = useState('');
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [quickSearchResults, setQuickSearchResults] = useState<Person[]>([]);
+  const [_quickSearchResults, setQuickSearchResults] = useState<Person[]>([]);
   const [conversationalResult, setConversationalResult] = useState<ConversationalPrepResult | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [showQuickSearchDropdown, setShowQuickSearchDropdown] = useState(false);
+  const [_showQuickSearchDropdown, setShowQuickSearchDropdown] = useState(false);
 
   // Omnibar chat state
   const [chatConversation, setChatConversation] = useState<PrepConversation | null>(null);
@@ -158,10 +157,10 @@ export default function PrepView({ onSelectTab }: PrepViewProps) {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [streamingText, setStreamingText] = useState(''); // For streaming response content
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [streamingThinking, setStreamingThinking] = useState(''); // For streaming thinking/reasoning
+  const [_streamingThinking, setStreamingThinking] = useState(''); // For streaming thinking/reasoning
   const [isStreamingThinking, setIsStreamingThinking] = useState(false); // Track if currently in thinking phase
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const [_streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const chatInputRef = React.useRef<HTMLTextAreaElement>(null);
   const streamCleanupRef = React.useRef<(() => void) | null>(null);
 
@@ -753,39 +752,6 @@ export default function PrepView({ onSelectTab }: PrepViewProps) {
     return () => clearTimeout(timer);
   }, [quickPrepQuery]);
 
-  // Generate quick (conversational) prep
-  const handleQuickPrep = useCallback(async (personQuery: string) => {
-    if (!personQuery.trim()) {
-      setGeneratingError('Please enter a name or email');
-      return;
-    }
-
-    setIsGenerating(true);
-    setGeneratingError(null);
-    setConversationalResult(null);
-    setShowQuickSearchDropdown(false);
-
-    try {
-      const result = await window.kakarot.prep.generateConversational({
-        personQuery: personQuery.trim(),
-      });
-      setConversationalResult(result);
-    } catch (error) {
-      setGeneratingError(error instanceof Error ? error.message : 'Failed to generate prep');
-      console.error('Quick prep failed:', error);
-    } finally {
-      setIsGenerating(false);
-    }
-  }, []);
-
-  // Handle person selection from quick search dropdown
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleSelectQuickSearchPerson = useCallback((person: Person) => {
-    setQuickPrepQuery(person.name || person.email);
-    setShowQuickSearchDropdown(false);
-    handleQuickPrep(person.email || person.name || '');
-  }, [handleQuickPrep]);
-
   const handleNewConversation = useCallback(() => {
     setChatConversation(null);
     setChatInput('');
@@ -974,18 +940,6 @@ export default function PrepView({ onSelectTab }: PrepViewProps) {
       return (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase();
     }
     return displayName.slice(0, 2).toUpperCase();
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const formatLastMeeting = (date: Date) => {
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays} days ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-    return `${Math.floor(diffDays / 30)} months ago`;
   };
 
   const togglePerson = (person: Person) => {
@@ -1249,32 +1203,6 @@ export default function PrepView({ onSelectTab }: PrepViewProps) {
       console.error('Failed to record feedback:', error);
     }
   }, []);
-
-  // Get insight category color
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const getInsightCategoryColor = (category: string) => {
-    switch (category) {
-      case 'heads_up': return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30';
-      case 'pending_action': return 'bg-orange-500/20 text-orange-300 border-orange-500/30';
-      case 'risk': return 'bg-red-500/20 text-red-300 border-red-500/30';
-      case 'deal': return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
-      case 'context': return 'bg-edge/20 text-slate-300 border-slate-500/30';
-      default: return 'bg-accent/20 text-accent border-accent/30';
-    }
-  };
-
-  // Get insight category icon
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const getInsightCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'heads_up': return <AlertTriangle className="w-3.5 h-3.5" />;
-      case 'pending_action': return <ListChecks className="w-3.5 h-3.5" />;
-      case 'risk': return <AlertCircle className="w-3.5 h-3.5" />;
-      case 'deal': return <DollarSign className="w-3.5 h-3.5" />;
-      case 'context': return <Info className="w-3.5 h-3.5" />;
-      default: return <Lightbulb className="w-3.5 h-3.5" />;
-    }
-  };
 
   // DynamicBriefCard component - extracted to properly use React hooks
   const DynamicBriefCard = React.memo(({ participant, onFeedback }: {

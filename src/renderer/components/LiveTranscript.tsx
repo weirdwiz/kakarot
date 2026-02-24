@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import type { TranscriptSegment } from '@shared/types';
 import { MicOff } from 'lucide-react';
 import { formatTimestamp, getSpeakerLabel } from '../lib/formatters';

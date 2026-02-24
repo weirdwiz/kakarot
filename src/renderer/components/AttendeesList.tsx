@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Users, ChevronRight, Mail, Linkedin, X } from 'lucide-react';
 import type { Person } from '@shared/types';
 
@@ -30,6 +30,7 @@ export default function AttendeesList({ attendeeEmails, organizationName }: Atte
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
+    return undefined;
   }, [isOpen]);
 
   // Load attendees when popover opens

@@ -1,4 +1,4 @@
-import React from 'react';
+
 import type { CalendarEvent } from '@shared/types';
 import { Calendar, Clock, Users, MapPin, FileText, X, Sparkles, Mic } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';

@@ -10,7 +10,7 @@ export function registerSettingsHandlers(): void {
     return settingsRepo.getSettings();
   });
 
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, (event, settings: Partial<AppSettings>) => {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, (_event, settings: Partial<AppSettings>) => {
     settingsRepo.updateSettings(settings);
     
     // Emit settings changed event to all renderer windows

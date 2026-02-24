@@ -13,7 +13,7 @@ export class SalesforceOAuthProvider {
   private redirectUri: string;
 
   constructor(
-    clientId: string, // Kept to match existing calls, but ignored
+    _clientId: string,
     redirectUri = 'http://localhost:3000/oauth/salesforce'
   ) {
     this.redirectUri = redirectUri;
