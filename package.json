@@ -5,6 +5,9 @@
   "main": "dist/main/index.js",
   "author": "Treeto Team",
   "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "workspaces": [
     ".",
     "treeto-backend"
@@ -12,12 +15,11 @@
   "scripts": {
     "install:all": "npm install && npm install --workspace treeto-backend",
     "dev": "vite",
-    "dev:app": "vite",
     "dev:backend": "npm --workspace treeto-backend run dev",
-    "dev:all": "concurrently \"npm run dev:app\" \"npm run dev:backend\"",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:backend\"",
     "build": "vite build",
     "predist": "mkdir -p resources && cp .env resources/.env.production",
-    "dist": "npm run build && electron-builder --mac --arm64",
+    "dist": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64 && codesign --force --deep --sign - release/mac-arm64/*.app",
     "start": "electron .",
     "test:prep": "tsx src/main/test-prep.ts",
     "test": "vitest run",
