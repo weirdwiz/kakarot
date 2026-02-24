@@ -79,206 +79,278 @@ export function closeDatabase(): void {
   }
 }
 
-function createTables(): void {
-  if (!db) throw new Error('Database not initialized');
+// Schema version tracking
+function getSchemaVersion(): number {
+  if (!db) return 0;
+  try {
+    db.run('CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)');
+    const result = db.exec('SELECT version FROM schema_version LIMIT 1');
+    if (result.length === 0 || result[0].values.length === 0) {
+      db.run('INSERT INTO schema_version (version) VALUES (0)');
+      return 0;
+    }
+    return result[0].values[0][0] as number;
+  } catch {
+    return 0;
+  }
+}
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS meetings (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      ended_at INTEGER,
-      duration INTEGER DEFAULT 0,
-      notes TEXT,
-      notes_plain TEXT,
-      notes_markdown TEXT,
-      overview TEXT,
-      summary TEXT,
-      chapters TEXT DEFAULT '[]',
-      people TEXT DEFAULT '[]',
-      action_items TEXT DEFAULT '[]',
-      participants TEXT DEFAULT '[]'
-    )
-  `);
+function setSchemaVersion(version: number): void {
+  if (!db) return;
+  db.run('UPDATE schema_version SET version = ?', [version]);
+}
 
-  // Migration: add new columns if they don't exist
-  const columns = db.exec("PRAGMA table_info(meetings)");
-  const existingCols = columns.length > 0
+interface Migration {
+  version: number;
+  description: string;
+  up: () => void;
+}
+
+function addColumnIfMissing(table: string, column: string, def: string): void {
+  if (!db) return;
+  const columns = db.exec(`PRAGMA table_info(${table})`);
+  const existing = columns.length > 0
     ? columns[0].values.map((row) => row[1] as string)
     : [];
-  const newCols = [
-    { name: 'notes', def: 'TEXT' },
-    { name: 'notes_plain', def: 'TEXT' },
-    { name: 'notes_markdown', def: 'TEXT' },
-    { name: 'overview', def: 'TEXT' },
-    { name: 'chapters', def: "TEXT DEFAULT '[]'" },
-    { name: 'people', def: "TEXT DEFAULT '[]'" },
-    { name: 'note_entries', def: "TEXT DEFAULT '[]'" },
-    { name: 'attendee_emails', def: "TEXT DEFAULT '[]'" },
+  if (!existing.includes(column)) {
+    db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+  }
+}
+
+function getMigrations(): Migration[] {
+  return [
+    {
+      version: 1,
+      description: 'Create core tables',
+      up: () => {
+        db!.run(`
+          CREATE TABLE IF NOT EXISTS meetings (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            ended_at INTEGER,
+            duration INTEGER DEFAULT 0,
+            notes TEXT,
+            notes_plain TEXT,
+            notes_markdown TEXT,
+            overview TEXT,
+            summary TEXT,
+            chapters TEXT DEFAULT '[]',
+            people TEXT DEFAULT '[]',
+            action_items TEXT DEFAULT '[]',
+            participants TEXT DEFAULT '[]',
+            note_entries TEXT DEFAULT '[]',
+            attendee_emails TEXT DEFAULT '[]'
+          )
+        `);
+
+        // Handle pre-migration databases that have the table but not all columns
+        addColumnIfMissing('meetings', 'notes', 'TEXT');
+        addColumnIfMissing('meetings', 'notes_plain', 'TEXT');
+        addColumnIfMissing('meetings', 'notes_markdown', 'TEXT');
+        addColumnIfMissing('meetings', 'overview', 'TEXT');
+        addColumnIfMissing('meetings', 'chapters', "TEXT DEFAULT '[]'");
+        addColumnIfMissing('meetings', 'people', "TEXT DEFAULT '[]'");
+        addColumnIfMissing('meetings', 'note_entries', "TEXT DEFAULT '[]'");
+        addColumnIfMissing('meetings', 'attendee_emails', "TEXT DEFAULT '[]'");
+      },
+    },
+    {
+      version: 2,
+      description: 'Create transcript, people, callouts, settings tables',
+      up: () => {
+        db!.run(`
+          CREATE TABLE IF NOT EXISTS transcript_segments (
+            id TEXT PRIMARY KEY,
+            meeting_id TEXT NOT NULL,
+            text TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            source TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            is_final INTEGER NOT NULL,
+            speaker_id TEXT,
+            FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+          )
+        `);
+
+        db!.run(`
+          CREATE TABLE IF NOT EXISTS people (
+            email TEXT PRIMARY KEY,
+            name TEXT,
+            last_meeting_at INTEGER NOT NULL,
+            meeting_count INTEGER DEFAULT 1,
+            total_duration INTEGER DEFAULT 0,
+            notes TEXT,
+            organization TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          )
+        `);
+
+        db!.run(`
+          CREATE TABLE IF NOT EXISTS callouts (
+            id TEXT PRIMARY KEY,
+            meeting_id TEXT NOT NULL,
+            triggered_at INTEGER NOT NULL,
+            question TEXT NOT NULL,
+            context TEXT NOT NULL,
+            suggested_response TEXT NOT NULL,
+            sources TEXT DEFAULT '[]',
+            dismissed INTEGER DEFAULT 0,
+            FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+          )
+        `);
+
+        db!.run(`
+          CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+          )
+        `);
+
+        db!.run('CREATE INDEX IF NOT EXISTS idx_segments_meeting ON transcript_segments(meeting_id)');
+        db!.run('CREATE INDEX IF NOT EXISTS idx_callouts_meeting ON callouts(meeting_id)');
+      },
+    },
+    {
+      version: 3,
+      description: 'Create transcript chunks and deep dive cache',
+      up: () => {
+        db!.run(`
+          CREATE TABLE IF NOT EXISTS transcript_chunks (
+            id TEXT PRIMARY KEY,
+            meeting_id TEXT NOT NULL,
+            start_time INTEGER NOT NULL,
+            end_time INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            embedding_blob BLOB,
+            token_count INTEGER NOT NULL,
+            segment_ids TEXT NOT NULL,
+            speaker_set TEXT DEFAULT '[]',
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+          )
+        `);
+
+        db!.run(`
+          CREATE TABLE IF NOT EXISTS deep_dive_cache (
+            id TEXT PRIMARY KEY,
+            meeting_id TEXT NOT NULL,
+            note_block_hash TEXT NOT NULL,
+            chunk_ids TEXT NOT NULL,
+            model_version TEXT NOT NULL,
+            prompt_version TEXT NOT NULL,
+            summary_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+          )
+        `);
+
+        db!.run('CREATE INDEX IF NOT EXISTS idx_chunks_meeting ON transcript_chunks(meeting_id)');
+        db!.run('CREATE INDEX IF NOT EXISTS idx_cache_lookup ON deep_dive_cache(meeting_id, note_block_hash)');
+      },
+    },
+    {
+      version: 4,
+      description: 'Create dynamic prep system tables',
+      up: () => {
+        db!.run(`
+          CREATE TABLE IF NOT EXISTS signal_weights (
+            id TEXT PRIMARY KEY,
+            category TEXT UNIQUE NOT NULL,
+            weight REAL DEFAULT 1.0,
+            sample_count INTEGER DEFAULT 0,
+            updated_at INTEGER NOT NULL
+          )
+        `);
+
+        db!.run(`
+          CREATE TABLE IF NOT EXISTS insight_feedback (
+            id TEXT PRIMARY KEY,
+            insight_id TEXT NOT NULL,
+            insight_category TEXT NOT NULL,
+            feedback TEXT NOT NULL,
+            participant_email TEXT,
+            created_at INTEGER NOT NULL
+          )
+        `);
+
+        db!.run(`
+          CREATE TABLE IF NOT EXISTS inferred_objectives (
+            id TEXT PRIMARY KEY,
+            calendar_event_id TEXT,
+            inferred_type TEXT NOT NULL,
+            confidence INTEGER NOT NULL,
+            reasoning TEXT,
+            user_override TEXT,
+            created_at INTEGER NOT NULL
+          )
+        `);
+
+        db!.run(`
+          CREATE TABLE IF NOT EXISTS crm_validations (
+            id TEXT PRIMARY KEY,
+            participant_email TEXT NOT NULL,
+            field TEXT NOT NULL,
+            meeting_claim TEXT,
+            crm_value TEXT,
+            discrepancy_note TEXT,
+            resolved INTEGER DEFAULT 0,
+            created_at INTEGER NOT NULL
+          )
+        `);
+
+        db!.run(`
+          CREATE TABLE IF NOT EXISTS branches (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            explanation TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            thumbnail_url TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          )
+        `);
+
+        db!.run('CREATE INDEX IF NOT EXISTS idx_insight_feedback_category ON insight_feedback(insight_category)');
+        db!.run('CREATE INDEX IF NOT EXISTS idx_inferred_objectives_event ON inferred_objectives(calendar_event_id)');
+        db!.run('CREATE INDEX IF NOT EXISTS idx_crm_validations_email ON crm_validations(participant_email)');
+      },
+    },
   ];
-  for (const col of newCols) {
-    if (!existingCols.includes(col.name)) {
-      db.run(`ALTER TABLE meetings ADD COLUMN ${col.name} ${col.def}`);
-      logger.info('Added column to meetings table', { column: col.name });
+}
+
+function runMigrations(): void {
+  if (!db) throw new Error('Database not initialized');
+
+  const currentVersion = getSchemaVersion();
+  const migrations = getMigrations().filter((m) => m.version > currentVersion);
+
+  if (migrations.length === 0) {
+    logger.debug('Schema up to date', { version: currentVersion });
+    return;
+  }
+
+  for (const migration of migrations) {
+    logger.info('Running migration', { version: migration.version, description: migration.description });
+    try {
+      migration.up();
+      setSchemaVersion(migration.version);
+    } catch (err) {
+      logger.error('Migration failed', err as Error, { version: migration.version });
+      throw err;
     }
   }
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS transcript_segments (
-      id TEXT PRIMARY KEY,
-      meeting_id TEXT NOT NULL,
-      text TEXT NOT NULL,
-      timestamp INTEGER NOT NULL,
-      source TEXT NOT NULL,
-      confidence REAL NOT NULL,
-      is_final INTEGER NOT NULL,
-      speaker_id TEXT,
-      FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
-    )
-  `);
+  logger.info('Migrations complete', { from: currentVersion, to: migrations[migrations.length - 1].version });
+}
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS people (
-      email TEXT PRIMARY KEY,
-      name TEXT,
-      last_meeting_at INTEGER NOT NULL,
-      meeting_count INTEGER DEFAULT 1,
-      total_duration INTEGER DEFAULT 0,
-      notes TEXT,
-      organization TEXT,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    )
-  `);
+function createTables(): void {
+  if (!db) throw new Error('Database not initialized');
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS callouts (
-      id TEXT PRIMARY KEY,
-      meeting_id TEXT NOT NULL,
-      triggered_at INTEGER NOT NULL,
-      question TEXT NOT NULL,
-      context TEXT NOT NULL,
-      suggested_response TEXT NOT NULL,
-      sources TEXT DEFAULT '[]',
-      dismissed INTEGER DEFAULT 0,
-      FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    )
-  `);
-
-  db.run(`CREATE INDEX IF NOT EXISTS idx_segments_meeting ON transcript_segments(meeting_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_callouts_meeting ON callouts(meeting_id)`);
-
-  // Transcript chunking and semantic search tables
-  db.run(`
-    CREATE TABLE IF NOT EXISTS transcript_chunks (
-      id TEXT PRIMARY KEY,
-      meeting_id TEXT NOT NULL,
-      start_time INTEGER NOT NULL,
-      end_time INTEGER NOT NULL,
-      text TEXT NOT NULL,
-      embedding_blob BLOB,
-      token_count INTEGER NOT NULL,
-      segment_ids TEXT NOT NULL,
-      speaker_set TEXT DEFAULT '[]',
-      created_at INTEGER NOT NULL,
-      FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS deep_dive_cache (
-      id TEXT PRIMARY KEY,
-      meeting_id TEXT NOT NULL,
-      note_block_hash TEXT NOT NULL,
-      chunk_ids TEXT NOT NULL,
-      model_version TEXT NOT NULL,
-      prompt_version TEXT NOT NULL,
-      summary_json TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
-    )
-  `);
-
-  db.run(`CREATE INDEX IF NOT EXISTS idx_chunks_meeting ON transcript_chunks(meeting_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_cache_lookup ON deep_dive_cache(meeting_id, note_block_hash)`);
-
-  // Dynamic Prep System tables
-
-  // Signal weights - learned from feedback
-  db.run(`
-    CREATE TABLE IF NOT EXISTS signal_weights (
-      id TEXT PRIMARY KEY,
-      category TEXT UNIQUE NOT NULL,
-      weight REAL DEFAULT 1.0,
-      sample_count INTEGER DEFAULT 0,
-      updated_at INTEGER NOT NULL
-    )
-  `);
-
-  // Insight feedback history - for learning patterns
-  db.run(`
-    CREATE TABLE IF NOT EXISTS insight_feedback (
-      id TEXT PRIMARY KEY,
-      insight_id TEXT NOT NULL,
-      insight_category TEXT NOT NULL,
-      feedback TEXT NOT NULL,
-      participant_email TEXT,
-      created_at INTEGER NOT NULL
-    )
-  `);
-
-  // Inferred objectives - track inference vs user override
-  db.run(`
-    CREATE TABLE IF NOT EXISTS inferred_objectives (
-      id TEXT PRIMARY KEY,
-      calendar_event_id TEXT,
-      inferred_type TEXT NOT NULL,
-      confidence INTEGER NOT NULL,
-      reasoning TEXT,
-      user_override TEXT,
-      created_at INTEGER NOT NULL
-    )
-  `);
-
-  // CRM validations - track discrepancies found
-  db.run(`
-    CREATE TABLE IF NOT EXISTS crm_validations (
-      id TEXT PRIMARY KEY,
-      participant_email TEXT NOT NULL,
-      field TEXT NOT NULL,
-      meeting_claim TEXT,
-      crm_value TEXT,
-      discrepancy_note TEXT,
-      resolved INTEGER DEFAULT 0,
-      created_at INTEGER NOT NULL
-    )
-  `);
-
-  // Branches - reusable prompt templates for meeting insights
-  db.run(`
-    CREATE TABLE IF NOT EXISTS branches (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT NOT NULL,
-      explanation TEXT NOT NULL,
-      prompt TEXT NOT NULL,
-      thumbnail_url TEXT,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    )
-  `);
-
-  db.run(`CREATE INDEX IF NOT EXISTS idx_insight_feedback_category ON insight_feedback(insight_category)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_inferred_objectives_event ON inferred_objectives(calendar_event_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_crm_validations_email ON crm_validations(participant_email)`);
+  runMigrations();
 
   logger.debug('Database tables created/verified');
 }

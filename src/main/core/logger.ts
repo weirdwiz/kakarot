@@ -22,12 +22,38 @@ function shouldLog(level: LogLevel): boolean {
   return LOG_LEVELS[level] >= LOG_LEVELS[currentLevel];
 }
 
+// Redact sensitive data from log values
+const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+const TOKEN_RE = /\b(eyJ[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{20,}|[a-f0-9]{32,})\b/g;
+const ABS_PATH_RE = /\/Users\/[^\s"',}]+/g;
+
+function redactString(value: string): string {
+  return value
+    .replace(EMAIL_RE, '[email]')
+    .replace(TOKEN_RE, '[token]')
+    .replace(ABS_PATH_RE, '[path]');
+}
+
+function sanitize(data: LogContext): LogContext {
+  const clean: LogContext = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (typeof value === 'string') {
+      clean[key] = redactString(value);
+    } else if (typeof value === 'object' && value !== null) {
+      clean[key] = sanitize(value as LogContext);
+    } else {
+      clean[key] = value;
+    }
+  }
+  return clean;
+}
+
 function formatMessage(context: string, level: LogLevel, message: string, data?: LogContext): string {
   const timestamp = new Date().toISOString();
   const prefix = `[${timestamp}] [${level.toUpperCase()}] [${context}]`;
 
   if (data && Object.keys(data).length > 0) {
-    return `${prefix} ${message} ${JSON.stringify(data)}`;
+    return `${prefix} ${message} ${JSON.stringify(sanitize(data))}`;
   }
   return `${prefix} ${message}`;
 }
