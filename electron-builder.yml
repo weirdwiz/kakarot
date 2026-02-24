@@ -14,8 +14,10 @@ mac:
   target:
     - target: dmg
       arch: [arm64]
-  # Set identity to null for local unsigned builds.
-  # In CI, CSC_LINK and CSC_KEY_PASSWORD env vars override this.
+  # Ad-hoc sign when no certificate is configured.
+  # Users see "unidentified developer" (right-click > Open to bypass)
+  # instead of "damaged" which is unrecoverable without xattr.
+  # In CI, CSC_LINK env var overrides this with a real certificate.
   identity: null
   notarize: false
   extraResources:

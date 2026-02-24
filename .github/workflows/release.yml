@@ -83,8 +83,19 @@ jobs:
           if [ -n "$CSC_LINK" ]; then
             npx electron-builder --mac --arm64 --publish never
           else
-            echo "No signing certificate configured, building unsigned"
-            npx electron-builder --mac --arm64 --publish never
+            echo "No signing certificate configured, building with ad-hoc signature"
+            CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --arm64 --publish never
+          fi
+
+      - name: Ad-hoc sign app (when no certificate)
+        if: env.CSC_LINK == ''
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+        run: |
+          APP_PATH=$(find release/mac-arm64 -name "*.app" -maxdepth 1 | head -1)
+          if [ -n "$APP_PATH" ]; then
+            codesign --force --deep --sign - "$APP_PATH"
+            echo "Ad-hoc signed: $APP_PATH"
           fi
 
       - name: Upload build artifact
